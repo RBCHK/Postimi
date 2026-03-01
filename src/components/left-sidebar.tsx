@@ -105,7 +105,7 @@ function DraftItem({
   return (
     <div
       className={cn(
-        "group flex min-w-0 w-full items-center gap-1 rounded-lg pl-3 pr-1 py-1 text-left transition-colors duration-150",
+        "group flex min-w-0 w-full max-w-full items-center rounded-lg pl-3 pr-1 py-1 text-left transition-colors duration-150",
         isActive ? "bg-accent" : "hover:bg-muted/50",
       )}
     >
@@ -119,7 +119,7 @@ function DraftItem({
             router.push(`/c/${draft.id}`);
           }
         }}
-        className={cn("flex min-w-0 flex-1 flex-col gap-1 text-left", !isEditing && "cursor-pointer")}
+        className={cn("flex min-w-0 max-w-[87%] flex-1 flex-col gap-1 text-left", !isEditing && "cursor-pointer")}
       >
         {isEditing ? (
           <input
@@ -137,7 +137,7 @@ function DraftItem({
           />
         ) : (
           <span
-            className="line-clamp-2 wrap-break-word text-sm font-medium leading-snug max-w-[80%]"
+            className="line-clamp-2 wrap-break-word text-sm font-medium leading-snug w-full"
             onDoubleClick={(e) => { e.stopPropagation(); onStartEditing?.(draft.id); }}
           >
             {draft.title}
@@ -151,7 +151,7 @@ function DraftItem({
             size="icon"
             className={cn(
               "shrink-0 h-6 w-6 transition-opacity",
-              menuOpen || isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+              isActive || menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100",
             )}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
@@ -159,7 +159,7 @@ function DraftItem({
             <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="left" align="start" className="w-40" onCloseAutoFocus={(e) => e.preventDefault()}>
+        <DropdownMenuContent side="right" align="start" className="w-40" onCloseAutoFocus={(e) => e.preventDefault()}>
           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onPin?.(draft.id, !draft.pinned); }}>
             {draft.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
             {draft.pinned ? "Unpin" : "Pin"}
@@ -313,8 +313,9 @@ export function LeftSidebar() {
               New Draft
             </Button>
           </div>
-          <ScrollArea className="flex-1 min-h-0">
-            <div className="flex min-w-0 flex-col gap-2 overflow-x-hidden px-2 py-2">
+          <ScrollArea className="flex-1 min-h-0 min-w-0">
+            <div className="min-w-0 w-full max-w-full overflow-x-hidden">
+              <div className="flex min-w-0 w-full max-w-full flex-col gap-2 px-2 py-2">
               {pinnedDrafts.length > 0 && (
                 <>
                   <span className="flex items-center gap-1.5 px-2 pt-1 mt-6 text-sm font-medium text-muted-foreground tracking-wider">
@@ -369,6 +370,7 @@ export function LeftSidebar() {
                   }}
                 />
               ))}
+              </div>
             </div>
           </ScrollArea>
         </TabsContent>
