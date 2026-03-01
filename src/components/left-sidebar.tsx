@@ -393,7 +393,7 @@ export function LeftSidebar() {
         </TabsContent>
       </Tabs>
 
-      <div className="p-4">
+      <div className="p-4 mt-[15px] mb-[15px]">
         <SettingsSheet>
           <Button
             variant="ghost"
