@@ -58,7 +58,6 @@ function getTextFromUIMessage(message: UIMessage): string {
 export function ConversationProvider({
   conversationId,
   initialData,
-  initialMessage,
   children,
 }: {
   conversationId: string;
@@ -68,7 +67,6 @@ export function ConversationProvider({
     contentType: ContentType;
     title?: string;
   };
-  initialMessage?: string;
   children: ReactNode;
 }) {
   const [notes, setNotes] = useState<Note[]>(initialData?.notes ?? []);
@@ -143,27 +141,15 @@ export function ConversationProvider({
     createdAt: new Date(),
   }));
 
+  // Auto-start AI when conversation has exactly one user message (freshly created)
   const hasSentInitial = useRef(false);
   useEffect(() => {
-    console.log("[ConversationProvider] Initial effect:", { initialMessage, hasSentInitial: hasSentInitial.current, initialDataMessages: initialData?.messages?.length ?? 0 });
-    if (!initialMessage || hasSentInitial.current) return;
-    // Skip if conversation already has messages (e.g. page reload)
-    if (initialData?.messages && initialData.messages.length > 0) return;
-    hasSentInitial.current = true;
-    const text = initialMessage.trim();
-    if (!text) return;
-    console.log("[ConversationProvider] Sending initial message:", { conversationId, text: text.substring(0, 100) });
-    addMessage(conversationId, "user", text)
-      .then(() => {
-        console.log("[ConversationProvider] Initial message added, sending to AI");
-        window.dispatchEvent(new Event("drafts-updated"));
-        aiSendMessage({ text });
-        // Clean up URL after sending message
-        router.replace(`/c/${conversationId}`);
-      })
-      .catch((error) => {
-        console.error("[ConversationProvider] Failed to add initial message:", error);
-      });
+    if (hasSentInitial.current) return;
+    const msgs = initialData?.messages ?? [];
+    if (msgs.length === 1 && msgs[0].role === "user") {
+      hasSentInitial.current = true;
+      aiSendMessage({ text: msgs[0].content });
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendMessage = useCallback(async () => {

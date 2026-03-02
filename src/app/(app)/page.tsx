@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChatInput } from "@/components/chat-input";
-import { createConversation, resolveTitleFromInput } from "@/app/actions/conversations";
+import { createConversation, resolveTitleFromInput, addMessage } from "@/app/actions/conversations";
 import type { ContentType } from "@/lib/types";
 
 export default function HomePage() {
@@ -19,7 +19,8 @@ export default function HomePage() {
     try {
       const title = await resolveTitleFromInput(text);
       const id = await createConversation({ title, contentType });
-      router.push(`/c/${id}?msg=${encodeURIComponent(text)}`);
+      await addMessage(id, "user", text);
+      router.push(`/c/${id}`);
     } catch {
       setIsLoading(false);
     }

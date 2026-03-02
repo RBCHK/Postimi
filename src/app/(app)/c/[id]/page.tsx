@@ -6,13 +6,10 @@ import { getConversation } from "@/app/actions/conversations";
 
 interface Props {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ msg?: string }>;
 }
 
-export default async function ConversationPage({ params, searchParams }: Props) {
+export default async function ConversationPage({ params }: Props) {
   const { id } = await params;
-  const { msg } = await searchParams;
-  const initialMessage = msg ? decodeURIComponent(msg) : undefined;
 
   let data = await getConversation(id);
   if (!data) {
@@ -22,7 +19,6 @@ export default async function ConversationPage({ params, searchParams }: Props) 
   return (
     <ConversationProvider
       conversationId={id}
-      initialMessage={initialMessage}
       initialData={{
         messages: data.messages,
         notes: data.notes,
