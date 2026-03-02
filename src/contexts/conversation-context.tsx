@@ -19,7 +19,7 @@ import {
   clearNotes as clearNotesAction,
 } from "@/app/actions/notes";
 import { addMessage } from "@/app/actions/conversations";
-import { getStoredModel } from "@/components/settings-sheet";
+import { getStoredModel, getStoredLanguageSettings } from "@/components/settings-sheet";
 
 interface ConversationContextValue {
   conversationId: string;
@@ -89,12 +89,17 @@ export function ConversationProvider({
     () =>
       new DefaultChatTransport({
         api: "/api/chat",
-        body: () => ({
-          conversationId,
-          contentType: contentTypeRef.current,
-          notes: notesRef.current.map((n) => n.content),
-          model: getStoredModel(),
-        }),
+        body: () => {
+          const lang = getStoredLanguageSettings();
+          return {
+            conversationId,
+            contentType: contentTypeRef.current,
+            notes: notesRef.current.map((n) => n.content),
+            model: getStoredModel(),
+            conversationLanguage: lang.conversationLanguage,
+            contentLanguage: lang.contentLanguage,
+          };
+        },
       })
   );
 
@@ -140,16 +145,25 @@ export function ConversationProvider({
 
   const hasSentInitial = useRef(false);
   useEffect(() => {
+    console.log("[ConversationProvider] Initial effect:", { initialMessage, hasSentInitial: hasSentInitial.current, initialDataMessages: initialData?.messages?.length ?? 0 });
     if (!initialMessage || hasSentInitial.current) return;
     // Skip if conversation already has messages (e.g. page reload)
     if (initialData?.messages && initialData.messages.length > 0) return;
     hasSentInitial.current = true;
     const text = initialMessage.trim();
     if (!text) return;
-    addMessage(conversationId, "user", text).then(() => {
-      window.dispatchEvent(new Event("drafts-updated"));
-      aiSendMessage({ text });
-    });
+    console.log("[ConversationProvider] Sending initial message:", { conversationId, text: text.substring(0, 100) });
+    addMessage(conversationId, "user", text)
+      .then(() => {
+        console.log("[ConversationProvider] Initial message added, sending to AI");
+        window.dispatchEvent(new Event("drafts-updated"));
+        aiSendMessage({ text });
+        // Clean up URL after sending message
+        router.replace(`/c/${conversationId}`);
+      })
+      .catch((error) => {
+        console.error("[ConversationProvider] Failed to add initial message:", error);
+      });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendMessage = useCallback(async () => {
