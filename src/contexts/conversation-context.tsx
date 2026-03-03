@@ -55,6 +55,16 @@ function getTextFromUIMessage(message: UIMessage): string {
     .join("");
 }
 
+/**
+ * Provides conversation state and AI chat for a single conversation.
+ *
+ * CONTRACT:
+ * - Pass loaded data via `initialData.messages` — there is no `initialMessage` prop.
+ * - Do NOT pass initial content via URL params; save to DB before redirecting here.
+ * - Auto-starts AI if initialData.messages has exactly 1 user message (new conversation).
+ *   Does NOT auto-start on page refresh of an ongoing conversation (2+ messages).
+ * - To send a message use `sendMessage` from `useConversation()`, not `aiSendMessage` directly.
+ */
 export function ConversationProvider({
   conversationId,
   initialData,
@@ -141,7 +151,9 @@ export function ConversationProvider({
     createdAt: new Date(),
   }));
 
-  // Auto-start AI when conversation has exactly one user message (freshly created)
+  // Auto-start AI for new conversations (exactly 1 user message, no assistant reply yet).
+  // hasSentInitial guards against StrictMode double-invoke and future re-renders.
+  // Empty deps array is intentional: runs once on mount using initialData captured at creation.
   const hasSentInitial = useRef(false);
   useEffect(() => {
     if (hasSentInitial.current) return;

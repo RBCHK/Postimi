@@ -152,6 +152,11 @@ export async function getScheduledSlots() {
   }));
 }
 
+/**
+ * Ensures scheduled slots exist for the upcoming week.
+ * Prefers the new ScheduleConfig (grid per content type) if saved.
+ * Falls back to the legacy config (postsPerDay + timeSlots[]) for backward compatibility.
+ */
 export async function ensureSlotsForWeek() {
   // If new scheduleConfig exists, use it for slot generation
   const scheduleConfig = await getScheduleConfig();
@@ -244,8 +249,11 @@ const SECTION_TO_SLOT_TYPE: Record<keyof ScheduleConfig, PrismaSlotType> = {
   articles: "ARTICLE",
 };
 
-// Regenerate EMPTY slots for the next 7 days (starting tomorrow) based on schedule config.
-// Leaves FILLED/POSTED slots untouched.
+/**
+ * Regenerates EMPTY slots for the next 7 days (starting tomorrow) from a ScheduleConfig.
+ * FILLED and POSTED slots are never touched — only future EMPTY slots are deleted and recreated.
+ * Called automatically after saveScheduleConfig() and from ensureSlotsForWeek() when config exists.
+ */
 async function regenerateSlotsFromConfig(config: ScheduleConfig) {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);

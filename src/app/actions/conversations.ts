@@ -128,8 +128,11 @@ export async function deleteConversation(id: string) {
   revalidatePath("/");
 }
 
-// Returns MODE letters (A–E) used in last N reply conversations, newest-first.
-// Used for anti-repeat rotation in the reply prompt.
+/**
+ * Returns MODE letters (A–E) from the first assistant message of the last N reply conversations.
+ * Used by the reply prompt to enforce anti-repeat mode rotation.
+ * Excludes the current conversation so it doesn't count itself.
+ */
 export async function getRecentUsedModes(excludeId?: string, limit = 5): Promise<string[]> {
   const where = {
     contentType: "REPLY" as const,
@@ -158,8 +161,12 @@ export async function markAsPosted(conversationId: string) {
   revalidatePath("/");
 }
 
-// Resolves the conversation title from user input:
-// if it contains a tweet URL, returns the tweet text (truncated); otherwise returns the input as-is.
+/**
+ * Resolves the conversation title from user input.
+ * If the text contains a tweet URL, fetches the tweet and returns its text (truncated to 80 chars).
+ * Otherwise returns the input as-is.
+ * Called on the home page before createConversation().
+ */
 export async function resolveTitleFromInput(text: string): Promise<string> {
   const tweet = await fetchTweetFromText(text);
   if (tweet) {
