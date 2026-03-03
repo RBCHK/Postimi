@@ -74,8 +74,12 @@ export function ChatMessages() {
     <div className="relative flex-1 min-h-0 overflow-hidden">
       <div ref={scrollRef} className="absolute inset-0 overflow-y-auto">
         <div data-chat-messages className="mx-auto flex w-full max-w-chat flex-col gap-4 px-4 pt-8 pb-6">
-          {messages.map((msg) => (
-            <ChatBubble key={msg.id} message={msg} />
+          {messages.map((msg, i) => (
+            <ChatBubble
+              key={msg.id}
+              message={msg}
+              isStreaming={isLoading && i === messages.length - 1 && msg.role === "assistant"}
+            />
           ))}
           <div ref={spacerRef} className="shrink-0" />
         </div>

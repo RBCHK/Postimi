@@ -1,12 +1,14 @@
-import { cn } from "@/lib/utils";
 import type { Message } from "@/lib/types";
+import { useTypewriter } from "@/hooks/use-typewriter";
 
 interface ChatBubbleProps {
   message: Message;
+  isStreaming?: boolean;
 }
 
-export function ChatBubble({ message }: ChatBubbleProps) {
+export function ChatBubble({ message, isStreaming = false }: ChatBubbleProps) {
   const isUser = message.role === "user";
+  const displayText = useTypewriter(message.content, !isUser && isStreaming);
 
   if (isUser) {
     return (
@@ -20,7 +22,7 @@ export function ChatBubble({ message }: ChatBubbleProps) {
 
   return (
     <div data-role="assistant" className="w-full text-base leading-relaxed text-foreground">
-      <p className="whitespace-pre-wrap">{message.content}</p>
+      <p className="whitespace-pre-wrap">{displayText}</p>
     </div>
   );
 }
