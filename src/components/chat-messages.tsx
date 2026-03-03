@@ -1,19 +1,41 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { ArrowDown } from "lucide-react";
 import { ChatBubble } from "@/components/chat-bubble";
 import { useConversation } from "@/contexts/conversation-context";
 
 const SCROLL_TOP_OFFSET = 32; // px = pt-8
+const SCROLL_THRESHOLD = 100; // px from bottom to show button
 
 export function ChatMessages() {
   const { messages, isLoading } = useConversation();
   const scrollRef = useRef<HTMLDivElement>(null);
   const spacerRef = useRef<HTMLDivElement>(null);
   const wasLoadingRef = useRef(false);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   const userCount = messages.filter((m) => m.role === "user").length;
   const prevUserCount = useRef(userCount);
+
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, []);
+
+  // Отслеживаем позицию скролла чтобы показывать кнопку
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const onScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowScrollBtn(distFromBottom > SCROLL_THRESHOLD);
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
 
   // Подрезаем spacer когда стриминг заканчивается —
   // ровно до минимума нужного чтобы контент не прыгнул
@@ -88,6 +110,15 @@ export function ChatMessages() {
         className="pointer-events-none absolute left-0 right-0 top-0 z-10 h-[18px] bg-linear-to-b from-background to-transparent"
         aria-hidden
       />
+      {showScrollBtn && (
+        <button
+          onClick={scrollToBottom}
+          className="absolute bottom-4 left-1/2 z-10 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full bg-secondary text-secondary-foreground shadow-md transition-opacity hover:opacity-80"
+          aria-label="Scroll to bottom"
+        >
+          <ArrowDown className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }

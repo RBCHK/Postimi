@@ -14,26 +14,29 @@ const markdownComponents: Components = {
     <em className="not-italic text-amber-400/80">{children}</em>
   ),
   h1: ({ children }) => (
-    <h1 className="text-lg font-bold mt-4 mb-1">{children}</h1>
+    <h1 className="text-lg font-bold mt-8 mb-3">{children}</h1>
   ),
   h2: ({ children }) => (
-    <h2 className="text-base font-bold mt-3 mb-1">{children}</h2>
+    <h2 className="text-xl font-bold mt-7 mb-2">{children}</h2>
   ),
   h3: ({ children }) => (
-    <h3 className="text-sm font-semibold mt-2 mb-0.5">{children}</h3>
+    <h3 className="text-base font-bold mt-7 mb-2">{children}</h3>
   ),
   ul: ({ children }) => (
-    <ul className="list-disc list-inside my-1 space-y-0.5">{children}</ul>
+    <ul className="list-disc pl-7 mt-2 mb-4 space-y-2">{children}</ul>
   ),
   ol: ({ children }) => (
-    <ol className="list-decimal list-inside my-1 space-y-0.5">{children}</ol>
+    <ol className="list-decimal pl-7 mt-2 mb-4 space-y-2">{children}</ol>
+  ),
+  li: ({ children }) => (
+    <li className="leading-relaxed">{children}</li>
   ),
   blockquote: ({ children }) => (
-    <blockquote className="border-l-2 border-muted-foreground/30 pl-3 text-muted-foreground my-1">
+    <blockquote className="border-l-2 border-muted-foreground/40 pl-4 text-muted-foreground my-4 italic">
       {children}
     </blockquote>
   ),
-  p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+  p: ({ children }) => <p className="mt-2 mb-2 last:mb-0">{children}</p>,
   code: ({ children }) => (
     <code className="bg-muted px-1 py-0.5 rounded text-sm font-mono">
       {children}
@@ -60,13 +63,9 @@ export function ChatBubble({ message, isStreaming = false }: ChatBubbleProps) {
 
   return (
     <div data-role="assistant" className="w-full text-base leading-relaxed text-foreground">
-      {isStreaming ? (
-        <p className="whitespace-pre-wrap">{displayText}</p>
-      ) : (
-        <ReactMarkdown components={markdownComponents}>
-          {message.content}
-        </ReactMarkdown>
-      )}
+      <ReactMarkdown components={markdownComponents}>
+        {displayText}
+      </ReactMarkdown>
     </div>
   );
 }
