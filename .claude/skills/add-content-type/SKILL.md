@@ -1,6 +1,9 @@
 ---
 name: add-content-type
-description: Add a new ContentType to the app (e.g. Newsletter, Quote)
+description: >
+  Add a new content type to the app. Use when user asks to add a new type
+  of content (e.g. Newsletter, Quote, Podcast), says "add new content type",
+  or mentions extending the ContentType enum.
 disable-model-invocation: true
 ---
 

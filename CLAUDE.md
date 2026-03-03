@@ -31,6 +31,8 @@ See JSDoc in `conversation-context.tsx` for the contract.
 
 ## Workflow Rules
 
+IMPORTANT: Before executing any task, check `.claude/skills/` for a relevant skill and use it.
+IMPORTANT: If a task is multi-step and repeatable — create a skill for it using `/create-skill`.
 IMPORTANT: Use Plan Mode (Shift+Tab) for any change touching 3+ files.
 IMPORTANT: Start a fresh session (`/clear`) for each new task.
 IMPORTANT: After implementing, verify with `npx tsc --noEmit` (also runs automatically via hook after every file edit).
