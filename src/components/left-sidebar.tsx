@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Settings, Trash2, MoreHorizontal, Pin, PinOff, Pencil, FileEdit, FilePlus, MessageSquare, FileText, AlignLeft, BookOpen, Calendar } from "lucide-react";
+import { Settings, Trash2, MoreHorizontal, Pin, PinOff, Pencil, FileEdit, FilePlus, MessageSquare, FileText, AlignLeft, BookOpen, Calendar, CalendarX, ExternalLink } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { SettingsSheet } from "@/components/settings-sheet";
 import { getConversations, deleteConversation, updateConversation, createConversation } from "@/app/actions/conversations";
-import { getScheduledSlots, ensureSlotsForWeek } from "@/app/actions/schedule";
+import { getScheduledSlots, ensureSlotsForWeek, toggleSlotPosted, deleteSlot, unscheduleSlot } from "@/app/actions/schedule";
 import type { Draft, ScheduledSlot, SlotStatus, SlotType } from "@/lib/types";
 
 const slotTypeIcon: Record<SlotType, React.ReactNode> = {
@@ -188,19 +188,37 @@ function DraftItem({
   );
 }
 
-function SlotItem({ slot }: { slot: ScheduledSlot }) {
+function SlotItem({
+  slot,
+  onTogglePosted,
+  onDelete,
+  onUnschedule,
+}: {
+  slot: ScheduledSlot;
+  onTogglePosted?: (id: string) => void;
+  onDelete?: (id: string) => void;
+  onUnschedule?: (id: string) => void;
+}) {
+  const router = useRouter();
   const config = slotStatusConfig(slot.status);
   const isEmpty = slot.status === "empty";
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <div
       className={cn(
-        "flex items-center gap-3 rounded-lg px-3 transition-colors duration-150",
-        isEmpty ? "py-1.5" : "py-4",
+        "group flex items-center gap-2 rounded-lg px-3 transition-colors duration-150",
+        isEmpty ? "py-1.5" : "py-3",
         config.className,
       )}
     >
-      <Badge variant="ghost" className={cn("p-0.5 text-xs font-normal shrink-0", config.badgeClassName)} title={slot.slotType} data-slot-type-badge>
+      <Badge
+        variant="ghost"
+        className={cn("p-0.5 text-xs font-normal shrink-0 cursor-pointer hover:bg-muted/50 rounded", config.badgeClassName)}
+        title={slot.status === "posted" ? "Posted — click to undo" : "Click to mark as posted"}
+        data-slot-type-badge
+        onClick={() => onTogglePosted?.(slot.id)}
+      >
         {slotTypeIcon[slot.slotType]}
       </Badge>
       <div className="flex flex-1 flex-col gap-1 overflow-hidden">
@@ -213,6 +231,44 @@ function SlotItem({ slot }: { slot: ScheduledSlot }) {
           </span>
         )}
       </div>
+      <div className={cn(
+        "flex items-center gap-0.5 shrink-0 transition-opacity",
+        menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+      )}>
+        <DropdownMenu onOpenChange={setMenuOpen}>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onPointerDown={(e) => e.stopPropagation()}>
+              <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="start" className="w-40" onCloseAutoFocus={(e) => e.preventDefault()}>
+            {slot.draftId && (
+              <DropdownMenuItem onClick={() => onUnschedule?.(slot.id)}>
+                <CalendarX className="h-4 w-4" />
+                Unschedule
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => onDelete?.(slot.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {slot.draftId && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            title="Go to draft"
+            onClick={() => router.push(`/c/${slot.draftId}`)}
+          >
+            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -223,7 +279,7 @@ export function LeftSidebar({ collapsed, onExpand }: { collapsed?: boolean; onEx
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [slots, setSlots] = useState<ScheduledSlot[]>([]);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"drafts" | "scheduled">("drafts");
+  const [activeTab, setActiveTab] = useState<"drafts" | "scheduled">("scheduled");
   const fetchSeqRef = useRef(0);
 
   const activeDraftId = pathname.startsWith("/c/")
@@ -261,6 +317,39 @@ export function LeftSidebar({ collapsed, onExpand }: { collapsed?: boolean; onEx
 
   function refreshSlots() {
     getScheduledSlots().then(setSlots).catch(() => {});
+  }
+
+  async function handleToggleSlotPosted(id: string) {
+    try {
+      const result = await toggleSlotPosted(id);
+      setSlots((prev) => prev.map((s) => {
+        if (s.id !== id) return s;
+        const newStatus = result.status.toLowerCase() as SlotStatus;
+        return { ...s, status: newStatus, ...(result.timeSlot ? { timeSlot: result.timeSlot } : {}) };
+      }));
+    } catch {
+      toast.error("Failed to update slot status");
+    }
+  }
+
+  async function handleSlotDelete(id: string) {
+    try {
+      await deleteSlot(id);
+      setSlots((prev) => prev.filter((s) => s.id !== id));
+      toast.success("Slot deleted");
+    } catch {
+      toast.error("Failed to delete slot");
+    }
+  }
+
+  async function handleUnschedule(id: string) {
+    try {
+      await unscheduleSlot(id);
+      setSlots((prev) => prev.map((s) => s.id === id ? { ...s, status: "empty" as const, draftId: undefined, draftTitle: undefined } : s));
+      toast.success("Draft returned to drafts");
+    } catch {
+      toast.error("Failed to unschedule");
+    }
   }
 
   async function handleNewDraft() {
@@ -416,7 +505,13 @@ export function LeftSidebar({ collapsed, onExpand }: { collapsed?: boolean; onEx
                     {dateLabel}
                   </span>
                   {slotList.map((slot) => (
-                    <SlotItem key={slot.id} slot={slot} />
+                    <SlotItem
+                      key={slot.id}
+                      slot={slot}
+                      onTogglePosted={handleToggleSlotPosted}
+                      onDelete={handleSlotDelete}
+                      onUnschedule={handleUnschedule}
+                    />
                   ))}
                 </div>
               ))}

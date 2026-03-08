@@ -11,12 +11,6 @@ const slotStatusToPrisma: Record<SlotStatus, PrismaSlotStatus> = {
   posted: "POSTED",
 };
 
-const slotTypeToPrisma: Record<SlotType, PrismaSlotType> = {
-  Reply: "REPLY",
-  Post: "POST",
-  Thread: "THREAD",
-  Article: "ARTICLE",
-};
 
 const slotStatusFromPrisma = (v: PrismaSlotStatus): SlotStatus =>
   v.toLowerCase() as SlotStatus;
@@ -315,6 +309,74 @@ async function regenerateSlotsFromConfig(config: ScheduleConfig) {
       }
     }
   }
+}
+
+function formatCurrentTime(): string {
+  const now = new Date();
+  const h = now.getHours();
+  const m = now.getMinutes();
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${m.toString().padStart(2, "0")} ${period}`;
+}
+
+export async function toggleSlotPosted(id: string): Promise<{ timeSlot?: string; status: "POSTED" | "FILLED" | "EMPTY" }> {
+  const slot = await prisma.scheduledSlot.findUnique({ where: { id } });
+  if (!slot) throw new Error("Slot not found");
+
+  if (slot.status === "POSTED") {
+    // Revert: if had a draft → FILLED, otherwise → EMPTY
+    const newStatus = slot.conversationId ? "FILLED" : "EMPTY";
+    await prisma.scheduledSlot.update({ where: { id }, data: { status: newStatus } });
+    if (slot.conversationId) {
+      await prisma.conversation.update({
+        where: { id: slot.conversationId },
+        data: { status: "SCHEDULED" },
+      });
+    }
+    revalidatePath("/");
+    return { status: newStatus };
+  } else {
+    const timeSlot = formatCurrentTime();
+    await prisma.scheduledSlot.update({ where: { id }, data: { status: "POSTED", timeSlot } });
+    if (slot.conversationId) {
+      await prisma.conversation.update({
+        where: { id: slot.conversationId },
+        data: { status: "POSTED" },
+      });
+    }
+    revalidatePath("/");
+    return { timeSlot, status: "POSTED" };
+  }
+}
+
+export async function deleteSlot(id: string) {
+  const slot = await prisma.scheduledSlot.findUnique({ where: { id } });
+  if (!slot) return;
+  if (slot.conversationId) {
+    await prisma.conversation.update({
+      where: { id: slot.conversationId },
+      data: { status: "DRAFT" },
+    });
+  }
+  await prisma.scheduledSlot.delete({ where: { id } });
+  revalidatePath("/");
+}
+
+export async function unscheduleSlot(id: string) {
+  const slot = await prisma.scheduledSlot.findUnique({ where: { id } });
+  if (!slot) return;
+  if (slot.conversationId) {
+    await prisma.conversation.update({
+      where: { id: slot.conversationId },
+      data: { status: "DRAFT" },
+    });
+  }
+  await prisma.scheduledSlot.update({
+    where: { id },
+    data: { status: "EMPTY", conversationId: null, content: null },
+  });
+  revalidatePath("/");
 }
 
 export async function addToQueue(

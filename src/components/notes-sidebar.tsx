@@ -1,6 +1,7 @@
 "use client";
 
-import { StickyNote, X, Trash2, ChevronLeft } from "lucide-react";
+import { StickyNote, X, ChevronLeft, Plus } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useConversation } from "@/contexts/conversation-context";
@@ -10,11 +11,25 @@ interface NotesSidebarProps {
 }
 
 export function NotesSidebar({ onClose }: NotesSidebarProps) {
-  const { notes, removeNote, clearNotes } = useConversation();
+  const { notes, removeNote, addNote } = useConversation();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [noteText, setNoteText] = useState("");
+
+  function closeModal() {
+    setNoteText("");
+    setModalOpen(false);
+  }
+
+  function handleAddNote() {
+    if (noteText.trim()) {
+      addNote(noteText.trim());
+    }
+    closeModal();
+  }
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 px-6 py-4">
+      <div className="flex items-center justify-between gap-2 px-6 py-4 pr-12">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {onClose && (
             <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose}>
@@ -23,17 +38,14 @@ export function NotesSidebar({ onClose }: NotesSidebarProps) {
           )}
           <h2 className="truncate text-sm font-medium tracking-[-0.02em] text-muted-foreground">Notes</h2>
         </div>
-        {notes.length > 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-2 text-xs text-muted-foreground"
-            onClick={clearNotes}
-          >
-            <Trash2 className="h-3 w-3" />
-            Clear all
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0 rounded-lg bg-white/6 hover:bg-white/10"
+          onClick={() => setModalOpen(true)}
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
       </div>
 
       {notes.length === 0 ? (
@@ -44,15 +56,15 @@ export function NotesSidebar({ onClose }: NotesSidebarProps) {
           </p>
         </div>
       ) : (
-        <ScrollArea className="flex-1 min-h-0 px-6 py-4">
-          <div className="flex flex-col gap-3">
+        <ScrollArea className="flex-1 min-h-0 pl-0 pr-12 pb-12 pt-0">
+          <div className="grid grid-cols-2 gap-3">
             {notes.map((note) => (
               <div
                 key={note.id}
-                className="group relative rounded-xl bg-white/[0.03] px-4 py-3 transition-colors duration-150 overflow-hidden"
-                style={{ width: "150px", height: "120px" }}
+                className="group relative rounded-xl bg-white/[0.03] px-2.5 pb-2 pt-2 transition-colors duration-150 overflow-hidden"
+                style={{ height: "125px" }}
               >
-                <p className="pr-6 text-sm leading-relaxed line-clamp-4">{note.content}</p>
+                <p className="h-full text-xs leading-relaxed line-clamp-4">{note.content}</p>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -65,6 +77,35 @@ export function NotesSidebar({ onClose }: NotesSidebarProps) {
             ))}
           </div>
         </ScrollArea>
+      )}
+
+      {modalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={closeModal}
+        >
+          <div
+            className="flex h-[500px] w-[750px] flex-col gap-4 rounded-2xl bg-[#1a1a1a] p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="shrink-0 text-sm font-medium">New Note</h3>
+            <textarea
+              className="min-h-0 flex-1 resize-none rounded-xl border border-border bg-white/5 px-4 py-3 text-sm leading-relaxed outline-none placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-white/20"
+              placeholder="Type your note..."
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              autoFocus
+            />
+            <div className="flex shrink-0 justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={closeModal}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleAddNote} disabled={!noteText.trim()}>
+                Add Note
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
