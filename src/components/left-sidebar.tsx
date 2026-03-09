@@ -299,7 +299,19 @@ export function LeftSidebar({ collapsed, onExpand }: { collapsed?: boolean; onEx
   }, [pathname]);
 
   useEffect(() => {
-    ensureSlotsForWeek().then(() => getScheduledSlots().then(setSlots).catch(() => setSlots([])));
+    const today = new Date().toDateString();
+    const lastRun = localStorage.getItem("xreba_slots_generated");
+    if (lastRun !== today) {
+      ensureSlotsForWeek()
+        .then(() => {
+          localStorage.setItem("xreba_slots_generated", today);
+          return getScheduledSlots();
+        })
+        .then(setSlots)
+        .catch(() => setSlots([]));
+    } else {
+      getScheduledSlots().then(setSlots).catch(() => setSlots([]));
+    }
   }, []);
 
   useEffect(() => {

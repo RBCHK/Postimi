@@ -54,21 +54,30 @@ async function checkAndUpdatePassedSlots() {
   const filledSlots = await prisma.scheduledSlot.findMany({
     where: { status: "FILLED" },
   });
-  for (const slot of filledSlots) {
-    const slotDateTime = getSlotDateTime(slot.date, slot.timeSlot);
-    if (slotDateTime < now) {
-      await prisma.scheduledSlot.update({
-        where: { id: slot.id },
+
+  const passedSlots = filledSlots.filter(
+    (s) => getSlotDateTime(s.date, s.timeSlot) < now
+  );
+  if (passedSlots.length === 0) return;
+
+  const passedIds = passedSlots.map((s) => s.id);
+
+  // Batch update slots
+  await prisma.scheduledSlot.updateMany({
+    where: { id: { in: passedIds } },
+    data: { status: "POSTED" },
+  });
+
+  // Update linked conversations (still per-row, but only for passed slots with a draft)
+  const withConversation = passedSlots.filter((s) => s.conversationId);
+  await Promise.all(
+    withConversation.map((s) =>
+      prisma.conversation.update({
+        where: { id: s.conversationId! },
         data: { status: "POSTED" },
-      });
-      if (slot.conversationId) {
-        await prisma.conversation.update({
-          where: { id: slot.conversationId },
-          data: { status: "POSTED" },
-        });
-      }
-    }
-  }
+      })
+    )
+  );
 }
 
 // Ensure slots exist for a specific date (used when no free slots found)
@@ -254,21 +263,30 @@ const SECTION_TO_SLOT_TYPE: Record<keyof ScheduleConfig, PrismaSlotType> = {
 /**
  * Regenerates EMPTY slots for the next 7 days (starting today) from a ScheduleConfig.
  * FILLED and POSTED slots are never touched — only future EMPTY slots are deleted and recreated.
- * Only creates slots whose scheduled datetime is strictly in the future.
+ * For today, all configured slots are created regardless of current time (so the full day plan is visible).
+ * Uses batch DB operations: one findMany + one createMany instead of N×(findFirst+create).
  * Called automatically after saveScheduleConfig() and from ensureSlotsForWeek() when config exists.
  */
 async function regenerateSlotsFromConfig(config: ScheduleConfig) {
   const now = new Date();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const weekEnd = new Date(today);
+  weekEnd.setDate(weekEnd.getDate() + 7);
 
   // Remove EMPTY slots from today onwards (don't touch FILLED/POSTED)
   await prisma.scheduledSlot.deleteMany({
-    where: {
-      status: "EMPTY",
-      date: { gte: today },
-    },
+    where: { status: "EMPTY", date: { gte: today } },
   });
+
+  // Fetch all remaining (FILLED/POSTED) slots in range to check conflicts — single query
+  const occupied = await prisma.scheduledSlot.findMany({
+    where: { date: { gte: today, lt: weekEnd } },
+    select: { date: true, timeSlot: true, slotType: true },
+  });
+  const occupiedKeys = new Set(
+    occupied.map((s) => `${s.date.toISOString().split("T")[0]}_${s.timeSlot}_${s.slotType}`)
+  );
 
   // Build dates for today + next 6 days (7 days total)
   const dates: Date[] = [];
@@ -278,7 +296,9 @@ async function regenerateSlotsFromConfig(config: ScheduleConfig) {
     dates.push(date);
   }
 
-  // Create slots from config — only for future datetimes
+  // Collect all new slots — no per-slot DB queries
+  const toCreate: { date: Date; timeSlot: string; slotType: PrismaSlotType; status: "EMPTY" }[] = [];
+
   for (const [section, schedule] of Object.entries(config) as [keyof ScheduleConfig, ContentSchedule][]) {
     const slotType = SECTION_TO_SLOT_TYPE[section];
 
@@ -291,23 +311,23 @@ async function regenerateSlotsFromConfig(config: ScheduleConfig) {
         const dayKey = (Object.entries(DAY_TO_JS).find(([, num]) => num === jsDay)?.[0]) as DayKey | undefined;
         if (!dayKey || !slot.days[dayKey]) continue;
 
-        // Skip slots that are in the past or at the current moment
+        // Skip past slots — but keep all of today's slots so the full day plan is visible
+        const isToday = date.getTime() === today.getTime();
         const slotDateTime = getSlotDateTime(date, timeSlot);
-        if (slotDateTime <= now) continue;
+        if (!isToday && slotDateTime <= now) continue;
 
-        // Check no existing slot (FILLED/POSTED) at same date+time+type
-        const dayStart = new Date(date);
-        const dayEnd = new Date(date.getTime() + 86400000);
-        const existing = await prisma.scheduledSlot.findFirst({
-          where: { date: { gte: dayStart, lt: dayEnd }, timeSlot, slotType },
-        });
-        if (!existing) {
-          await prisma.scheduledSlot.create({
-            data: { date, timeSlot, slotType, status: "EMPTY" },
-          });
-        }
+        const dateKey = date.toISOString().split("T")[0];
+        const conflictKey = `${dateKey}_${timeSlot}_${slotType}`;
+        if (occupiedKeys.has(conflictKey)) continue;
+
+        toCreate.push({ date, timeSlot, slotType, status: "EMPTY" });
+        occupiedKeys.add(conflictKey); // prevent duplicate rows at same time
       }
     }
+  }
+
+  if (toCreate.length > 0) {
+    await prisma.scheduledSlot.createMany({ data: toCreate });
   }
 }
 
