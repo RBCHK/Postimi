@@ -140,7 +140,7 @@ export async function getScheduledSlots() {
   await checkAndUpdatePassedSlots();
 
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  today.setUTCHours(0, 0, 0, 0);
 
   const rows = await prisma.scheduledSlot.findMany({
     where: { date: { gte: today } },
@@ -181,11 +181,11 @@ export async function ensureSlotsForWeek() {
   const postsPerDay = config?.postsPerDay ?? 2;
 
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  today.setUTCHours(0, 0, 0, 0);
 
   for (let d = 0; d < 7; d++) {
     const date = new Date(today);
-    date.setDate(date.getDate() + d);
+    date.setUTCDate(date.getUTCDate() + d);
 
     for (let i = 0; i < timeSlots.length; i++) {
       const ts = timeSlots[i];
@@ -271,9 +271,9 @@ const SECTION_TO_SLOT_TYPE: Record<keyof ScheduleConfig, PrismaSlotType> = {
 async function regenerateSlotsFromConfig(config: ScheduleConfig) {
   const now = new Date();
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  today.setUTCHours(0, 0, 0, 0);
   const weekEnd = new Date(today);
-  weekEnd.setDate(weekEnd.getDate() + 7);
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
 
   // Remove EMPTY slots from today onwards (don't touch FILLED/POSTED)
   await prisma.scheduledSlot.deleteMany({
@@ -293,7 +293,7 @@ async function regenerateSlotsFromConfig(config: ScheduleConfig) {
   const dates: Date[] = [];
   for (let d = 0; d < 7; d++) {
     const date = new Date(today);
-    date.setDate(date.getDate() + d);
+    date.setUTCDate(date.getUTCDate() + d);
     dates.push(date);
   }
 
@@ -406,8 +406,8 @@ export async function addToQueue(
   // No slot found → generate next-day slots and retry once
   if (!slot) {
     const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    tomorrow.setUTCHours(0, 0, 0, 0);
     await ensureSlotsForDate(tomorrow);
     slot = await prisma.scheduledSlot.findFirst({
       where: { status: "EMPTY", slotType },

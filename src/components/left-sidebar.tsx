@@ -51,7 +51,7 @@ function formatSlotDate(date: Date | string): string {
     weekday: "short",
     month: "short",
     day: "numeric",
-    timeZone: "America/Los_Angeles",
+    timeZone: "UTC",
   });
 }
 
