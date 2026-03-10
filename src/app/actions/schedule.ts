@@ -135,12 +135,13 @@ export async function upsertStrategyConfig(data: {
   }
 }
 
-export async function getScheduledSlots() {
+export async function getScheduledSlots(localDateStr?: string) {
   // Lazy update: mark past FILLED slots as POSTED before returning
   await checkAndUpdatePassedSlots();
 
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const today = localDateStr
+    ? new Date(`${localDateStr}T00:00:00.000Z`)
+    : (() => { const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d; })();
 
   const rows = await prisma.scheduledSlot.findMany({
     where: { date: { gte: today } },
@@ -167,11 +168,11 @@ export async function getScheduledSlots() {
  * Prefers the new ScheduleConfig (grid per content type) if saved.
  * Falls back to the legacy config (postsPerDay + timeSlots[]) for backward compatibility.
  */
-export async function ensureSlotsForWeek() {
+export async function ensureSlotsForWeek(localDateStr?: string) {
   // If new scheduleConfig exists, use it for slot generation
   const scheduleConfig = await getScheduleConfig();
   if (scheduleConfig) {
-    await regenerateSlotsFromConfig(scheduleConfig);
+    await regenerateSlotsFromConfig(scheduleConfig, localDateStr);
     return;
   }
 
@@ -180,8 +181,9 @@ export async function ensureSlotsForWeek() {
   const timeSlots = config?.timeSlots ?? ["9:00 AM", "12:00 PM", "3:00 PM", "6:00 PM"];
   const postsPerDay = config?.postsPerDay ?? 2;
 
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const today = localDateStr
+    ? new Date(`${localDateStr}T00:00:00.000Z`)
+    : (() => { const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d; })();
 
   for (let d = 0; d < 7; d++) {
     const date = new Date(today);
@@ -268,10 +270,11 @@ const SECTION_TO_SLOT_TYPE: Record<keyof ScheduleConfig, PrismaSlotType> = {
  * Uses batch DB operations: one findMany + one createMany instead of N×(findFirst+create).
  * Called automatically after saveScheduleConfig() and from ensureSlotsForWeek() when config exists.
  */
-async function regenerateSlotsFromConfig(config: ScheduleConfig) {
+async function regenerateSlotsFromConfig(config: ScheduleConfig, localDateStr?: string) {
   const now = new Date();
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const today = localDateStr
+    ? new Date(`${localDateStr}T00:00:00.000Z`)
+    : (() => { const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d; })();
   const weekEnd = new Date(today);
   weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
 
@@ -308,7 +311,7 @@ async function regenerateSlotsFromConfig(config: ScheduleConfig) {
       const timeSlot = time24to12(slot.time);
 
       for (const date of dates) {
-        const jsDay = date.getDay(); // 0=Sun, 1=Mon, ...
+        const jsDay = date.getUTCDay(); // 0=Sun, 1=Mon, ...
         const dayKey = (Object.entries(DAY_TO_JS).find(([, num]) => num === jsDay)?.[0]) as DayKey | undefined;
         if (!dayKey || !slot.days[dayKey]) continue;
 

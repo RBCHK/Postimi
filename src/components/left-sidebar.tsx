@@ -304,23 +304,24 @@ export function LeftSidebar({ collapsed, onExpand }: { collapsed?: boolean; onEx
   }, [pathname]);
 
   useEffect(() => {
-    const today = new Date().toDateString();
+    const now = new Date();
+    const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const lastRun = localStorage.getItem("xreba_slots_generated");
-    if (lastRun !== today) {
-      ensureSlotsForWeek()
+    if (lastRun !== localDateStr) {
+      ensureSlotsForWeek(localDateStr)
         .then(() => {
-          localStorage.setItem("xreba_slots_generated", today);
-          return getScheduledSlots();
+          localStorage.setItem("xreba_slots_generated", localDateStr);
+          return getScheduledSlots(localDateStr);
         })
         .then(setSlots)
         .catch(() => setSlots([]));
     } else {
-      getScheduledSlots().then(setSlots).catch(() => setSlots([]));
+      getScheduledSlots(localDateStr).then(setSlots).catch(() => setSlots([]));
     }
   }, []);
 
   useEffect(() => {
-    const handler = () => getScheduledSlots().then(setSlots).catch(() => {});
+    const handler = () => getScheduledSlots(getLocalDateStr()).then(setSlots).catch(() => {});
     window.addEventListener("slots-updated", handler);
     return () => window.removeEventListener("slots-updated", handler);
   }, []);
@@ -332,8 +333,13 @@ export function LeftSidebar({ collapsed, onExpand }: { collapsed?: boolean; onEx
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function getLocalDateStr() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  }
+
   function refreshSlots() {
-    getScheduledSlots().then(setSlots).catch(() => {});
+    getScheduledSlots(getLocalDateStr()).then(setSlots).catch(() => {});
   }
 
   async function handleToggleSlotPosted(id: string) {
