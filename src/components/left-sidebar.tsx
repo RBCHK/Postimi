@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Settings, Trash2, MoreHorizontal, Pin, PinOff, Pencil, FileEdit, FilePlus, MessageSquare, FileText, AlignLeft, BookOpen, Calendar, CalendarX, ExternalLink } from "lucide-react";
+import { Settings, Trash2, MoreHorizontal, Pin, PinOff, Pencil, FileEdit, FilePlus, MessageSquare, FileText, AlignLeft, BookOpen, Calendar, CalendarX, ExternalLink, TrendingUp } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -424,6 +424,9 @@ export function LeftSidebar({ collapsed, onExpand }: { collapsed?: boolean; onEx
         <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => { setActiveTab("scheduled"); onExpand?.(); }} title="Scheduled">
           <Calendar className="h-4 w-4" />
         </Button>
+        <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => router.push("/strategist")} title="Strategist">
+          <TrendingUp className="h-4 w-4" />
+        </Button>
         <div className="mt-auto">
           <SettingsSheet>
             <Button variant="ghost" size="icon" className="h-9 w-9" title="Settings">
@@ -543,7 +546,15 @@ export function LeftSidebar({ collapsed, onExpand }: { collapsed?: boolean; onEx
         </TabsContent>
       </Tabs>
 
-      <div className="p-4 mt-[15px] mb-[15px]">
+      <div className="p-4 mt-[15px] mb-[15px] flex flex-col gap-1">
+        <Button
+          variant="ghost"
+          className="w-full justify-start gap-2 text-muted-foreground"
+          onClick={() => router.push("/strategist")}
+        >
+          <TrendingUp className="h-4 w-4" />
+          <span className="text-sm">Strategist</span>
+        </Button>
         <SettingsSheet>
           <Button
             variant="ghost"

@@ -107,3 +107,12 @@ model StrategyConfig {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
+
+model StrategyAnalysis {
+  id             String   @id @default(cuid())
+  csvSummary     Json     // { totalPosts, avgImpressions, topPosts[], dateRange }
+  searchQueries  String[] // queries the agent ran, for transparency
+  recommendation String   // full markdown output from Claude
+  weekStart      DateTime // the Monday of the week this analysis covers
+  createdAt      DateTime @default(now())
+}

@@ -62,3 +62,43 @@ export interface LanguageSettings {
   conversationLanguage: SupportedLanguage;
   contentLanguage: SupportedLanguage;
 }
+
+export interface CsvRow {
+  postId: string;
+  date: string;
+  text: string;
+  impressions: number;
+  likes: number;
+  engagements: number;
+  bookmarks: number;
+  shares: number;
+  newFollows: number;
+  replies: number;
+  reposts: number;
+}
+
+export interface CsvTopPost {
+  text: string;
+  impressions: number;
+  engagements: number;
+  likes: number;
+}
+
+export interface CsvSummary {
+  totalPosts: number;
+  dateRange: { from: string; to: string };
+  avgImpressions: number;
+  maxImpressions: number;
+  totalNewFollows: number;
+  avgEngagementRate: number;
+  topPosts: CsvTopPost[];
+}
+
+export interface StrategyAnalysisItem {
+  id: string;
+  weekStart: Date;
+  recommendation: string;
+  createdAt: Date;
+  csvSummary: CsvSummary;
+  searchQueries: string[];
+}
