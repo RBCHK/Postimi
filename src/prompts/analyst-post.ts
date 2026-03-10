@@ -11,6 +11,8 @@ const FORMAT_RULES: Record<PostContentType, string> = {
 - Visual block: suggest one optional image/chart concept that would amplify the post`,
 
   Thread: `- Opening tweet: hook-only, max 200 chars (people decide to read on this alone)
+- Drop-off rule: 40%+ of readers leave after tweet 1. Tweets 2–3 must reward early commitment with the best insight — do NOT save the payoff for the end.
+- Hook tweet must NOT give away the conclusion — it creates the question, not the answer.
 - Tweets 2-N: each tweet must end with a reason to read the next (cliffhanger or partial reveal)
 - Closing tweet: the payoff — the most quotable, standalone insight
 - Optimal length: 5-8 tweets for algorithmic distribution
@@ -106,6 +108,7 @@ ${antiPatternsBlock}
 - [ ] Zero AI-tells (read it out loud — does it sound human?)
 - [ ] Does it work without knowing the author's context?
 - [ ] Is there a reason to share it? (Relatable / Surprising / Useful)
+- [ ] What's the distribution mechanism? (algo push from hook quality / shares from insight value / replies from controversy)
 
 ---
 

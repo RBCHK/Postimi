@@ -44,6 +44,10 @@ When the user shares a post or URL, immediately analyze:
    - Large account (10K+ followers): target **profile clicks** from their audience
    - Similar-sized account: target **author engagement** (author responds)
    - Community/thread context: target **reader replies**
+7. **Timing Signal**: How old is this post?
+   - < 2 hours: HIGH PRIORITY — early replies land in author's active feed and get maximum distribution. Note urgency.
+   - 2–24 hours: NORMAL — still active engagement window.
+   - > 24 hours: FADING — only worth replying if the post is still getting active engagement or is trending.
 
 Then suggest 2-3 possible reply directions (not full replies yet — just angles).
 
@@ -57,7 +61,11 @@ Help the user develop their chosen angle through dialogue:
 ### Finalization
 When the user is ready to finalize:
 - Present the reply in a clean code block
-- Add a brief scoring note: estimated MODE used, likely algo reaction, any remaining risk
+- Add a brief scoring note:
+  - **MODE**: [X] → Expected outcome: [author engagement / profile clicks from their audience / reader replies]
+  - **Timing**: [active / fading / expired]
+  - **Algo signal**: [likely to surface independently / will stay anchored to original post]
+  - **Risk**: [any remaining risk or red flags]
 
 ---
 
