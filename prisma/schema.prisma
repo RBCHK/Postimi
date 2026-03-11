@@ -108,6 +108,51 @@ model StrategyConfig {
   updatedAt          DateTime @updatedAt
 }
 
+enum XPostType {
+  POST
+  REPLY
+}
+
+model XPost {
+  id            String    @id @default(cuid())
+  postId        String    @unique
+  date          DateTime
+  text          String
+  postLink      String?
+  postType      XPostType
+  impressions   Int       @default(0)
+  likes         Int       @default(0)
+  engagements   Int       @default(0)
+  bookmarks     Int       @default(0)
+  shares        Int       @default(0)
+  newFollowers  Int       @default(0)
+  replies       Int       @default(0)
+  reposts       Int       @default(0)
+  profileVisits Int       @default(0)
+  detailExpands Int       @default(0)
+  urlClicks     Int       @default(0)
+  createdAt     DateTime  @default(now())
+}
+
+model DailyAccountStats {
+  id            String   @id @default(cuid())
+  date          DateTime @unique
+  impressions   Int      @default(0)
+  likes         Int      @default(0)
+  engagements   Int      @default(0)
+  bookmarks     Int      @default(0)
+  shares        Int      @default(0)
+  newFollows    Int      @default(0)
+  unfollows     Int      @default(0)
+  replies       Int      @default(0)
+  reposts       Int      @default(0)
+  profileVisits Int      @default(0)
+  createPost    Int      @default(0)
+  videoViews    Int      @default(0)
+  mediaViews    Int      @default(0)
+  createdAt     DateTime @default(now())
+}
+
 model StrategyAnalysis {
   id             String   @id @default(cuid())
   csvSummary     Json     // { totalPosts, avgImpressions, topPosts[], dateRange }

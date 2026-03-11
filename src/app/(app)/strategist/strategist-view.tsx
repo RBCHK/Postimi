@@ -152,11 +152,11 @@ export function StrategistView() {
                 onClick={() => setProfileOpen((v) => !v)}
               >
                 <span>
-                  Профиль аккаунта
+                  Account Profile
                   {profile.username && (
                     <span className="ml-2 text-muted-foreground font-normal">
                       @{profile.username}
-                      {profile.followers && ` · ${profile.followers} подписчиков`}
+                      {profile.followers && ` · ${profile.followers} followers`}
                     </span>
                   )}
                 </span>
@@ -171,7 +171,7 @@ export function StrategistView() {
                 <div className="border-t px-3 py-3 space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-xs">Имя</Label>
+                      <Label className="text-xs">Name</Label>
                       <Input
                         className="h-8 text-sm"
                         placeholder="Ruslan Buchak"
@@ -180,7 +180,7 @@ export function StrategistView() {
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">Юзернейм</Label>
+                      <Label className="text-xs">Username</Label>
                       <Input
                         className="h-8 text-sm"
                         placeholder="razRBCHK"
@@ -189,7 +189,7 @@ export function StrategistView() {
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">Подписчики</Label>
+                      <Label className="text-xs">Followers</Label>
                       <Input
                         className="h-8 text-sm"
                         placeholder="1200"
@@ -198,7 +198,7 @@ export function StrategistView() {
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">Подписки</Label>
+                      <Label className="text-xs">Following</Label>
                       <Input
                         className="h-8 text-sm"
                         placeholder="350"
@@ -208,11 +208,11 @@ export function StrategistView() {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">БИО</Label>
+                    <Label className="text-xs">Bio</Label>
                     <Textarea
                       className="text-sm resize-none"
                       rows={2}
-                      placeholder="Кратко о себе..."
+                      placeholder="About you..."
                       value={profile.bio}
                       onChange={(e) => updateProfile({ bio: e.target.value })}
                     />

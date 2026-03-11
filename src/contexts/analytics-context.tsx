@@ -1,0 +1,169 @@
+"use client";
+
+import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import type { AnalyticsSummary, ContentCsvRow, OverviewCsvRow } from "@/lib/types";
+import { detectCsvType, parseContentCsvRows, parseOverviewCsvRows } from "@/lib/csv-parser";
+import { importContentData, importDailyStats, getAnalyticsSummary, getAnalyticsDateRange } from "@/app/actions/analytics";
+
+interface ImportResult {
+  contentRows?: number;
+  overviewRows?: number;
+  contentImported?: number;
+  contentUpdated?: number;
+  overviewImported?: number;
+  overviewUpdated?: number;
+}
+
+interface AnalyticsContextValue {
+  dateRange: { from: Date; to: Date } | null;
+  summary: AnalyticsSummary | null;
+  isLoading: boolean;
+
+  // Import
+  contentCsv: ContentCsvRow[] | null;
+  overviewCsv: OverviewCsvRow[] | null;
+  importError: string | null;
+  isImporting: boolean;
+  lastImportResult: ImportResult | null;
+  handleCsvFile: (raw: string) => void;
+  clearCsvFile: (type: "content" | "overview") => void;
+  runImport: () => Promise<boolean>;
+
+  // Data
+  setDateRange: (range: { from: Date; to: Date }) => void;
+  refreshData: () => Promise<void>;
+}
+
+const AnalyticsContext = createContext<AnalyticsContextValue | null>(null);
+
+export function useAnalytics() {
+  const ctx = useContext(AnalyticsContext);
+  if (!ctx) throw new Error("useAnalytics must be used within AnalyticsProvider");
+  return ctx;
+}
+
+interface Props {
+  children: ReactNode;
+  initialDateRange: { from: Date; to: Date } | null;
+  initialSummary: AnalyticsSummary | null;
+}
+
+export function AnalyticsProvider({ children, initialDateRange, initialSummary }: Props) {
+  const [dateRange, setDateRange] = useState(initialDateRange);
+  const [summary, setSummary] = useState(initialSummary);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const [contentCsv, setContentCsv] = useState<ContentCsvRow[] | null>(null);
+  const [overviewCsv, setOverviewCsv] = useState<OverviewCsvRow[] | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [lastImportResult, setLastImportResult] = useState<ImportResult | null>(null);
+
+  const handleCsvFile = useCallback((raw: string) => {
+    setImportError(null);
+    try {
+      const type = detectCsvType(raw);
+      if (type === "content") {
+        const rows = parseContentCsvRows(raw);
+        setContentCsv(rows);
+      } else {
+        const rows = parseOverviewCsvRows(raw);
+        setOverviewCsv(rows);
+      }
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : "Failed to parse CSV");
+    }
+  }, []);
+
+  const clearCsvFile = useCallback((type: "content" | "overview") => {
+    if (type === "content") setContentCsv(null);
+    else setOverviewCsv(null);
+  }, []);
+
+  const refreshData = useCallback(async () => {
+    if (!dateRange) return;
+    setIsLoading(true);
+    try {
+      const data = await getAnalyticsSummary(dateRange.from, dateRange.to);
+      setSummary(data);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [dateRange]);
+
+  const runImport = useCallback(async (): Promise<boolean> => {
+    if (!contentCsv && !overviewCsv) return false;
+    setIsImporting(true);
+    setImportError(null);
+
+    try {
+      const result: ImportResult = {};
+
+      if (contentCsv) {
+        result.contentRows = contentCsv.length;
+        const r = await importContentData(contentCsv);
+        result.contentImported = r.imported;
+        result.contentUpdated = r.updated;
+      }
+
+      if (overviewCsv) {
+        result.overviewRows = overviewCsv.length;
+        const r = await importDailyStats(overviewCsv);
+        result.overviewImported = r.imported;
+        result.overviewUpdated = r.updated;
+      }
+
+      setLastImportResult(result);
+      setContentCsv(null);
+      setOverviewCsv(null);
+
+      // Refresh data after import, fetching date range if needed
+      const range = dateRange ?? (await getAnalyticsDateRange());
+      if (range) {
+        setDateRange(range);
+        const data = await getAnalyticsSummary(range.from, range.to);
+        setSummary(data);
+      }
+
+      return true;
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : "Import failed");
+      return false;
+    } finally {
+      setIsImporting(false);
+    }
+  }, [contentCsv, overviewCsv, dateRange]);
+
+  const handleSetDateRange = useCallback(async (range: { from: Date; to: Date }) => {
+    setDateRange(range);
+    setIsLoading(true);
+    try {
+      const data = await getAnalyticsSummary(range.from, range.to);
+      setSummary(data);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  return (
+    <AnalyticsContext.Provider
+      value={{
+        dateRange,
+        summary,
+        isLoading,
+        contentCsv,
+        overviewCsv,
+        importError,
+        isImporting,
+        lastImportResult,
+        handleCsvFile,
+        clearCsvFile,
+        runImport,
+        setDateRange: handleSetDateRange,
+        refreshData,
+      }}
+    >
+      {children}
+    </AnalyticsContext.Provider>
+  );
+}

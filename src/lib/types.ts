@@ -94,6 +94,88 @@ export interface CsvSummary {
   topPosts: CsvTopPost[];
 }
 
+// --- Analytics types (new pipeline: CSV → DB → Charts → Agent) ---
+
+export type XPostType = "Post" | "Reply";
+
+export const X_POST_TYPE_MAP: Record<string, XPostType> = {
+  POST: "Post",
+  REPLY: "Reply",
+};
+
+export const X_POST_TYPE_TO_PRISMA: Record<XPostType, string> = {
+  Post: "POST",
+  Reply: "REPLY",
+};
+
+export interface ContentCsvRow {
+  postId: string;
+  date: string;
+  text: string;
+  postLink: string;
+  postType: XPostType;
+  impressions: number;
+  likes: number;
+  engagements: number;
+  bookmarks: number;
+  shares: number;
+  newFollowers: number;
+  replies: number;
+  reposts: number;
+  profileVisits: number;
+  detailExpands: number;
+  urlClicks: number;
+}
+
+export interface OverviewCsvRow {
+  date: string;
+  impressions: number;
+  likes: number;
+  engagements: number;
+  bookmarks: number;
+  shares: number;
+  newFollows: number;
+  unfollows: number;
+  replies: number;
+  reposts: number;
+  profileVisits: number;
+  createPost: number;
+  videoViews: number;
+  mediaViews: number;
+}
+
+export interface AnalyticsSummary {
+  dateRange: { from: string; to: string };
+  periodDays: number;
+  totalPosts: number;
+  totalReplies: number;
+  avgPostImpressions: number;
+  avgReplyImpressions: number;
+  maxPostImpressions: number;
+  totalNewFollows: number;
+  totalUnfollows: number;
+  netFollowerGrowth: number;
+  avgEngagementRate: number;
+  avgProfileVisitsPerDay: number;
+  topPosts: ContentCsvRow[];
+  topReplies: ContentCsvRow[];
+  dailyStats: {
+    date: string;
+    impressions: number;
+    newFollows: number;
+    unfollows: number;
+    profileVisits: number;
+    engagements: number;
+  }[];
+  postsByDay: {
+    date: string;
+    posts: number;
+    replies: number;
+  }[];
+}
+
+// --- Profile & Strategy types ---
+
 export interface XProfile {
   name: string;
   username: string;

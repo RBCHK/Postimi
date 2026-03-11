@@ -13,7 +13,7 @@ export default function AppLayout({
 
       <LeftSidebarContainer />
 
-      <main className="flex flex-1 flex-col overflow-hidden">
+      <main className="flex flex-1 flex-col overflow-y-auto">
         <AppHeader />
         {children}
       </main>
