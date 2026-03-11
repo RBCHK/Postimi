@@ -1,4 +1,4 @@
-import type { CsvSummary } from "../lib/types";
+import type { CsvSummary, XProfile } from "../lib/types";
 
 export function getStrategistPrompt(): string {
   return `You are an expert X (Twitter) growth strategist. Your job is to analyze account performance data and produce a concrete, actionable weekly content strategy.
@@ -85,12 +85,14 @@ Produce a structured weekly strategy using EXACTLY this markdown format:
 - Ground every recommendation in either their actual data or a specific source you found.
 - Do not recommend things that conflict with each other.
 - Keep the total output under 1000 words — this is a weekly action plan, not an essay.
-- All output in English.`;
+- All output in Russian.
+- At the very end, add a short section **"📋 Что поможет улучшить следующий анализ"** — list 2–3 specific data points that are missing and would make the strategy more accurate (e.g. total follower count, account niche, posting language). Skip this section if all key data is already provided.`;
 }
 
 export function buildStrategistUserMessage(
   summary: CsvSummary,
-  weekStart: string
+  weekStart: string,
+  profile?: XProfile
 ): string {
   const topPostsText = summary.topPosts
     .map(
@@ -99,8 +101,20 @@ export function buildStrategistUserMessage(
     )
     .join("\n");
 
-  return `Here is my X account analytics data for the week starting ${weekStart}.
+  const hasProfile = profile && (profile.name || profile.username || profile.followers);
+  const profileSection = hasProfile
+    ? `
+## My Account Profile
+${profile.name ? `- Name: ${profile.name}` : ""}
+${profile.username ? `- Username: @${profile.username}` : ""}
+${profile.bio ? `- Bio: ${profile.bio}` : ""}
+${profile.followers ? `- Followers: ${profile.followers}` : ""}
+${profile.following ? `- Following: ${profile.following}` : ""}
+`.trim()
+    : "";
 
+  return `Here is my X account analytics data for the week starting ${weekStart}.
+${profileSection ? "\n" + profileSection + "\n" : ""}
 ## My Stats
 - Period: ${summary.dateRange.from} to ${summary.dateRange.to}
 - Total posts: ${summary.totalPosts}

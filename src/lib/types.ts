@@ -94,6 +94,14 @@ export interface CsvSummary {
   topPosts: CsvTopPost[];
 }
 
+export interface XProfile {
+  name: string;
+  username: string;
+  bio: string;
+  followers: string;
+  following: string;
+}
+
 export interface StrategyAnalysisItem {
   id: string;
   weekStart: Date;

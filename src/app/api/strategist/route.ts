@@ -4,7 +4,7 @@ import { streamText, tool, stepCountIs } from "ai";
 import { z } from "zod";
 import { tavily } from "@tavily/core";
 import { getStrategistPrompt, buildStrategistUserMessage } from "@/prompts/strategist";
-import type { CsvSummary } from "@/lib/types";
+import type { CsvSummary, XProfile } from "@/lib/types";
 
 export const maxDuration = 120;
 
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { csvSummary, weekStart }: { csvSummary: CsvSummary; weekStart: string } = body;
+  const { csvSummary, weekStart, profile }: { csvSummary: CsvSummary; weekStart: string; profile?: XProfile } = body;
 
   if (!csvSummary || !weekStart) {
     return NextResponse.json({ error: "Missing csvSummary or weekStart" }, { status: 400 });
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     messages: [
       {
         role: "user",
-        content: buildStrategistUserMessage(csvSummary, weekStart),
+        content: buildStrategistUserMessage(csvSummary, weekStart, profile),
       },
     ],
     tools: {
