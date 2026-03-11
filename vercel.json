@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/daily-insight",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/researcher",
+      "schedule": "0 0 * * 1"
+    }
+  ]
+}

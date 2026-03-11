@@ -192,3 +192,34 @@ export interface StrategyAnalysisItem {
   csvSummary: CsvSummary;
   searchQueries: string[];
 }
+
+// --- Research & Daily Insight types ---
+
+export interface ResearchSource {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+export interface ResearchNoteItem {
+  id: string;
+  topic: string;
+  summary: string;
+  sources: ResearchSource[];
+  queries: string[];
+  createdAt: Date;
+}
+
+export interface DailyInsightContext {
+  strategyAnalysisId: string | null;
+  researchNoteIds: string[];
+  daysOfStats: number;
+}
+
+export interface DailyInsightItem {
+  id: string;
+  date: Date;
+  insights: string[];
+  context: DailyInsightContext;
+  createdAt: Date;
+}

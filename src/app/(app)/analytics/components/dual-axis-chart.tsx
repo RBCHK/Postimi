@@ -49,7 +49,9 @@ interface Props {
 function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (!active || !payload || !label) return null;
 
-  const date = new Date(label);
+  // Label is in format "YYYY-MM-DD", parse it directly to avoid timezone issues
+  const [year, month, day] = label.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
   const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
   const monthDay = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const dateStr = `${dayName}, ${monthDay}`;

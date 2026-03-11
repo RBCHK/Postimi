@@ -161,3 +161,20 @@ model StrategyAnalysis {
   weekStart      DateTime // the Monday of the week this analysis covers
   createdAt      DateTime @default(now())
 }
+
+model ResearchNote {
+  id        String   @id @default(cuid())
+  topic     String
+  summary   String
+  sources   Json     // [{ title, url, snippet }]
+  queries   String[]
+  createdAt DateTime @default(now())
+}
+
+model DailyInsight {
+  id        String   @id @default(cuid())
+  date      DateTime @unique // UTC midnight, one record per day
+  insights  Json            // string[] of 5 insights in Russian
+  context   Json            // { strategyAnalysisId, researchNoteIds[], daysOfStats }
+  createdAt DateTime @default(now())
+}
