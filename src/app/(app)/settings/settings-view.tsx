@@ -26,6 +26,7 @@ import {
 import { SUPPORTED_LANGUAGES, type SupportedLanguage, type LanguageSettings } from "@/lib/types";
 import { MODEL_OPTIONS, MODEL_STORAGE_KEY, getStoredModel } from "@/lib/model";
 import { getStoredLanguageSettings } from "@/components/settings-sheet";
+import { PageContainer } from "@/components/page-container";
 
 interface VoiceBankEntry {
   id: string;
@@ -650,7 +651,7 @@ function AuthTab() {
 
 export function SettingsView() {
   return (
-    <div className="flex flex-col h-full overflow-hidden p-6">
+    <PageContainer className="flex flex-col h-full overflow-hidden">
       <h1 className="text-xl font-semibold tracking-[-0.02em] mb-6">Settings</h1>
       <Tabs defaultValue="voice-bank" className="flex flex-col flex-1 min-h-0">
         <TabsList className="grid w-full grid-cols-5 shrink-0">
@@ -687,6 +688,6 @@ export function SettingsView() {
           </div>
         </TabsContent>
       </Tabs>
-    </div>
+    </PageContainer>
   );
 }

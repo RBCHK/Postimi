@@ -11,12 +11,13 @@ import { EngagementHeatmap } from "./components/engagement-heatmap";
 import { PeriodPicker } from "./components/period-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText } from "lucide-react";
+import { PageContainer } from "@/components/page-container";
 
 export function AnalyticsView() {
   const { summary, dateRange, isLoading } = useAnalytics();
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-4 p-4">
+    <PageContainer className="space-y-4">
       {/* Top bar */}
       <div className="flex items-center justify-between gap-3">
         <div>
@@ -73,6 +74,6 @@ export function AnalyticsView() {
           </Tabs>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

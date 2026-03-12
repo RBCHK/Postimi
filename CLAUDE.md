@@ -29,6 +29,8 @@ See JSDoc in `conversation-context.tsx` for the contract.
 
 **Adding a new ContentType**: use `/add-content-type` skill.
 
+**Page layout standard**: all new `*-view.tsx` files must use `<PageContainer>` from `@/components/page-container` as the root element. Add extra classes via `className` prop (e.g. `className="space-y-4"`).
+
 ## Testing
 
 - **Framework**: Vitest (`npm test` / `npm run test:watch`)

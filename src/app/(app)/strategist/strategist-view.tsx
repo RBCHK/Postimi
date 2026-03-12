@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { CsvUpload } from "@/components/csv-upload";
 import { useStrategist } from "@/contexts/strategist-context";
 import { deleteAnalysis } from "@/app/actions/strategist";
+import { PageContainer } from "@/components/page-container";
 
 export function StrategistView() {
   const {
@@ -72,7 +73,7 @@ export function StrategistView() {
     : (selectedAnalysis?.recommendation ?? "");
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <PageContainer className="flex h-full overflow-hidden">
       {/* Left panel */}
       <div className="w-64 shrink-0 border-r flex flex-col">
         {/* Header */}
@@ -432,6 +433,6 @@ export function StrategistView() {
           </div>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }

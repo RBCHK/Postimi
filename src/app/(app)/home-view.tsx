@@ -12,6 +12,7 @@ import {
   addMessage,
 } from "@/app/actions/conversations";
 import type { ContentType, GoalTrackingData, PlanProposalItem } from "@/lib/types";
+import { PageContainer } from "@/components/page-container";
 
 interface HomeViewProps {
   insights: string[] | null;
@@ -48,7 +49,7 @@ export function HomeView({
   }
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4">
+    <PageContainer className="flex flex-1 flex-col items-center justify-center gap-4">
       {pendingProposal && <PlanProposalBanner proposal={pendingProposal} />}
       <GoalTrackingCard goalData={goalData} hasGoalConfig={hasGoalConfig} />
       <DailyInsightCard insights={insights} date={insightDate} />
@@ -63,6 +64,6 @@ export function HomeView({
           autoFocus
         />
       </div>
-    </div>
+    </PageContainer>
   );
 }
