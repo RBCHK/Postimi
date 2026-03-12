@@ -1,6 +1,7 @@
 import { LeftSidebarContainer } from "@/components/left-sidebar-container";
-import { MobileSidebar } from "@/components/mobile-sidebar";
+import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { AppHeader } from "@/components/app-header";
+import { AppFooter } from "@/components/app-footer";
 
 export default function AppLayout({
   children,
@@ -8,15 +9,19 @@ export default function AppLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-screen overflow-hidden">
-      <MobileSidebar />
+    <div className="flex h-screen flex-col bg-background">
+      <AppHeader />
 
-      <LeftSidebarContainer />
+      <div className="flex flex-1 overflow-hidden md:gap-[15px] md:px-[15px]">
+        <LeftSidebarContainer />
 
-      <main className="flex flex-1 flex-col overflow-y-auto">
-        <AppHeader />
-        {children}
-      </main>
+        <main className="flex flex-1 flex-col overflow-y-auto md:rounded-[12px] md:bg-sidebar">
+          {children}
+        </main>
+      </div>
+
+      <MobileBottomNav />
+      <AppFooter />
     </div>
   );
 }

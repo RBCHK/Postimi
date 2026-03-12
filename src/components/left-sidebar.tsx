@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Settings, Trash2, MoreHorizontal, Pin, PinOff, Pencil, FileEdit, FilePlus, MessageSquare, FileText, AlignLeft, BookOpen, Calendar, CalendarX, ExternalLink, TrendingUp, BarChart3 } from "lucide-react";
+import { Settings, Trash2, MoreHorizontal, Pin, PinOff, Pencil, FileEdit, FilePlus, MessageSquare, FileText, AlignLeft, BookOpen, Calendar, CalendarX, ExternalLink, TrendingUp, BarChart3, PanelLeftClose, PanelLeft } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -277,13 +277,23 @@ function SlotItem({
   );
 }
 
-export function LeftSidebar({ collapsed, onExpand }: { collapsed?: boolean; onExpand?: () => void }) {
+export function LeftSidebar({
+  collapsed,
+  onExpand,
+  onToggle,
+  defaultTab,
+}: {
+  collapsed?: boolean;
+  onExpand?: () => void;
+  onToggle?: () => void;
+  defaultTab?: "drafts" | "scheduled";
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [slots, setSlots] = useState<ScheduledSlot[]>([]);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"drafts" | "scheduled">("scheduled");
+  const [activeTab, setActiveTab] = useState<"drafts" | "scheduled">(defaultTab ?? "scheduled");
   const fetchSeqRef = useRef(0);
 
   const activeDraftId = pathname.startsWith("/c/")
@@ -414,6 +424,9 @@ export function LeftSidebar({ collapsed, onExpand }: { collapsed?: boolean; onEx
   if (collapsed) {
     return (
       <div className="flex h-full flex-col items-center gap-1 py-3">
+        <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" onClick={onToggle ?? onExpand} title="Expand sidebar">
+          <PanelLeft className="h-4 w-4" />
+        </Button>
         <Button variant="ghost" size="icon" className="h-9 w-9" onClick={handleNewDraft} title="New Draft">
           <FilePlus className="h-4 w-4" />
         </Button>
@@ -448,10 +461,23 @@ export function LeftSidebar({ collapsed, onExpand }: { collapsed?: boolean; onEx
           if (v === "scheduled") refreshSlots();
         }}
       >
-        <TabsList className="mx-3 mt-[15px] grid w-auto grid-cols-2">
-          <TabsTrigger value="drafts">Drafts</TabsTrigger>
-          <TabsTrigger value="scheduled">Scheduled</TabsTrigger>
-        </TabsList>
+        <div className="flex items-center gap-2 mx-3 mt-[15px]">
+          <TabsList className="grid flex-1 grid-cols-2">
+            <TabsTrigger value="drafts">Drafts</TabsTrigger>
+            <TabsTrigger value="scheduled">Scheduled</TabsTrigger>
+          </TabsList>
+          {onToggle && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 text-muted-foreground"
+              onClick={onToggle}
+              title="Collapse sidebar"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
 
         <TabsContent value="drafts" className="flex flex-1 flex-col overflow-hidden">
           <div className="flex h-[28px] shrink-0 items-center justify-start px-4 mt-[15px]">
