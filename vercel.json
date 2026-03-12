@@ -1,10 +1,10 @@
 {
   "crons": [
     { "path": "/api/cron/followers-snapshot", "schedule": "0 6 * * *" },
-    { "path": "/api/cron/trend-snapshot",     "schedule": "0 7 * * *" },
-    { "path": "/api/cron/x-import",           "schedule": "0 8 * * 0" },
-    { "path": "/api/cron/daily-insight",      "schedule": "0 9 * * *" },
-    { "path": "/api/cron/researcher",         "schedule": "0 0 * * 1" },
-    { "path": "/api/cron/strategist",         "schedule": "0 15 * * 1" }
+    { "path": "/api/cron/trend-snapshot",     "schedule": "15 16 * * *" },
+    { "path": "/api/cron/daily-insight",      "schedule": "30 16 * * *" },
+    { "path": "/api/cron/x-import",           "schedule": "0 4 * * 1" },
+    { "path": "/api/cron/researcher",         "schedule": "30 4 * * 1" },
+    { "path": "/api/cron/strategist",         "schedule": "0 14 * * 1" }
   ]
 }
