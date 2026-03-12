@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { SettingsSheet } from "@/components/settings-sheet";
 import { getConversations, deleteConversation, updateConversation, createConversation } from "@/app/actions/conversations";
 import { getScheduledSlots, ensureSlotsForWeek, toggleSlotPosted, deleteSlot, unscheduleSlot } from "@/app/actions/schedule";
 import type { Draft, ScheduledSlot, SlotStatus, SlotType } from "@/lib/types";
@@ -431,11 +430,9 @@ export function LeftSidebar({ collapsed, onExpand }: { collapsed?: boolean; onEx
           <BarChart3 className="h-4 w-4" />
         </Button>
         <div className="mt-auto">
-          <SettingsSheet>
-            <Button variant="ghost" size="icon" className="h-9 w-9" title="Settings">
-              <Settings className="h-4 w-4" />
-            </Button>
-          </SettingsSheet>
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => router.push("/settings")} title="Settings">
+            <Settings className="h-4 w-4" />
+          </Button>
         </div>
       </div>
     );
@@ -566,15 +563,14 @@ export function LeftSidebar({ collapsed, onExpand }: { collapsed?: boolean; onEx
           <BarChart3 className="h-4 w-4" />
           <span className="text-sm">Analytics</span>
         </Button>
-        <SettingsSheet>
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-2 text-muted-foreground"
-          >
-            <Settings className="h-4 w-4" />
-            <span className="text-sm">Settings</span>
-          </Button>
-        </SettingsSheet>
+        <Button
+          variant="ghost"
+          className="w-full justify-start gap-2 text-muted-foreground"
+          onClick={() => router.push("/settings")}
+        >
+          <Settings className="h-4 w-4" />
+          <span className="text-sm">Settings</span>
+        </Button>
       </div>
     </div>
   );
