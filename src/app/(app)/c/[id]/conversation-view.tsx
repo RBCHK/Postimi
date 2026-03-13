@@ -27,6 +27,7 @@ export function ConversationView() {
         onSend={sendMessage}
         disabled={isLoading}
         isFetchingTweet={isFetchingTweet}
+        className="px-8"
       />
       <TextSelectionPopup />
     </div>

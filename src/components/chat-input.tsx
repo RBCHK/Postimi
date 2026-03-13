@@ -5,6 +5,7 @@ import { ContentTypeDropdown } from "@/components/content-type-dropdown";
 import { ModelDropdown } from "@/components/model-dropdown";
 import { SendMessageButton } from "@/components/send-message-button";
 import { type ContentType } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const MIN_HEIGHT_PX = 48; /* matches bottom row (dropdown + send button) */
 const MAX_HEIGHT_PX = 150;
@@ -18,6 +19,7 @@ interface ChatInputProps {
   disabled?: boolean;
   isFetchingTweet?: boolean;
   autoFocus?: boolean;
+  className?: string;
 }
 
 export function ChatInput({
@@ -29,6 +31,7 @@ export function ChatInput({
   disabled,
   isFetchingTweet,
   autoFocus,
+  className,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -64,7 +67,7 @@ export function ChatInput({
   }
 
   return (
-    <div className="px-4 pb-4">
+    <div className={cn("px-4 pb-4", className)}>
       <div className="mx-auto w-full max-w-chat">
         <div className="rounded-xl border border-border bg-card transition-colors duration-150 focus-within:border-white/8">
           <textarea
