@@ -38,7 +38,7 @@ export function GoalTrackingCard({ goalData, hasGoalConfig }: GoalTrackingCardPr
   if (!hasGoalConfig) {
     return (
       <>
-        <Card className="mx-auto w-full max-w-chat">
+        <Card className="mx-auto w-full max-w-chat bg-transparent border-0 shadow-none">
           <CardContent className="flex items-center gap-3 p-4">
             <Target className="size-4 shrink-0 text-muted-foreground" />
             <div className="flex flex-1 items-center justify-between gap-3">
@@ -66,7 +66,7 @@ export function GoalTrackingCard({ goalData, hasGoalConfig }: GoalTrackingCardPr
   // Goal configured but no snapshot data yet
   if (!goalData) {
     return (
-      <Card className="mx-auto w-full max-w-chat">
+      <Card className="mx-auto w-full max-w-chat bg-transparent border-0 shadow-none">
         <CardContent className="flex items-center gap-3 p-4">
           <Target className="size-4 shrink-0 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">Собираем данные о росте... (нужно минимум 1 день)</p>
@@ -106,7 +106,7 @@ export function GoalTrackingCard({ goalData, hasGoalConfig }: GoalTrackingCardPr
 
   return (
     <>
-      <Card className="mx-auto w-full max-w-chat">
+      <Card className="mx-auto w-full max-w-chat bg-transparent border-0 shadow-none">
         <CardContent className="p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">

@@ -99,7 +99,7 @@ export function NotesSidebar({ onClose }: NotesSidebarProps) {
           onClick={closeModal}
         >
           <div
-            className="flex h-[500px] w-[750px] flex-col gap-4 rounded-2xl bg-[#1a1a1a] p-6 shadow-xl"
+            className="flex h-[500px] w-[750px] flex-col gap-4 rounded-2xl bg-sidebar p-6 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="shrink-0 text-sm font-medium">{editingNote ? "Edit Note" : "New Note"}</h3>

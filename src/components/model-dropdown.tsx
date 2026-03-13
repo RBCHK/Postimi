@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { ChevronDown, Cpu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,11 +12,7 @@ import {
 import { MODEL_OPTIONS, getStoredModel, setStoredModel } from "@/lib/model";
 
 export function ModelDropdown({ disabled }: { disabled?: boolean }) {
-  const [model, setModel] = useState<string>(MODEL_OPTIONS[0].value);
-
-  useEffect(() => {
-    setModel(getStoredModel());
-  }, []);
+  const [model, setModel] = useState(getStoredModel);
 
   function handleSelect(value: string) {
     setModel(value);
@@ -33,6 +29,7 @@ export function ModelDropdown({ disabled }: { disabled?: boolean }) {
           size="sm"
           className="h-8 shrink-0 gap-1.5 rounded-md px-2 text-xs text-muted-foreground hover:bg-white/6 hover:text-foreground"
           disabled={disabled}
+          suppressHydrationWarning
         >
           <Cpu className="h-3.5 w-3.5" />
           {current.shortLabel}

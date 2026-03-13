@@ -37,6 +37,11 @@ const markdownComponents: Components = {
     </blockquote>
   ),
   p: ({ children }) => <p className="mt-2 mb-2 last:mb-0">{children}</p>,
+  pre: ({ children }) => (
+    <pre className="bg-muted whitespace-pre-wrap break-all rounded-md px-4 py-3 text-sm font-mono my-3">
+      {children}
+    </pre>
+  ),
   code: ({ children }) => (
     <code className="bg-muted px-1 py-0.5 rounded text-sm font-mono">
       {children}

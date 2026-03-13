@@ -11,11 +11,18 @@ import {
 import { CONTENT_TYPES, type ContentType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+const contentTypeColor: Record<ContentType, string> = {
+  Reply: "#59C3FA",
+  Post: "#9983F7",
+  Thread: "#86FCE2",
+  Article: "#F8D849",
+};
+
 const contentTypeIcon: Record<ContentType, React.ReactNode> = {
-  Reply: <MessageSquare className="h-3.5 w-3.5" />,
-  Post: <FileText className="h-3.5 w-3.5" />,
-  Thread: <AlignLeft className="h-3.5 w-3.5" />,
-  Article: <BookOpen className="h-3.5 w-3.5" />,
+  Reply: <MessageSquare className="h-3.5 w-3.5" style={{ color: contentTypeColor.Reply }} />,
+  Post: <FileText className="h-3.5 w-3.5" style={{ color: contentTypeColor.Post }} />,
+  Thread: <AlignLeft className="h-3.5 w-3.5" style={{ color: contentTypeColor.Thread }} />,
+  Article: <BookOpen className="h-3.5 w-3.5" style={{ color: contentTypeColor.Article }} />,
 };
 
 export interface ContentTypeDropdownProps {
@@ -46,7 +53,7 @@ export function ContentTypeDropdown({
         disabled={disabled}
       >
         {contentTypeIcon[value]}
-        {value}
+        <span style={{ color: contentTypeColor[value] }}>{value}</span>
         <ChevronDown className="h-3 w-3 opacity-50" />
       </Button>
     ) : (
@@ -54,13 +61,13 @@ export function ContentTypeDropdown({
         variant="ghost"
         size="sm"
         className={cn(
-          "h-8 shrink-0 gap-1.5 rounded-md px-2 text-xs text-muted-foreground [@media(hover:hover)]:hover:bg-white/6 [@media(hover:hover)]:hover:text-foreground",
+          "h-8 shrink-0 gap-1.5 rounded-md px-2 text-xs [@media(hover:hover)]:hover:bg-white/6",
           className
         )}
         disabled={disabled}
       >
         {contentTypeIcon[value]}
-        {value}
+        <span style={{ color: contentTypeColor[value] }}>{value}</span>
         <ChevronDown className="h-3 w-3 opacity-50" />
       </Button>
     );
@@ -76,7 +83,7 @@ export function ContentTypeDropdown({
             className="gap-2"
           >
             {contentTypeIcon[type]}
-            {type}
+            <span style={{ color: contentTypeColor[type] }}>{type}</span>
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
