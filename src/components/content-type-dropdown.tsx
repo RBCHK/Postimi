@@ -54,7 +54,7 @@ export function ContentTypeDropdown({
         variant="ghost"
         size="sm"
         className={cn(
-          "h-8 shrink-0 gap-1.5 rounded-md px-2 text-xs text-muted-foreground hover:bg-white/6 hover:text-foreground",
+          "h-8 shrink-0 gap-1.5 rounded-md px-2 text-xs text-muted-foreground [@media(hover:hover)]:hover:bg-white/6 [@media(hover:hover)]:hover:text-foreground",
           className
         )}
         disabled={disabled}

@@ -86,7 +86,7 @@
 
 .dark {
   /* Screenshot palette: dark grey/black base, lighter sidebar, subtle borders */
-  --background: #131314;
+  --background: #000000;
   --foreground: #ffffff;
   --card: #2c2c2f;
   --card-foreground: #ffffff;
@@ -109,9 +109,9 @@
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: #1a1a1c;
+  --sidebar: #101011;
   --sidebar-foreground: #ffffff;
-  --sidebar-primary: #5e6ad2;
+  --sidebar-primary: #202443;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #2c2c2f;
   --sidebar-accent-foreground: #ffffff;

@@ -112,7 +112,7 @@ function DraftItem({
     <div
       className={cn(
         "group flex min-w-0 w-full max-w-full items-center rounded-lg pl-3 pr-1 py-1 text-left transition-colors duration-150",
-        isActive ? "bg-accent" : "hover:bg-muted/50",
+        isActive ? "bg-accent" : "[@media(hover:hover)]:hover:bg-muted/50",
       )}
     >
       <div
@@ -157,7 +157,7 @@ function DraftItem({
             size="icon"
             className={cn(
               "shrink-0 h-6 w-6 transition-opacity",
-              isActive || menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+              isActive || menuOpen ? "opacity-100" : "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100",
             )}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
@@ -237,7 +237,7 @@ function SlotItem({
       </div>
       <div className={cn(
         "flex items-center gap-0.5 shrink-0 transition-opacity",
-        menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+        menuOpen ? "opacity-100" : "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100",
       )}>
         <DropdownMenu onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>

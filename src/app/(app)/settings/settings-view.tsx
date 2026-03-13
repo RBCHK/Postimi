@@ -136,7 +136,7 @@ function VoiceBankTab() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute right-2 top-2 h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
+                className="absolute right-2 top-2 h-6 w-6 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                 onClick={() => handleDelete(entry.id)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -301,8 +301,9 @@ function ScheduleSection({ label, slots, onAdd, onRemove, onTimeChange, onDayTog
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm font-medium">{label}</p>
-      <div className="rounded-xl border border-border overflow-hidden">
-        <div className="grid grid-cols-[110px_repeat(8,1fr)] bg-muted/20 px-1">
+      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="min-w-[520px]">
+      <div className="grid grid-cols-[110px_repeat(8,1fr)] bg-muted/20 px-1">
           <div className="px-3 py-3 text-xs text-muted-foreground">Time</div>
           <div className="py-3 text-center text-xs font-semibold text-blue-400">All</div>
           {DAYS.map((d) => (
@@ -397,6 +398,7 @@ function ScheduleSection({ label, slots, onAdd, onRemove, onTimeChange, onDayTog
             <Plus className="h-3.5 w-3.5" />
           </button>
         </div>
+      </div>
       </div>
     </div>
   );

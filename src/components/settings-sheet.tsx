@@ -142,7 +142,7 @@ function VoiceBankTab() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="absolute right-2 top-2 h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
+                  className="absolute right-2 top-2 h-6 w-6 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                   onClick={() => handleDelete(entry.id)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -728,7 +728,7 @@ export function SettingsSheet({ children }: { children: React.ReactNode }) {
   return (
     <Sheet>
       <SheetTrigger asChild>{children}</SheetTrigger>
-      <SheetContent side="left" className="w-[420px] sm:max-w-[420px] overflow-hidden p-2">
+      <SheetContent side="left" className="w-full max-w-[420px] overflow-hidden p-2">
         <SheetHeader>
           <SheetTitle className="tracking-[-0.02em] font-medium">Settings</SheetTitle>
         </SheetHeader>
