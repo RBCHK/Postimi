@@ -64,7 +64,7 @@ export function ChatInput({
   }
 
   return (
-    <div className="px-4 pb-12">
+    <div className="px-4 pb-4">
       <div className="mx-auto w-full max-w-chat">
         <div className="rounded-xl border border-border bg-card transition-colors duration-150 focus-within:border-white/8">
           <textarea
