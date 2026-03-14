@@ -6,7 +6,8 @@ import { getVoiceBankEntries } from "@/app/actions/voice-bank";
 import { getRecentUsedModes } from "@/app/actions/conversations";
 import { getReplyPrompt } from "@/prompts/analyst-reply";
 import { getPostPrompt } from "@/prompts/analyst-post";
-import { fetchTweetFromText } from "@/lib/parse-tweet";
+import { fetchTweetFromText, extractTweetUrl } from "@/lib/parse-tweet";
+import { fetchTweetById } from "@/lib/x-api";
 import { getLatestTrends } from "@/app/actions/trends";
 import { prisma } from "@/lib/prisma";
 
@@ -83,9 +84,18 @@ export async function POST(req: NextRequest) {
         .filter((p) => p.type === "text")
         .map((p) => (p as { type: "text"; text: string }).text)
         .join("");
-      const tweet = await fetchTweetFromText(firstText);
-      if (tweet) {
-        tweetContext = `\n\n## Original Post (fetched from URL)\n${tweet.text}`;
+      const tweetUrl = extractTweetUrl(firstText);
+      let tweetText: string | null = null;
+      if (tweetUrl) {
+        const tweetIdMatch = tweetUrl.match(/\/status\/(\d+)/);
+        if (tweetIdMatch) tweetText = await fetchTweetById(tweetIdMatch[1]);
+      }
+      if (!tweetText) {
+        const tweet = await fetchTweetFromText(firstText);
+        tweetText = tweet?.text ?? null;
+      }
+      if (tweetText) {
+        tweetContext = `\n\n## Original Post (fetched from URL)\n${tweetText}`;
       }
     }
   }

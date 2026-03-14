@@ -19,10 +19,9 @@ import {
   updateNote as updateNoteAction,
   clearNotes as clearNotesAction,
 } from "@/app/actions/notes";
-import { addMessage } from "@/app/actions/conversations";
+import { addMessage, fetchTweetFullTextAction } from "@/app/actions/conversations";
 import { getStoredModel } from "@/lib/model";
 import { getStoredLanguageSettings } from "@/components/settings-sheet";
-import { fetchTweetFromText } from "@/lib/parse-tweet";
 
 interface ConversationContextValue {
   conversationId: string;
@@ -185,8 +184,8 @@ export function ConversationProvider({
       hasSentInitial.current = true;
       const text = msgs[0].content;
       (async () => {
-        const tweet = await fetchTweetFromText(text);
-        tweetContextRef.current = tweet ? tweet.text : "";
+        const tweetText = await fetchTweetFullTextAction(text);
+        tweetContextRef.current = tweetText ?? "";
         aiSendMessage({ text });
         tweetContextRef.current = "";
       })();
@@ -197,10 +196,9 @@ export function ConversationProvider({
     const text = input.trim();
     if (!text || isLoading) return;
     setInput("");
-    // Pre-fetch tweet from client (avoids Twitter blocking Vercel/AWS IPs)
     setIsFetchingTweet(true);
-    const tweet = await fetchTweetFromText(text);
-    tweetContextRef.current = tweet ? tweet.text : "";
+    const tweetText = await fetchTweetFullTextAction(text);
+    tweetContextRef.current = tweetText ?? "";
     setIsFetchingTweet(false);
     // Save user message to DB
     await addMessage(conversationId, "user", text);

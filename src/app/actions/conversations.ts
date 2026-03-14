@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import type { ContentType, DraftStatus } from "@/lib/types";
-import { fetchTweetFromText } from "@/lib/parse-tweet";
+import { fetchTweetFromText, extractTweetUrl } from "@/lib/parse-tweet";
+import { fetchTweetById } from "@/lib/x-api";
 import {
   ContentType as PrismaContentType,
   ConversationStatus as PrismaConversationStatus,
@@ -167,6 +168,26 @@ export async function markAsPosted(conversationId: string) {
  * Otherwise returns the input as-is.
  * Called on the home page before createConversation().
  */
+/**
+ * Fetches the full text of a tweet from a URL.
+ * Tries X API v2 first (full text), falls back to oEmbed (may truncate long posts).
+ * Called from client components as a server action.
+ */
+export async function fetchTweetFullTextAction(text: string): Promise<string | null> {
+  const url = extractTweetUrl(text);
+  if (!url) return null;
+
+  const tweetIdMatch = url.match(/\/status\/(\d+)/);
+  if (tweetIdMatch) {
+    const fullText = await fetchTweetById(tweetIdMatch[1]);
+    if (fullText) return fullText;
+  }
+
+  // Fallback: oEmbed
+  const result = await fetchTweetFromText(text);
+  return result ? result.text : null;
+}
+
 export async function resolveTitleFromInput(text: string): Promise<string> {
   const tweet = await fetchTweetFromText(text);
   if (tweet) {

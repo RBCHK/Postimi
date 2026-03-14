@@ -293,6 +293,19 @@ export async function fetchUserTweetsPaginated(
   return allTweets;
 }
 
+/** Fetch a single tweet's full text by ID (OAuth 1.0a) */
+export async function fetchTweetById(tweetId: string): Promise<string | null> {
+  try {
+    const data = await xFetch<{ data?: { text: string } }>(
+      `/tweets/${tweetId}`,
+      { 'tweet.fields': 'text' }
+    );
+    return data.data?.text ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Fetch personalized trends (requires OAuth 2.0 User Token) */
 export async function fetchPersonalizedTrends(): Promise<
   {

@@ -1,6 +1,6 @@
 const TWEET_URL_REGEX = /https?:\/\/(twitter\.com|x\.com)\/\S+/i;
 
-function extractTweetUrl(text: string): string | null {
+export function extractTweetUrl(text: string): string | null {
   const match = text.match(TWEET_URL_REGEX);
   return match ? match[0] : null;
 }
