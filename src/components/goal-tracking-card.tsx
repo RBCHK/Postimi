@@ -42,9 +42,9 @@ export function GoalTrackingCard({ goalData, hasGoalConfig }: GoalTrackingCardPr
           <CardContent className="flex items-center gap-3 p-4">
             <Target className="size-4 shrink-0 text-muted-foreground" />
             <div className="flex flex-1 items-center justify-between gap-3">
-              <p className="text-sm text-muted-foreground">Цель по фоловерам не задана</p>
+              <p className="text-sm text-muted-foreground">No follower goal set</p>
               <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
-                Задать цель
+                Set goal
               </Button>
             </div>
           </CardContent>
@@ -69,7 +69,7 @@ export function GoalTrackingCard({ goalData, hasGoalConfig }: GoalTrackingCardPr
       <Card className="mx-auto w-full max-w-chat bg-transparent border-0 shadow-none">
         <CardContent className="flex items-center gap-3 p-4">
           <Target className="size-4 shrink-0 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Собираем данные о росте... (нужно минимум 1 день)</p>
+          <p className="text-sm text-muted-foreground">Collecting growth data... (at least 1 day needed)</p>
         </CardContent>
       </Card>
     );
@@ -79,13 +79,13 @@ export function GoalTrackingCard({ goalData, hasGoalConfig }: GoalTrackingCardPr
     Math.round((goalData.currentFollowers / goalData.targetFollowers) * 100),
     100
   );
-  const targetDateStr = new Date(goalData.targetDate).toLocaleDateString("ru-RU", {
+  const targetDateStr = new Date(goalData.targetDate).toLocaleDateString("en-US", {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
   const projectedDateStr = goalData.projectedDate
-    ? new Date(goalData.projectedDate).toLocaleDateString("ru-RU", {
+    ? new Date(goalData.projectedDate).toLocaleDateString("en-US", {
         day: "numeric",
         month: "short",
         year: "numeric",
@@ -112,7 +112,7 @@ export function GoalTrackingCard({ goalData, hasGoalConfig }: GoalTrackingCardPr
             <div className="flex items-center gap-2">
               <Target className="size-4 shrink-0 text-muted-foreground" />
               <span className="text-sm font-medium">
-                {goalData.currentFollowers.toLocaleString()} / {goalData.targetFollowers.toLocaleString()} фоловеров
+                {goalData.currentFollowers.toLocaleString()} / {goalData.targetFollowers.toLocaleString()} followers
               </span>
             </div>
             <span className="text-xs text-muted-foreground">{pct}%</span>
@@ -127,26 +127,26 @@ export function GoalTrackingCard({ goalData, hasGoalConfig }: GoalTrackingCardPr
           </div>
 
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>+{goalData.dailyAvgGrowth}/день (30д)</span>
+            <span>+{goalData.dailyAvgGrowth}/day (30d)</span>
             <div className={`flex items-center gap-1 ${statusColor}`}>
               <DeviationIcon className="size-3" />
               <span>
                 {goalData.onTrack
                   ? goalData.deviationDays > 0
-                    ? `${goalData.deviationDays}д опережение`
-                    : "по плану"
-                  : `${Math.abs(goalData.deviationDays)}д отставание`}
+                    ? `${goalData.deviationDays}d ahead`
+                    : "on track"
+                  : `${Math.abs(goalData.deviationDays)}d behind`}
               </span>
             </div>
           </div>
 
           <div className="flex items-center justify-between text-xs text-muted-foreground border-t pt-2">
-            <span>Цель: {targetDateStr}</span>
+            <span>Goal: {targetDateStr}</span>
             {projectedDateStr && (
-              <span>Прогноз: {projectedDateStr}</span>
+              <span>Projected: {projectedDateStr}</span>
             )}
             {!projectedDateStr && (
-              <span>Нет роста — прогноз недоступен</span>
+              <span>No growth — projection unavailable</span>
             )}
           </div>
         </CardContent>
@@ -189,11 +189,11 @@ function GoalDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Цель по фоловерам</DialogTitle>
+          <DialogTitle>Follower Goal</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <Label htmlFor="target-followers">Целевое количество фоловеров</Label>
+            <Label htmlFor="target-followers">Target followers</Label>
             <Input
               id="target-followers"
               type="number"
@@ -203,7 +203,7 @@ function GoalDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="target-date">Дата достижения цели</Label>
+            <Label htmlFor="target-date">Target date</Label>
             <Input
               id="target-date"
               type="date"
@@ -214,10 +214,10 @@ function GoalDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Отмена
+            Cancel
           </Button>
           <Button onClick={onSave} disabled={saving}>
-            {saving ? "Сохраняю..." : "Сохранить"}
+            {saving ? "Saving..." : "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>

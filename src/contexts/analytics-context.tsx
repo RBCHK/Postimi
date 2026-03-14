@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
-import type { AnalyticsSummary, ContentCsvRow, OverviewCsvRow } from "@/lib/types";
+import type { AnalyticsSummary, ContentCsvRow, GoalChartData, OverviewCsvRow } from "@/lib/types";
 import { detectCsvType, parseContentCsvRows, parseOverviewCsvRows } from "@/lib/csv-parser";
 import { importContentData, importDailyStats, getAnalyticsSummary, getAnalyticsDateRange } from "@/app/actions/analytics";
 
@@ -29,6 +29,7 @@ interface AnalyticsContextValue {
   fullDateRange: { from: Date; to: Date } | null;
   activePreset: PeriodPreset;
   summary: AnalyticsSummary | null;
+  goalChartData: GoalChartData | null;
   isLoading: boolean;
 
   // Import
@@ -59,13 +60,15 @@ interface Props {
   children: ReactNode;
   initialDateRange: { from: Date; to: Date } | null;
   initialSummary: AnalyticsSummary | null;
+  initialGoalChartData: GoalChartData | null;
 }
 
-export function AnalyticsProvider({ children, initialDateRange, initialSummary }: Props) {
+export function AnalyticsProvider({ children, initialDateRange, initialSummary, initialGoalChartData }: Props) {
   const [fullDateRange, setFullDateRange] = useState(initialDateRange);
   const [dateRange, setDateRange] = useState(initialDateRange);
   const [activePreset, setActivePreset] = useState<PeriodPreset>("ALL");
   const [summary, setSummary] = useState(initialSummary);
+  const [goalChartData] = useState(initialGoalChartData);
   const [isLoading, setIsLoading] = useState(false);
 
   const [contentCsv, setContentCsv] = useState<ContentCsvRow[] | null>(null);
@@ -191,6 +194,7 @@ export function AnalyticsProvider({ children, initialDateRange, initialSummary }
         fullDateRange,
         activePreset,
         summary,
+        goalChartData,
         isLoading,
         contentCsv,
         overviewCsv,

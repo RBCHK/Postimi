@@ -246,6 +246,14 @@ export interface GoalTrackingData {
   onTrack: boolean;
 }
 
+export interface GoalChartData {
+  snapshots: { date: string; followers: number }[];
+  targetFollowers: number;
+  targetDate: string;
+  firstFollowers: number;
+  firstDate: string;
+}
+
 // --- Trends ---
 
 export interface TrendItem {

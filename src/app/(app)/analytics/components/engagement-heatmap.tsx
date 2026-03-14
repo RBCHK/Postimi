@@ -83,14 +83,14 @@ export function EngagementHeatmap() {
               </div>
 
               {/* Grid rows */}
-              <div className="mt-0.5 space-y-0.5">
+              <div className="mt-0.5 border border-border/40 rounded-sm overflow-hidden">
                 {DAYS.map((day, dayIdx) => (
-                  <div key={day} className="flex items-center">
-                    <span className="w-8 shrink-0 text-right text-[10px] text-muted-foreground pr-1.5">
+                  <div key={day} className="flex items-center border-b border-border/30 last:border-b-0">
+                    <span className="w-8 shrink-0 text-right text-[10px] text-muted-foreground pr-1.5 border-r border-border/30 py-0.5">
                       {day}
                     </span>
                     <div
-                      className="grid flex-1 gap-px"
+                      className="grid flex-1"
                       style={{ gridTemplateColumns: "repeat(24, 1fr)" }}
                     >
                       {HOURS.map((hour) => {
@@ -99,7 +99,7 @@ export function EngagementHeatmap() {
                         return (
                           <div
                             key={hour}
-                            className="h-4 rounded-[2px] bg-muted"
+                            className="h-4 border-r border-border/20 last:border-r-0 bg-muted/40"
                             style={bg ? { backgroundColor: bg } : {}}
                             onMouseMove={(e) =>
                               cell &&

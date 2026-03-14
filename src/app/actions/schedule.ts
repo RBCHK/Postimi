@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import type { GoalTrackingData, SlotStatus, SlotType } from "@/lib/types";
+import type { GoalChartData, GoalTrackingData, SlotStatus, SlotType } from "@/lib/types";
 import { SlotStatus as PrismaSlotStatus, SlotType as PrismaSlotType } from "@/generated/prisma";
 
 const slotStatusToPrisma: Record<SlotStatus, PrismaSlotStatus> = {
@@ -540,5 +540,31 @@ export async function getGoalTrackingData(): Promise<GoalTrackingData | null> {
     projectedDate,
     deviationDays: deviationDays === -Infinity ? -999 : deviationDays,
     onTrack,
+  };
+}
+
+/** All FollowersSnapshot points + goal config for the goal progress chart */
+export async function getGoalChartData(): Promise<GoalChartData | null> {
+  const config = await prisma.strategyConfig.findFirst({
+    orderBy: { createdAt: "desc" },
+    select: { targetFollowers: true, targetDate: true },
+  });
+  if (!config?.targetFollowers || !config?.targetDate) return null;
+
+  const snapshots = await prisma.followersSnapshot.findMany({
+    orderBy: { date: "asc" },
+    select: { date: true, followersCount: true },
+  });
+  if (snapshots.length === 0) return null;
+
+  return {
+    snapshots: snapshots.map((s) => ({
+      date: s.date.toISOString().split("T")[0],
+      followers: s.followersCount,
+    })),
+    targetFollowers: config.targetFollowers,
+    targetDate: config.targetDate.toISOString().split("T")[0],
+    firstFollowers: snapshots[0].followersCount,
+    firstDate: snapshots[0].date.toISOString().split("T")[0],
   };
 }
