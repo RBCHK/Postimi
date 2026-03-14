@@ -45,44 +45,35 @@ export async function GET(req: NextRequest) {
     getLatestFollowersSnapshot(),
   ]);
 
-  // 4. Generate insights with Haiku
-  let result: Awaited<ReturnType<typeof generateText>>;
-  try {
-    result = await generateText({
-      model: anthropic("claude-haiku-4-5-20251001"),
-      system: getDailyInsightPrompt(),
-      messages: [
-        {
-          role: "user",
-          content: buildDailyInsightUserMessage(
-            latestStrategy?.recommendation ?? null,
-            researchNotes.map((n) => ({
-              topic: n.topic,
-              summary: n.summary,
-            })),
-            recentStats.map((d) => ({
-              date: d.date.toISOString().split("T")[0],
-              impressions: d.impressions,
-              newFollows: d.newFollows,
-              unfollows: d.unfollows,
-              profileVisits: d.profileVisits,
-              engagements: d.engagements,
-            })),
-            trends,
-            latestFollowers
-          ),
-        },
-      ],
-    });
-  } catch (e) {
-    console.error("[daily-insight] generateText failed:", e);
-    return NextResponse.json(
-      { error: "AI generation failed", details: e instanceof Error ? e.message : String(e) },
-      { status: 500 }
-    );
-  }
+  // 5. Generate insights with Haiku
+  const result = await generateText({
+    model: anthropic("claude-haiku-4-5-20251001"),
+    system: getDailyInsightPrompt(),
+    messages: [
+      {
+        role: "user",
+        content: buildDailyInsightUserMessage(
+          latestStrategy?.recommendation ?? null,
+          researchNotes.map((n) => ({
+            topic: n.topic,
+            summary: n.summary,
+          })),
+          recentStats.map((d) => ({
+            date: d.date.toISOString().split("T")[0],
+            impressions: d.impressions,
+            newFollows: d.newFollows,
+            unfollows: d.unfollows,
+            profileVisits: d.profileVisits,
+            engagements: d.engagements,
+          })),
+          trends,
+          latestFollowers
+        ),
+      },
+    ],
+  });
 
-  // 5. Parse JSON array from response
+  // 6. Parse JSON array from response
   let insights: string[];
   try {
     const parsed = JSON.parse(result.text.trim());
@@ -93,25 +84,14 @@ export async function GET(req: NextRequest) {
   } catch {
     // Fallback: extract JSON array from text
     const match = result.text.match(/\[[\s\S]*\]/);
-    if (match) {
-      try {
-        const parsed = JSON.parse(match[0]);
-        insights = parsed.map((s: unknown) => String(s));
-      } catch {
-        return NextResponse.json(
-          { error: "Failed to parse insights", raw: result.text },
-          { status: 500 }
-        );
-      }
-    } else {
-      return NextResponse.json(
-        { error: "Failed to parse insights", raw: result.text },
-        { status: 500 }
-      );
+    if (!match) {
+      throw new Error(`Failed to parse insights from: ${result.text}`);
     }
+    const parsed = JSON.parse(match[0]);
+    insights = parsed.map((s: unknown) => String(s));
   }
 
-  // 6. Save to DB
+  // 7. Save to DB
   const context: DailyInsightContext = {
     strategyAnalysisId: latestStrategy?.id ?? null,
     researchNoteIds: researchNotes.map((n) => n.id),

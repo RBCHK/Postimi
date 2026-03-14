@@ -5,7 +5,8 @@ export function middleware(req: NextRequest) {
 
   const isPublic =
     pathname.startsWith("/login") ||
-    pathname.startsWith("/api/auth");
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/cron");
 
   if (isPublic) return NextResponse.next();
 
