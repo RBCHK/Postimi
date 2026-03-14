@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
 
   const tavilyClient = tavily({ apiKey: tavilyApiKey });
 
+  try {
   // Fetch existing notes for self-management
   const existingNotes = await getAllResearchNotes();
   const notesForPrompt = existingNotes.map((n) => ({
@@ -115,4 +116,11 @@ export async function GET(req: NextRequest) {
     queriesUsed: searchQueries.length,
     sourcesFound: allSources.length,
   });
+  } catch (err) {
+    console.error("[researcher]", err);
+    return NextResponse.json(
+      { ok: false, error: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
+  }
 }

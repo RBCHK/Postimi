@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  try {
   // 1. Latest StrategyAnalysis
   const latestStrategy = await prisma.strategyAnalysis.findFirst({
     orderBy: { createdAt: "desc" },
@@ -128,4 +129,11 @@ export async function GET(req: NextRequest) {
     insightId: saved.id,
     insightCount: insights.length,
   });
+  } catch (err) {
+    console.error("[daily-insight]", err);
+    return NextResponse.json(
+      { ok: false, error: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
+  }
 }

@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  try {
   const { id: userId, username } = await fetchCurrentUser();
 
   // Fetch since the most recent post in DB
@@ -81,4 +82,11 @@ export async function GET(req: NextRequest) {
     updated,
     total: tweets.length,
   });
+  } catch (err) {
+    console.error("[x-import]", err);
+    return NextResponse.json(
+      { ok: false, error: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
+  }
 }

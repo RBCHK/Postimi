@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, X, Bot, TrendingUp, Lightbulb, Download, Search, BarChart3 } from "lucide-react";
+import { Plus, Trash2, X, Bot, TrendingUp, Lightbulb, Download, Search, BarChart3, Play, Loader2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +28,7 @@ import { MODEL_OPTIONS, MODEL_STORAGE_KEY, getStoredModel } from "@/lib/model";
 import { getStoredLanguageSettings } from "@/components/settings-sheet";
 import { type ThemePreference, applyTheme, saveTheme, getStoredTheme } from "@/lib/theme";
 import { PageContainer } from "@/components/page-container";
-import { getAgentLastRuns, type AgentLastRuns } from "@/app/actions/agents";
+import { getAgentLastRuns, runAgentManually, type AgentLastRuns } from "@/app/actions/agents";
 
 interface VoiceBankEntry {
   id: string;
@@ -875,12 +875,31 @@ function formatUntil(date: Date): string {
 function AgentsTab() {
   const [lastRuns, setLastRuns] = useState<AgentLastRuns | null>(null);
   const [now, setNow] = useState(() => new Date());
+  const [running, setRunning] = useState<string | null>(null);
 
   useEffect(() => {
     getAgentLastRuns().then(setLastRuns).catch(() => setLastRuns(null));
     const timer = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(timer);
   }, []);
+
+  async function handleRun(key: string, label: string) {
+    if (running) return;
+    setRunning(key);
+    try {
+      const result = await runAgentManually(key);
+      if (result.ok) {
+        toast.success(`${label} completed`);
+        getAgentLastRuns().then(setLastRuns).catch(() => {});
+      } else {
+        toast.error(`${label} failed: ${result.error}`);
+      }
+    } catch (err) {
+      toast.error(`${label} failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setRunning(null);
+    }
+  }
 
   const daily = AGENT_DEFS.filter((d) => d.daily);
   const weekly = AGENT_DEFS.filter((d) => !d.daily);
@@ -905,16 +924,32 @@ function AgentsTab() {
                   <p className="text-sm font-medium leading-none">{def.label}</p>
                   <p className="text-xs text-muted-foreground truncate">{def.description}</p>
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-0.5">
-                  <span className="text-xs font-medium text-foreground/70">{def.schedule}</span>
-                  <div className="flex items-center gap-2">
-                    {lastRun ? (
-                      <span className="text-xs text-muted-foreground">{formatRelative(new Date(lastRun))}</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground/50">never</span>
-                    )}
-                    <span className="text-xs text-blue-500">{formatUntil(next)}</span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className="text-xs font-medium text-foreground/70">{def.schedule}</span>
+                    <div className="flex items-center gap-2">
+                      {lastRun ? (
+                        <span className="text-xs text-muted-foreground">{formatRelative(new Date(lastRun))}</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/50">never</span>
+                      )}
+                      <span className="text-xs text-blue-500">{formatUntil(next)}</span>
+                    </div>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11 shrink-0"
+                    disabled={running !== null}
+                    onClick={() => handleRun(def.key, def.label)}
+                    aria-label={`Run ${def.label}`}
+                  >
+                    {running === def.key ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Play className="h-4 w-4" />
+                    )}
+                  </Button>
                 </div>
               </div>
             );

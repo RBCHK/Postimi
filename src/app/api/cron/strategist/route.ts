@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  try {
   // 1. Collect context in parallel
   const dateRange = await getAnalyticsDateRange();
   if (!dateRange) {
@@ -207,4 +208,11 @@ export async function GET(req: NextRequest) {
     periodFrom: summary.dateRange.from,
     periodTo: summary.dateRange.to,
   });
+  } catch (err) {
+    console.error("[strategist]", err);
+    return NextResponse.json(
+      { ok: false, error: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
+  }
 }

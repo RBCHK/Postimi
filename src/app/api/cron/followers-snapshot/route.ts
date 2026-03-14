@@ -10,15 +10,23 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const userData = await fetchUserData();
-  const snapshot = await saveFollowersSnapshot({
-    followersCount: userData.followersCount,
-    followingCount: userData.followingCount,
-  });
+  try {
+    const userData = await fetchUserData();
+    const snapshot = await saveFollowersSnapshot({
+      followersCount: userData.followersCount,
+      followingCount: userData.followingCount,
+    });
 
-  return NextResponse.json({
-    ok: true,
-    followers: snapshot.followersCount,
-    deltaFollowers: snapshot.deltaFollowers,
-  });
+    return NextResponse.json({
+      ok: true,
+      followers: snapshot.followersCount,
+      deltaFollowers: snapshot.deltaFollowers,
+    });
+  } catch (err) {
+    console.error("[followers-snapshot]", err);
+    return NextResponse.json(
+      { ok: false, error: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
+  }
 }

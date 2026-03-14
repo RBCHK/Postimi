@@ -50,6 +50,30 @@ IMPORTANT: This app runs as a PWA on iPhone — always apply these rules when to
 - **Accessibility**: semantic HTML, ARIA labels on interactive elements, keyboard navigable
 - **TypeScript**: no `any`, no suppressed errors
 
+## Error Handling Rules
+
+IMPORTANT: Always wrap in try/catch when there is a network, disk, or external process between your code and execution:
+
+- **External HTTP / SDK calls** — fetch, X API, Anthropic, Tavily, any third-party SDK
+- **Database** — all Prisma calls (connection drop, constraint violation, timeout)
+- **File system** — `fs.readFile`, `fs.writeFile` (file missing, no permissions)
+- **JSON.parse** — any data from external sources is never guaranteed valid
+- **Background tasks without a caller** — cron jobs, webhooks, queue workers (no one catches above)
+
+Pattern for API routes and cron handlers:
+```ts
+try {
+  // ... main logic
+  return NextResponse.json({ ok: true, ... });
+} catch (err) {
+  console.error("[route-name]", err);
+  return NextResponse.json(
+    { ok: false, error: err instanceof Error ? err.message : String(err) },
+    { status: 500 }
+  );
+}
+```
+
 ## Code Review Priorities
 
 When reviewing or fixing code, classify issues by severity:
@@ -68,6 +92,7 @@ When reviewing or fixing code, classify issues by severity:
 
 IMPORTANT: Before executing any task, check `.claude/skills/` for a relevant skill and use it.
 IMPORTANT: If a task is multi-step and repeatable — create a skill for it using `/create-skill`.
+IMPORTANT: After completing a task that touched 3+ files with the same pattern — suggest creating a skill (propose, don't auto-create).
 IMPORTANT: Use Plan Mode (Shift+Tab) for any change touching 3+ files.
 IMPORTANT: Start a fresh session (`/clear`) for each new task.
 IMPORTANT: After implementing, verify with `npx tsc --noEmit` (also runs automatically via hook after every file edit).
