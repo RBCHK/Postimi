@@ -39,10 +39,8 @@ English version: 200-350 words. Tight. Every sentence earns its place.
 
 ## After writing
 
-Append the post to `~/.claude/dev-posts.md`:
-- If the file doesn't exist — create it with a header `# Dev Posts`
-- Prepend each entry with a date header: `## YYYY-MM-DD — <one-line topic>`
-- Append the full English + Russian post under that header
-- New posts go at the **top** of the file (newest first)
-
-Do not ask for confirmation — just append silently after outputting the post.
+Save the post as a new file in `~/.claude/dev-posts/`:
+- Filename: `YYYY-MM-DD-<slug>.md` where slug is 2-4 words from the topic, kebab-case
+- File starts directly with `# Title` (no date header needed — it's in the filename)
+- Use the Write tool — do NOT read any existing files first
+- Do not ask for confirmation — just save silently after outputting the post.
