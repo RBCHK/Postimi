@@ -115,25 +115,38 @@ enum XPostType {
   REPLY
 }
 
+enum DataSource {
+  CSV
+  API
+}
+
 model XPost {
-  id            String    @id @default(cuid())
-  postId        String    @unique
+  id            String     @id @default(cuid())
+  postId        String     @unique
   date          DateTime
   text          String
   postLink      String?
   postType      XPostType
-  impressions   Int       @default(0)
-  likes         Int       @default(0)
-  engagements   Int       @default(0)
-  bookmarks     Int       @default(0)
-  shares        Int       @default(0)
-  newFollowers  Int       @default(0)
-  replies       Int       @default(0)
-  reposts       Int       @default(0)
-  profileVisits Int       @default(0)
-  detailExpands Int       @default(0)
-  urlClicks     Int       @default(0)
-  createdAt     DateTime  @default(now())
+
+  // Core metrics (API owns these)
+  impressions   Int        @default(0)
+  likes         Int        @default(0)
+  engagements   Int        @default(0)
+  bookmarks     Int        @default(0)
+  replies       Int        @default(0)
+  reposts       Int        @default(0)
+  quoteCount    Int        @default(0)
+  urlClicks     Int        @default(0)
+  profileVisits Int        @default(0)
+
+  // CSV-only enrichment (API doesn't provide these)
+  newFollowers  Int        @default(0)
+  detailExpands Int        @default(0)
+
+  // Source tracking
+  dataSource    DataSource @default(CSV)
+  updatedAt     DateTime   @updatedAt
+  createdAt     DateTime   @default(now())
 }
 
 model DailyAccountStats {
@@ -216,6 +229,7 @@ model PostEngagementSnapshot {
   bookmarks     Int      @default(0)
   replies       Int      @default(0)
   reposts       Int      @default(0)
+  quoteCount    Int      @default(0)
   profileVisits Int      @default(0)
   urlClicks     Int      @default(0)
   createdAt     DateTime @default(now())

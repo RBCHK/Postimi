@@ -31,6 +31,25 @@ export async function importFromXApi(
       select: { createdAt: true },
     });
 
+    const apiMetrics = {
+      impressions: tweet.impressions,
+      likes: tweet.likes,
+      engagements: tweet.engagements,
+      bookmarks: tweet.bookmarks,
+      replies: tweet.replies,
+      reposts: tweet.reposts,
+      quoteCount: tweet.quoteCount,
+      urlClicks: tweet.urlClicks,
+    };
+
+    const updateData: Record<string, unknown> = {
+      ...apiMetrics,
+      dataSource: "API",
+    };
+    if (tweet.profileVisits !== undefined) {
+      updateData.profileVisits = tweet.profileVisits;
+    }
+
     await prisma.xPost.upsert({
       where: { postId: tweet.postId },
       create: {
@@ -39,28 +58,11 @@ export async function importFromXApi(
         text: tweet.text,
         postLink: tweet.postLink,
         postType: detectPostType(tweet.text),
-        impressions: tweet.impressions,
-        likes: tweet.likes,
-        engagements: tweet.engagements,
-        bookmarks: tweet.bookmarks,
-        shares: tweet.shares,
-        newFollowers: 0,
-        replies: tweet.replies,
-        reposts: tweet.reposts,
-        profileVisits: 0,
-        detailExpands: 0,
-        urlClicks: tweet.urlClicks,
+        ...apiMetrics,
+        profileVisits: tweet.profileVisits ?? 0,
+        dataSource: "API",
       },
-      update: {
-        impressions: tweet.impressions,
-        likes: tweet.likes,
-        engagements: tweet.engagements,
-        bookmarks: tweet.bookmarks,
-        shares: tweet.shares,
-        replies: tweet.replies,
-        reposts: tweet.reposts,
-        urlClicks: tweet.urlClicks,
-      },
+      update: updateData,
     });
 
     if (existing) {

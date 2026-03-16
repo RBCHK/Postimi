@@ -18,8 +18,8 @@ const PRESET_DAYS: Record<Exclude<PeriodPreset, "ALL">, number> = {
 interface ImportResult {
   contentRows?: number;
   overviewRows?: number;
-  contentImported?: number;
-  contentUpdated?: number;
+  contentEnriched?: number;
+  contentSkipped?: number;
   overviewImported?: number;
   overviewUpdated?: number;
 }
@@ -142,8 +142,8 @@ export function AnalyticsProvider({ children, initialDateRange, initialSummary, 
       if (contentCsv) {
         result.contentRows = contentCsv.length;
         const r = await importContentData(contentCsv);
-        result.contentImported = r.imported;
-        result.contentUpdated = r.updated;
+        result.contentEnriched = r.enriched;
+        result.contentSkipped = r.skipped;
       }
 
       if (overviewCsv) {

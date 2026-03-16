@@ -18,11 +18,11 @@ export interface XTweetMetrics {
   likes: number;
   engagements: number;
   bookmarks: number;
-  shares: number;
   replies: number;
   reposts: number;
+  quoteCount: number;
   urlClicks: number;
-  profileVisits: number;
+  profileVisits: number | undefined;
 }
 
 export interface XUserData {
@@ -180,11 +180,14 @@ export async function fetchUserTweets(
         reply_count: number;
         retweet_count: number;
         bookmark_count: number;
+        quote_count?: number;
         impression_count?: number;
       };
       non_public_metrics?: {
         impression_count: number;
-        url_clicks: number;
+        engagements?: number;
+        url_clicks?: number;
+        user_profile_clicks?: number;
       };
       organic_metrics?: {
         user_profile_clicks: number;
@@ -200,7 +203,7 @@ export async function fetchUserTweets(
 
     const impressions = priv?.impression_count ?? pub.impression_count ?? 0;
     const urlClicks = priv?.url_clicks ?? 0;
-    const engagements = pub.like_count + pub.reply_count + pub.retweet_count + pub.bookmark_count;
+    const engagements = priv?.engagements ?? 0;
 
     return {
       postId: tweet.id,
@@ -211,11 +214,11 @@ export async function fetchUserTweets(
       likes: pub.like_count,
       engagements,
       bookmarks: pub.bookmark_count,
-      shares: pub.retweet_count,
       replies: pub.reply_count,
       reposts: pub.retweet_count,
+      quoteCount: pub.quote_count ?? 0,
       urlClicks,
-      profileVisits: tweet.organic_metrics?.user_profile_clicks ?? 0,
+      profileVisits: tweet.organic_metrics?.user_profile_clicks,
     };
   });
 }
@@ -249,11 +252,14 @@ export async function fetchUserTweetsPaginated(
           reply_count: number;
           retweet_count: number;
           bookmark_count: number;
+          quote_count?: number;
           impression_count?: number;
         };
         non_public_metrics?: {
           impression_count: number;
-          url_clicks: number;
+          engagements?: number;
+          url_clicks?: number;
+          user_profile_clicks?: number;
         };
         organic_metrics?: {
           user_profile_clicks: number;
@@ -268,7 +274,7 @@ export async function fetchUserTweetsPaginated(
         const priv = tweet.non_public_metrics;
         const impressions = priv?.impression_count ?? pub.impression_count ?? 0;
         const urlClicks = priv?.url_clicks ?? 0;
-        const engagements = pub.like_count + pub.reply_count + pub.retweet_count + pub.bookmark_count;
+        const engagements = priv?.engagements ?? 0;
 
         allTweets.push({
           postId: tweet.id,
@@ -279,11 +285,11 @@ export async function fetchUserTweetsPaginated(
           likes: pub.like_count,
           engagements,
           bookmarks: pub.bookmark_count,
-          shares: pub.retweet_count,
           replies: pub.reply_count,
           reposts: pub.retweet_count,
+          quoteCount: pub.quote_count ?? 0,
           urlClicks,
-          profileVisits: tweet.organic_metrics?.user_profile_clicks ?? 0,
+          profileVisits: tweet.organic_metrics?.user_profile_clicks,
         });
       }
     }
@@ -309,6 +315,42 @@ export async function fetchTweetById(tweetId: string): Promise<string | null> {
     return data.data?.text ?? null;
   } catch {
     return null;
+  }
+}
+
+export interface XTweetRawResponse {
+  id: string;
+  text: string;
+  created_at: string;
+  public_metrics: {
+    like_count: number;
+    reply_count: number;
+    retweet_count: number;
+    bookmark_count: number;
+    quote_count?: number;
+    impression_count?: number;
+  };
+  non_public_metrics?: {
+    impression_count: number;
+    engagements?: number;
+    url_clicks?: number;
+    user_profile_clicks?: number;
+  };
+  organic_metrics?: {
+    user_profile_clicks: number;
+  };
+}
+
+/** Fetch a single tweet's full metrics by ID (OAuth 1.0a) */
+export async function fetchTweetMetrics(tweetId: string): Promise<XTweetRawResponse | null> {
+  try {
+    const data = await xFetch<{ data?: XTweetRawResponse }>(
+      `/tweets/${tweetId}`,
+      { 'tweet.fields': 'created_at,public_metrics,non_public_metrics,organic_metrics' }
+    );
+    return data.data ?? null;
+  } catch (err) {
+    throw err;
   }
 }
 

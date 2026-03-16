@@ -55,6 +55,27 @@ export async function GET(req: NextRequest) {
         select: { createdAt: true },
       });
 
+      // API-owned metrics (never touches newFollowers, detailExpands)
+      const apiMetrics = {
+        impressions: tweet.impressions,
+        likes: tweet.likes,
+        engagements: tweet.engagements,
+        bookmarks: tweet.bookmarks,
+        replies: tweet.replies,
+        reposts: tweet.reposts,
+        quoteCount: tweet.quoteCount,
+        urlClicks: tweet.urlClicks,
+      };
+
+      // Only update profileVisits if API actually provided it
+      const updateData: Record<string, unknown> = {
+        ...apiMetrics,
+        dataSource: "API",
+      };
+      if (tweet.profileVisits !== undefined) {
+        updateData.profileVisits = tweet.profileVisits;
+      }
+
       await prisma.xPost.upsert({
         where: { postId: tweet.postId },
         create: {
@@ -63,29 +84,11 @@ export async function GET(req: NextRequest) {
           text: tweet.text,
           postLink: tweet.postLink,
           postType: detectPostType(tweet.text),
-          impressions: tweet.impressions,
-          likes: tweet.likes,
-          engagements: tweet.engagements,
-          bookmarks: tweet.bookmarks,
-          shares: tweet.shares,
-          newFollowers: 0,
-          replies: tweet.replies,
-          reposts: tweet.reposts,
-          profileVisits: tweet.profileVisits,
-          detailExpands: 0,
-          urlClicks: tweet.urlClicks,
+          ...apiMetrics,
+          profileVisits: tweet.profileVisits ?? 0,
+          dataSource: "API",
         },
-        update: {
-          impressions: tweet.impressions,
-          likes: tweet.likes,
-          engagements: tweet.engagements,
-          bookmarks: tweet.bookmarks,
-          shares: tweet.shares,
-          replies: tweet.replies,
-          reposts: tweet.reposts,
-          profileVisits: tweet.profileVisits,
-          urlClicks: tweet.urlClicks,
-        },
+        update: updateData,
       });
 
       if (existing) updated++;
@@ -94,6 +97,11 @@ export async function GET(req: NextRequest) {
       // Save engagement snapshot for velocity tracking (posts < REFRESH_DAYS old)
       const postAgeDays = (Date.now() - tweet.createdAt.getTime()) / (1000 * 60 * 60 * 24);
       if (postAgeDays < REFRESH_DAYS) {
+        const snapshotMetrics = {
+          ...apiMetrics,
+          profileVisits: tweet.profileVisits ?? 0,
+        };
+
         await prisma.postEngagementSnapshot.upsert({
           where: {
             postId_snapshotDate: {
@@ -104,25 +112,9 @@ export async function GET(req: NextRequest) {
           create: {
             postId: tweet.postId,
             snapshotDate: snapshotDate,
-            impressions: tweet.impressions,
-            likes: tweet.likes,
-            engagements: tweet.engagements,
-            bookmarks: tweet.bookmarks,
-            replies: tweet.replies,
-            reposts: tweet.reposts,
-            profileVisits: tweet.profileVisits,
-            urlClicks: tweet.urlClicks,
+            ...snapshotMetrics,
           },
-          update: {
-            impressions: tweet.impressions,
-            likes: tweet.likes,
-            engagements: tweet.engagements,
-            bookmarks: tweet.bookmarks,
-            replies: tweet.replies,
-            reposts: tweet.reposts,
-            profileVisits: tweet.profileVisits,
-            urlClicks: tweet.urlClicks,
-          },
+          update: snapshotMetrics,
         });
         snapshots++;
       }

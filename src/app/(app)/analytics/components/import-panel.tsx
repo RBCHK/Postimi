@@ -191,10 +191,10 @@ export function ImportPanel() {
 
             {lastImportResult && (
               <div className="rounded-md bg-muted p-3 text-xs">
-                {lastImportResult.contentImported !== undefined && (
+                {lastImportResult.contentEnriched !== undefined && (
                   <p>
-                    Content: {lastImportResult.contentImported} imported,{" "}
-                    {lastImportResult.contentUpdated} updated
+                    Content: {lastImportResult.contentEnriched} enriched,{" "}
+                    {lastImportResult.contentSkipped} skipped (no API data)
                   </p>
                 )}
                 {lastImportResult.overviewImported !== undefined && (

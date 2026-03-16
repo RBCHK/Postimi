@@ -3,64 +3,44 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import type { ContentCsvRow, OverviewCsvRow, AnalyticsSummary, HeatmapCell } from "@/lib/types";
-import { X_POST_TYPE_TO_PRISMA, X_POST_TYPE_MAP } from "@/lib/types";
-import type { XPostType as PrismaXPostType } from "@/generated/prisma";
+import { X_POST_TYPE_MAP } from "@/lib/types";
 
 // --- Import ---
 
 export async function importContentData(
   rows: ContentCsvRow[]
-): Promise<{ imported: number; updated: number }> {
-  let imported = 0;
-  let updated = 0;
+): Promise<{ enriched: number; skipped: number }> {
+  let enriched = 0;
+  let skipped = 0;
 
   for (const row of rows) {
     const date = new Date(row.date);
     if (isNaN(date.getTime())) continue;
 
-    const existing = await prisma.xPost.findUnique({ where: { postId: row.postId } });
-
-    await prisma.xPost.upsert({
+    const existing = await prisma.xPost.findUnique({
       where: { postId: row.postId },
-      create: {
-        postId: row.postId,
-        date,
-        text: row.text,
-        postLink: row.postLink,
-        postType: X_POST_TYPE_TO_PRISMA[row.postType] as PrismaXPostType,
-        impressions: row.impressions,
-        likes: row.likes,
-        engagements: row.engagements,
-        bookmarks: row.bookmarks,
-        shares: row.shares,
-        newFollowers: row.newFollowers,
-        replies: row.replies,
-        reposts: row.reposts,
-        profileVisits: row.profileVisits,
-        detailExpands: row.detailExpands,
-        urlClicks: row.urlClicks,
-      },
-      update: {
-        impressions: row.impressions,
-        likes: row.likes,
-        engagements: row.engagements,
-        bookmarks: row.bookmarks,
-        shares: row.shares,
-        newFollowers: row.newFollowers,
-        replies: row.replies,
-        reposts: row.reposts,
-        profileVisits: row.profileVisits,
-        detailExpands: row.detailExpands,
-        urlClicks: row.urlClicks,
-      },
+      select: { id: true },
     });
 
-    if (existing) updated++;
-    else imported++;
+    if (!existing) {
+      // No API data yet — skip, API import must create records first
+      skipped++;
+      continue;
+    }
+
+    // Enrich with CSV-exclusive fields only
+    await prisma.xPost.update({
+      where: { postId: row.postId },
+      data: {
+        newFollowers: row.newFollowers,
+        detailExpands: row.detailExpands,
+      },
+    });
+    enriched++;
   }
 
   revalidatePath("/analytics");
-  return { imported, updated };
+  return { enriched, skipped };
 }
 
 export async function importDailyStats(
@@ -198,7 +178,7 @@ export async function getAnalyticsSummary(from: Date, to: Date): Promise<Analyti
     likes: p.likes,
     engagements: p.engagements,
     bookmarks: p.bookmarks,
-    shares: p.shares,
+    shares: p.reposts,
     newFollowers: p.newFollowers,
     replies: p.replies,
     reposts: p.reposts,
@@ -217,7 +197,7 @@ export async function getAnalyticsSummary(from: Date, to: Date): Promise<Analyti
     likes: p.likes,
     engagements: p.engagements,
     bookmarks: p.bookmarks,
-    shares: p.shares,
+    shares: p.reposts,
     newFollowers: p.newFollowers,
     replies: p.replies,
     reposts: p.reposts,

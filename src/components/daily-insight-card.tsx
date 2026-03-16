@@ -10,7 +10,7 @@ interface DailyInsightCardProps {
 }
 
 const FALLBACK_TEXT =
-  "Привет! Я готов помочь вырастить твой X-аккаунт. Загрузи CSV из X Analytics и запусти стратегический анализ — и я начну давать ежедневные инсайты.";
+  "Hi! I’m ready to help grow your X account. I’ll start sharing daily insights as soon as you connect your X account.";
 
 const ROTATION_MS = 15 * 60 * 1000; // 15 minutes
 

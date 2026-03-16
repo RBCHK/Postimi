@@ -53,6 +53,7 @@ IMPORTANT: PWA on iPhone — apply when touching layout or UI.
 - **TypeScript**: no `any`, no suppressed errors
 - **Error handling**: try/catch on all external boundaries (HTTP, Prisma, fs, JSON.parse, cron jobs)
 - **Accessibility**: semantic HTML, ARIA labels, keyboard navigable
+- **External API integration**: before writing types or mapping logic, always inspect the real raw response first. API docs lie — fields appear/disappear, names differ, extra fields exist. Use a debug route or log the raw response before defining TypeScript interfaces.
 
 ## Testing
 
