@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { redirect } from "next/navigation";
 import { ConversationView } from "./conversation-view";
 import { NotesSidebarContainer } from "@/components/notes-sidebar-container";

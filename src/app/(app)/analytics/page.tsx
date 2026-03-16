@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getAnalyticsDateRange, getAnalyticsSummary } from "@/app/actions/analytics";
 import { getGoalChartData } from "@/app/actions/schedule";
 import { AnalyticsProvider } from "@/contexts/analytics-context";

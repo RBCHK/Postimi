@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getLatestDailyInsight } from "@/app/actions/daily-insight";
 import { getGoalConfig, getGoalTrackingData } from "@/app/actions/schedule";
 import { getPendingProposal } from "@/app/actions/plan-proposal";

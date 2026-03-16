@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getAnalyses } from "@/app/actions/strategist";
 import { getAllResearchNotes } from "@/app/actions/research";
 import { StrategistProvider } from "@/contexts/strategist-context";
