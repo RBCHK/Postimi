@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { fetchPersonalizedTrends } from "@/lib/x-api";
 import { saveTrendSnapshots, cleanupOldTrends } from "@/app/actions/trends";
 
@@ -33,6 +34,7 @@ export async function GET(req: NextRequest) {
       cleanedUp: deleted,
     });
   } catch (err) {
+    Sentry.captureException(err);
     console.error("[trend-snapshot]", err);
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : String(err) },

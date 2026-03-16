@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { fetchCurrentUser, fetchUserTweetsPaginated } from "@/lib/x-api";
 import { revalidatePath } from "next/cache";
@@ -134,6 +135,7 @@ export async function GET(req: NextRequest) {
       total: tweets.length,
     });
   } catch (err) {
+    Sentry.captureException(err);
     console.error("[x-import]", err);
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : String(err) },

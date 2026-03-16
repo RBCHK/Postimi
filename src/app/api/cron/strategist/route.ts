@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { anthropic } from "@ai-sdk/anthropic";
 import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
@@ -220,6 +221,7 @@ export async function GET(req: NextRequest) {
       periodTo: summary.dateRange.to,
     });
   } catch (err) {
+    Sentry.captureException(err);
     console.error("[strategist]", err);
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : String(err) },

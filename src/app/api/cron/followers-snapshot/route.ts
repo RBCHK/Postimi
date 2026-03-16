@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { fetchUserData } from "@/lib/x-api";
 import { saveFollowersSnapshot } from "@/app/actions/followers";
 
@@ -26,6 +27,7 @@ export async function GET(req: NextRequest) {
       deltaFollowers: snapshot.deltaFollowers,
     });
   } catch (err) {
+    Sentry.captureException(err);
     console.error("[followers-snapshot]", err);
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : String(err) },

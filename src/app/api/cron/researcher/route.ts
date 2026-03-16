@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { anthropic } from "@ai-sdk/anthropic";
 import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
@@ -105,6 +106,7 @@ export async function GET(req: NextRequest) {
       sourcesFound: allSources.length,
     });
   } catch (err) {
+    Sentry.captureException(err);
     console.error("[researcher]", err);
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : String(err) },

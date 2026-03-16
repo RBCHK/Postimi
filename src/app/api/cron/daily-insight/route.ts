@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { anthropic } from "@ai-sdk/anthropic";
 import { generateText } from "ai";
 import { getDailyInsightPrompt, buildDailyInsightUserMessage } from "@/prompts/daily-insight";
@@ -110,6 +111,7 @@ export async function GET(req: NextRequest) {
       insightCount: insights.length,
     });
   } catch (err) {
+    Sentry.captureException(err);
     console.error("[daily-insight]", err);
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : String(err) },
