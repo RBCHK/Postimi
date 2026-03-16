@@ -59,11 +59,7 @@ function FileDropZone({
             </Button>
           </div>
         ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => inputRef.current?.click()}
-          >
+          <Button variant="outline" size="sm" onClick={() => inputRef.current?.click()}>
             <Upload className="mr-1.5 h-3.5 w-3.5" />
             Choose file
           </Button>
@@ -97,7 +93,11 @@ export function ImportPanel() {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("csv");
   const [apiLoading, setApiLoading] = useState(false);
-  const [apiResult, setApiResult] = useState<{ imported: number; updated: number; total: number } | null>(null);
+  const [apiResult, setApiResult] = useState<{
+    imported: number;
+    updated: number;
+    total: number;
+  } | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
 
   const hasAnyData = !!contentCsv || !!overviewCsv;
@@ -185,9 +185,7 @@ export function ImportPanel() {
               onClear={() => clearCsvFile("overview")}
             />
 
-            {importError && (
-              <p className="text-sm text-destructive">{importError}</p>
-            )}
+            {importError && <p className="text-sm text-destructive">{importError}</p>}
 
             {lastImportResult && (
               <div className="rounded-md bg-muted p-3 text-xs">
@@ -231,13 +229,12 @@ export function ImportPanel() {
                 Imports your latest 100 tweets with engagement metrics directly from X.
               </p>
               <p className="text-xs text-muted-foreground">
-                Note: unfollows and profile visits are not available via API — use CSV for complete data.
+                Note: unfollows and profile visits are not available via API — use CSV for complete
+                data.
               </p>
             </div>
 
-            {apiError && (
-              <p className="text-sm text-destructive">{apiError}</p>
-            )}
+            {apiError && <p className="text-sm text-destructive">{apiError}</p>}
 
             {apiResult && (
               <div className="rounded-md bg-muted p-3 text-xs">
@@ -246,15 +243,13 @@ export function ImportPanel() {
                   Done
                 </p>
                 <p>Fetched: {apiResult.total} tweets</p>
-                <p>New: {apiResult.imported} · Updated: {apiResult.updated}</p>
+                <p>
+                  New: {apiResult.imported} · Updated: {apiResult.updated}
+                </p>
               </div>
             )}
 
-            <Button
-              className="w-full"
-              disabled={apiLoading}
-              onClick={handleApiImport}
-            >
+            <Button className="w-full" disabled={apiLoading} onClick={handleApiImport}>
               {apiLoading ? (
                 <>
                   <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />

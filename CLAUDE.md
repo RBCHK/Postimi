@@ -1,11 +1,13 @@
 # xREBA — Project Guide for Claude
 
 ## Stack
+
 - **Next.js 15** (App Router), **TypeScript**, **Prisma** (PostgreSQL)
 - AI: `@ai-sdk/react` + `@ai-sdk/anthropic`, streaming via `/api/chat`
 - Prisma client: import from `src/generated/prisma/`, NOT `@prisma/client`
 
 ## Key Directories
+
 - `src/app/(app)/` — routes: home (`/`), conversation (`/c/[id]`)
 - `src/app/actions/` — Server Actions (DB layer)
 - `src/app/api/chat/` — streaming AI endpoint
@@ -69,10 +71,13 @@ IMPORTANT: PWA on iPhone — apply when touching layout or UI.
 IMPORTANT: Never commit directly to `main`. Branch protection is enabled.
 
 **Before writing any code**, check `git branch`. If on `main`:
+
 1. Create a branch: `git checkout -b feat/<short-name>` (or `fix/`, `chore/`)
 2. Name branches by task intent, e.g. `feat/husky-setup`, `fix/eslint-errors`
 
 **After task is done**: commit, push, create PR via `gh pr create`, report PR URL to user.
+
+**After PR merge**: `git checkout main && git pull --rebase` to sync local main before starting next task.
 
 ## Workflow Rules
 

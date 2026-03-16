@@ -73,9 +73,7 @@ export function ChatMessages() {
         const userMsgs = el.querySelectorAll('[data-role="user"]');
         const lastMsg = userMsgs[userMsgs.length - 1] as HTMLElement | undefined;
         if (lastMsg) {
-          const offset =
-            lastMsg.getBoundingClientRect().top -
-            el.getBoundingClientRect().top;
+          const offset = lastMsg.getBoundingClientRect().top - el.getBoundingClientRect().top;
           el.scrollTo({ top: el.scrollTop + offset - SCROLL_TOP_OFFSET, behavior: "smooth" });
         }
       });
@@ -95,7 +93,10 @@ export function ChatMessages() {
   return (
     <div className="relative flex-1 min-h-0 overflow-hidden">
       <div ref={scrollRef} className="absolute inset-0 overflow-y-auto overflow-x-hidden">
-        <div data-chat-messages className="mx-auto flex w-full max-w-chat flex-col gap-4 px-8 pt-8 pb-6">
+        <div
+          data-chat-messages
+          className="mx-auto flex w-full max-w-chat flex-col gap-4 px-8 pt-8 pb-6"
+        >
           {messages.map((msg, i) => (
             <ChatBubble
               key={msg.id}

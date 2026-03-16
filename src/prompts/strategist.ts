@@ -178,8 +178,9 @@ ${profile.following ? `- Following: ${profile.following}` : ""}`.trim()
 - Avg engagement rate: ${s.avgEngagementRate}%
 - Avg profile visits/day: ${s.avgProfileVisitsPerDay}`;
 
-    topPostsSection = s.topPosts.length > 0
-      ? `## My Top 5 Posts by Impressions
+    topPostsSection =
+      s.topPosts.length > 0
+        ? `## My Top 5 Posts by Impressions
 ${s.topPosts
   .slice(0, 5)
   .map(
@@ -187,7 +188,7 @@ ${s.topPosts
       `${i + 1}. "${p.text.slice(0, 120)}" — ${p.impressions} impressions, ${p.engagements} engagements, ${p.likes} likes`
   )
   .join("\n")}`
-      : "";
+        : "";
   } else {
     // Legacy CsvSummary
     const s = summary as CsvSummary;
@@ -199,15 +200,16 @@ ${s.topPosts
 - Total new followers gained: ${s.totalNewFollows}
 - Avg engagement rate: ${s.avgEngagementRate}%`;
 
-    topPostsSection = s.topPosts.length > 0
-      ? `## My Top 5 Posts by Impressions
+    topPostsSection =
+      s.topPosts.length > 0
+        ? `## My Top 5 Posts by Impressions
 ${s.topPosts
   .map(
     (p, i) =>
       `${i + 1}. "${p.text}" — ${p.impressions} impressions, ${p.engagements} engagements, ${p.likes} likes`
   )
   .join("\n")}`
-      : "";
+        : "";
   }
 
   // --- Followers history section ---
@@ -244,7 +246,6 @@ ${trends
 Note: AI-niche trends typically live 4–8 days. If any trend is relevant to your niche, act within 12–24 hours.`
       : "";
 
-
   // --- Recent research section ---
   const researchSection =
     researchNotes && researchNotes.length > 0
@@ -272,7 +273,10 @@ ${previousAnalysis.slice(0, 500)}...`
           const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
           return `${h12}:${m.toString().padStart(2, "0")} ${p}`;
         }
-        function fmtSection(label: string, cs: { slots: { time: string; days: Record<string, boolean> }[] }) {
+        function fmtSection(
+          label: string,
+          cs: { slots: { time: string; days: Record<string, boolean> }[] }
+        ) {
           if (cs.slots.length === 0) return `- ${label}: (none)`;
           const parts = cs.slots.map((s) => {
             const activeDays = DAY_ORDER.filter((d) => s.days[d]).join("/");

@@ -6,7 +6,13 @@ import { tavily } from "@tavily/core";
 import { getStrategistPrompt, buildStrategistUserMessage } from "@/prompts/strategist";
 import { getScheduleConfig } from "@/app/actions/schedule";
 import { getAcceptedProposals } from "@/app/actions/plan-proposal";
-import type { ConfigChange, CsvSummary, MetricsSnapshot, PastDecisionItem, XProfile } from "@/lib/types";
+import type {
+  ConfigChange,
+  CsvSummary,
+  MetricsSnapshot,
+  PastDecisionItem,
+  XProfile,
+} from "@/lib/types";
 
 export const maxDuration = 120;
 
@@ -17,7 +23,12 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { csvSummary, weekStart, profile, model: modelParam }: { csvSummary: CsvSummary; weekStart: string; profile?: XProfile; model?: string } = body;
+  const {
+    csvSummary,
+    weekStart,
+    profile,
+    model: modelParam,
+  }: { csvSummary: CsvSummary; weekStart: string; profile?: XProfile; model?: string } = body;
 
   if (!csvSummary || !weekStart) {
     return NextResponse.json({ error: "Missing csvSummary or weekStart" }, { status: 400 });

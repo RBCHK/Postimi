@@ -90,15 +90,10 @@ export function ChatInput({
 
             <div className="flex items-center gap-3">
               {isFetchingTweet && (
-                <span className="text-xs text-muted-foreground animate-pulse">
-                  Loading tweet…
-                </span>
+                <span className="text-xs text-muted-foreground animate-pulse">Loading tweet…</span>
               )}
               <ModelDropdown disabled={disabled} />
-              <SendMessageButton
-                onClick={onSend}
-                disabled={disabled || !value.trim()}
-              />
+              <SendMessageButton onClick={onSend} disabled={disabled || !value.trim()} />
             </div>
           </div>
         </div>

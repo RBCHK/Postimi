@@ -24,7 +24,7 @@ Structure:
 
 **The deeper lesson** — the non-obvious insight from this session. Not "X was broken", but "this revealed that...". Should be generalizable.
 
-**The meta-fix** *(optional)* — only if something systemic was changed (workflow, tooling, CLAUDE.md rule). What was set up so this class of problem doesn't repeat.
+**The meta-fix** _(optional)_ — only if something systemic was changed (workflow, tooling, CLAUDE.md rule). What was set up so this class of problem doesn't repeat.
 
 ## Tone
 
@@ -40,6 +40,7 @@ English version: 200-350 words. Tight. Every sentence earns its place.
 ## After writing
 
 Save the post as a new file in `~/.claude/dev-posts/`:
+
 - Filename: `YYYY-MM-DD-<slug>.md` where slug is 2-4 words from the topic, kebab-case
 - File starts directly with `# Title` (no date header needed — it's in the filename)
 - Use the Write tool — do NOT read any existing files first

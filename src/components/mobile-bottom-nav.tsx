@@ -2,13 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import {
-  Home,
-  FileEdit,
-  Calendar,
-  TrendingUp,
-  BarChart3,
-} from "lucide-react";
+import { Home, FileEdit, Calendar, TrendingUp, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function MobileBottomNav() {
@@ -23,14 +17,13 @@ export function MobileBottomNav() {
     icon: React.ComponentType<{ className?: string }>;
     label: string;
   }) {
-    const isActive =
-      href === "/" ? pathname === "/" : pathname.startsWith(href);
+    const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
     return (
       <Link
         href={href}
         className={cn(
           "flex flex-col items-center gap-0.5 px-3 py-1.5 text-[10px]",
-          isActive ? "text-primary" : "text-muted-foreground",
+          isActive ? "text-primary" : "text-muted-foreground"
         )}
       >
         <Icon className="h-5 w-5" />

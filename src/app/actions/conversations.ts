@@ -25,7 +25,7 @@ const statusToPrisma: Record<DraftStatus, PrismaConversationStatus> = {
 };
 
 const contentTypeFromPrisma = (v: PrismaContentType): ContentType =>
-  v.toLowerCase().charAt(0).toUpperCase() + v.slice(1).toLowerCase() as ContentType;
+  (v.toLowerCase().charAt(0).toUpperCase() + v.slice(1).toLowerCase()) as ContentType;
 
 const statusFromPrisma = (v: PrismaConversationStatus): DraftStatus => {
   if (v === "DRAFT") return "draft";
@@ -51,7 +51,10 @@ export async function getConversations() {
 export async function getConversation(id: string) {
   const c = await prisma.conversation.findUnique({
     where: { id },
-    include: { messages: { orderBy: { createdAt: "asc" } }, notes: { orderBy: { createdAt: "asc" } } },
+    include: {
+      messages: { orderBy: { createdAt: "asc" } },
+      notes: { orderBy: { createdAt: "asc" } },
+    },
   });
   if (!c) return null;
   return {
@@ -113,7 +116,11 @@ export async function updateConversation(
   await prisma.conversation.update({ where: { id }, data: update });
 }
 
-export async function addMessage(conversationId: string, role: "user" | "assistant", content: string) {
+export async function addMessage(
+  conversationId: string,
+  role: "user" | "assistant",
+  content: string
+) {
   await prisma.message.create({
     data: { conversationId, role, content },
   });

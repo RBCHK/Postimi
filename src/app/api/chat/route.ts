@@ -21,117 +21,126 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-  const body = await req.json();
-  const {
-    messages,
-    contentType,
-    notes,
-    conversationId,
-    model: modelParam,
-    conversationLanguage,
-    contentLanguage,
-    tweetContext: clientTweetContext,
-  }: {
-    messages: UIMessage[];
-    contentType: ContentType;
-    notes: string[];
-    conversationId?: string;
-    model?: string;
-    conversationLanguage?: string;
-    contentLanguage?: string;
-    tweetContext?: string;
-  } = body;
+    const body = await req.json();
+    const {
+      messages,
+      contentType,
+      notes,
+      conversationId,
+      model: modelParam,
+      conversationLanguage,
+      contentLanguage,
+      tweetContext: clientTweetContext,
+    }: {
+      messages: UIMessage[];
+      contentType: ContentType;
+      notes: string[];
+      conversationId?: string;
+      model?: string;
+      conversationLanguage?: string;
+      contentLanguage?: string;
+      tweetContext?: string;
+    } = body;
 
-  function resolveLanguageLabel(value: string | undefined, defaultLabel: string): string {
-    const lang = SUPPORTED_LANGUAGES.find((l) => l.value === value);
-    return lang ? lang.label : defaultLabel;
-  }
-  const convLangLabel    = resolveLanguageLabel(conversationLanguage, "Russian");
-  const contentLangLabel = resolveLanguageLabel(contentLanguage, "English");
+    function resolveLanguageLabel(value: string | undefined, defaultLabel: string): string {
+      const lang = SUPPORTED_LANGUAGES.find((l) => l.value === value);
+      return lang ? lang.label : defaultLabel;
+    }
+    const convLangLabel = resolveLanguageLabel(conversationLanguage, "Russian");
+    const contentLangLabel = resolveLanguageLabel(contentLanguage, "English");
 
-  const ALLOWED_MODELS = ["claude-sonnet-4-6", "claude-haiku-4-5-20251001"] as const;
-  type AllowedModel = (typeof ALLOWED_MODELS)[number];
-  const model: AllowedModel = ALLOWED_MODELS.includes(modelParam as AllowedModel)
-    ? (modelParam as AllowedModel)
-    : "claude-sonnet-4-6";
+    const ALLOWED_MODELS = ["claude-sonnet-4-6", "claude-haiku-4-5-20251001"] as const;
+    type AllowedModel = (typeof ALLOWED_MODELS)[number];
+    const model: AllowedModel = ALLOWED_MODELS.includes(modelParam as AllowedModel)
+      ? (modelParam as AllowedModel)
+      : "claude-sonnet-4-6";
 
-  // Load voice bank, recent modes, trends, and top posts in parallel
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - 30);
+    // Load voice bank, recent modes, trends, and top posts in parallel
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - 30);
 
-  const [voiceBankEntries, recentModes, trends, topPosts] = await Promise.all([
-    getVoiceBankEntries(contentType === "Reply" ? "REPLY" : "POST", 25),
-    contentType === "Reply" ? getRecentUsedModes(conversationId, 5) : Promise.resolve([]),
-    getLatestTrends(),
-    prisma.xPost.findMany({
-      where: { date: { gte: thirtyDaysAgo }, postType: "POST" },
-      orderBy: { engagements: "desc" },
-      take: 10,
-      select: { text: true, engagements: true },
-    }),
-  ]);
-  const voiceBank = voiceBankEntries.map((e) => e.content);
+    const [voiceBankEntries, recentModes, trends, topPosts] = await Promise.all([
+      getVoiceBankEntries(contentType === "Reply" ? "REPLY" : "POST", 25),
+      contentType === "Reply" ? getRecentUsedModes(conversationId, 5) : Promise.resolve([]),
+      getLatestTrends(),
+      prisma.xPost.findMany({
+        where: { date: { gte: thirtyDaysAgo }, postType: "POST" },
+        orderBy: { engagements: "desc" },
+        take: 10,
+        select: { text: true, engagements: true },
+      }),
+    ]);
+    const voiceBank = voiceBankEntries.map((e) => e.content);
 
-  // Inject tweet text as extra system context.
-  // Client pre-fetches from browser (avoids Twitter blocking Vercel/AWS IPs).
-  // Fall back to server-side fetch for local dev or older clients.
-  let tweetContext = "";
-  if (clientTweetContext) {
-    tweetContext = `\n\n## Original Post (fetched from URL)\n${clientTweetContext}`;
-  } else {
-    const firstUserMsg = messages.find((m) => m.role === "user");
-    if (firstUserMsg) {
-      const firstText = firstUserMsg.parts
-        .filter((p) => p.type === "text")
-        .map((p) => (p as { type: "text"; text: string }).text)
-        .join("");
-      const tweetUrl = extractTweetUrl(firstText);
-      let tweetText: string | null = null;
-      if (tweetUrl) {
-        const tweetIdMatch = tweetUrl.match(/\/status\/(\d+)/);
-        if (tweetIdMatch) tweetText = await fetchTweetById(tweetIdMatch[1]);
-      }
-      if (!tweetText) {
-        const tweet = await fetchTweetFromText(firstText);
-        tweetText = tweet?.text ?? null;
-      }
-      if (tweetText) {
-        tweetContext = `\n\n## Original Post (fetched from URL)\n${tweetText}`;
+    // Inject tweet text as extra system context.
+    // Client pre-fetches from browser (avoids Twitter blocking Vercel/AWS IPs).
+    // Fall back to server-side fetch for local dev or older clients.
+    let tweetContext = "";
+    if (clientTweetContext) {
+      tweetContext = `\n\n## Original Post (fetched from URL)\n${clientTweetContext}`;
+    } else {
+      const firstUserMsg = messages.find((m) => m.role === "user");
+      if (firstUserMsg) {
+        const firstText = firstUserMsg.parts
+          .filter((p) => p.type === "text")
+          .map((p) => (p as { type: "text"; text: string }).text)
+          .join("");
+        const tweetUrl = extractTweetUrl(firstText);
+        let tweetText: string | null = null;
+        if (tweetUrl) {
+          const tweetIdMatch = tweetUrl.match(/\/status\/(\d+)/);
+          if (tweetIdMatch) tweetText = await fetchTweetById(tweetIdMatch[1]);
+        }
+        if (!tweetText) {
+          const tweet = await fetchTweetFromText(firstText);
+          tweetText = tweet?.text ?? null;
+        }
+        if (tweetText) {
+          tweetContext = `\n\n## Original Post (fetched from URL)\n${tweetText}`;
+        }
       }
     }
-  }
 
-  // Build system prompt
-  const baseSystem =
-    contentType === "Reply"
-      ? getReplyPrompt(notes, voiceBank, recentModes, convLangLabel, contentLangLabel)
-      : getPostPrompt(contentType as "Post" | "Thread" | "Article", notes, voiceBank, convLangLabel, contentLangLabel);
+    // Build system prompt
+    const baseSystem =
+      contentType === "Reply"
+        ? getReplyPrompt(notes, voiceBank, recentModes, convLangLabel, contentLangLabel)
+        : getPostPrompt(
+            contentType as "Post" | "Thread" | "Article",
+            notes,
+            voiceBank,
+            convLangLabel,
+            contentLangLabel
+          );
 
-  const trendsContext =
-    trends.length > 0
-      ? `\n\n## Trending Now on X\n${trends.map((t) => `- ${t.trendName}${t.category ? ` [${t.category}]` : ""} (${t.postCount} posts)`).join("\n")}`
-      : "";
+    const trendsContext =
+      trends.length > 0
+        ? `\n\n## Trending Now on X\n${trends.map((t) => `- ${t.trendName}${t.category ? ` [${t.category}]` : ""} (${t.postCount} posts)`).join("\n")}`
+        : "";
 
-  const topPostsContext =
-    topPosts.length > 0
-      ? `\n\n## Your Top Performing Posts (last 30 days)\n${topPosts
-          .map((p, i) => `${i + 1}. "${p.text.slice(0, 100)}${p.text.length > 100 ? "..." : ""}" — ${p.engagements} engagements`)
-          .join("\n")}`
-      : "";
+    const topPostsContext =
+      topPosts.length > 0
+        ? `\n\n## Your Top Performing Posts (last 30 days)\n${topPosts
+            .map(
+              (p, i) =>
+                `${i + 1}. "${p.text.slice(0, 100)}${p.text.length > 100 ? "..." : ""}" — ${p.engagements} engagements`
+            )
+            .join("\n")}`
+        : "";
 
-  const systemPrompt = baseSystem + tweetContext + trendsContext + topPostsContext;
-  console.log("[chat] model:", model);
+    const systemPrompt = baseSystem + tweetContext + trendsContext + topPostsContext;
+    console.log("[chat] model:", model);
 
-  // Convert UIMessage[] to ModelMessage[] for streamText
-  const modelMessages = await convertToModelMessages(messages);
+    // Convert UIMessage[] to ModelMessage[] for streamText
+    const modelMessages = await convertToModelMessages(messages);
 
-  const result = streamText({
-    model: anthropic(model),
-    system: systemPrompt,
-    messages: modelMessages,
-  });
+    const result = streamText({
+      model: anthropic(model),
+      system: systemPrompt,
+      messages: modelMessages,
+    });
 
-  return result.toUIMessageStreamResponse();
+    return result.toUIMessageStreamResponse();
   } catch (err) {
     console.error("[chat]", err);
     return NextResponse.json(

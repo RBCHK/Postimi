@@ -51,9 +51,7 @@ function mapRow(row: {
     changes: row.changes as PlanChange[] | ConfigChange[],
     summary: row.summary,
     analysisId: row.analysisId ?? undefined,
-    metricsSnapshot: row.metricsSnapshot
-      ? (row.metricsSnapshot as MetricsSnapshot)
-      : undefined,
+    metricsSnapshot: row.metricsSnapshot ? (row.metricsSnapshot as MetricsSnapshot) : undefined,
     createdAt: row.createdAt,
   };
 }
@@ -76,10 +74,7 @@ const SECTION_MAP: Record<ConfigChange["section"], keyof ScheduleConfig> = {
 };
 
 /** Apply a list of ConfigChange items to a ScheduleConfig and return the new config */
-function applyConfigChanges(
-  config: ScheduleConfig,
-  changes: ConfigChange[]
-): ScheduleConfig {
+function applyConfigChanges(config: ScheduleConfig, changes: ConfigChange[]): ScheduleConfig {
   // Deep clone to avoid mutation
   const next: ScheduleConfig = {
     replies: { slots: config.replies.slots.map((s) => ({ ...s, days: { ...s.days } })) },
@@ -96,8 +91,13 @@ function applyConfigChanges(
       const existing = next[section].slots.find((s) => s.time === change.time);
       if (!existing) {
         const allDays: Record<DayKey, boolean> = {
-          Mon: false, Tue: false, Wed: false, Thu: false,
-          Fri: false, Sat: false, Sun: false,
+          Mon: false,
+          Tue: false,
+          Wed: false,
+          Thu: false,
+          Fri: false,
+          Sat: false,
+          Sun: false,
         };
         const days = { ...allDays, ...change.days } as Record<DayKey, boolean>;
         next[section].slots.push({ id: randomUUID(), time: change.time, days });
@@ -138,9 +138,7 @@ export async function savePlanProposal(data: {
       summary: data.summary,
       analysisId: data.analysisId ?? null,
       proposalType: data.proposalType ?? "config",
-      metricsSnapshot: data.metricsSnapshot
-        ? (data.metricsSnapshot as object)
-        : undefined,
+      metricsSnapshot: data.metricsSnapshot ? (data.metricsSnapshot as object) : undefined,
     },
   });
   revalidatePath("/");
@@ -158,9 +156,7 @@ export async function getPendingProposal(): Promise<PlanProposalItem | null> {
 }
 
 /** Get accepted proposals from the last N days (for effectiveness review) */
-export async function getAcceptedProposals(
-  days: number
-): Promise<PlanProposalItem[]> {
+export async function getAcceptedProposals(days: number): Promise<PlanProposalItem[]> {
   const since = new Date();
   since.setUTCDate(since.getUTCDate() - days);
   const rows = await prisma.planProposal.findMany({
@@ -177,10 +173,7 @@ export async function getAcceptedProposals(
  *
  * If selectedIndices is provided, only those changes are applied.
  */
-export async function acceptProposal(
-  id: string,
-  selectedIndices?: number[]
-): Promise<void> {
+export async function acceptProposal(id: string, selectedIndices?: number[]): Promise<void> {
   const proposal = await prisma.planProposal.findUnique({ where: { id } });
   if (!proposal || proposal.status !== "PENDING") {
     throw new Error("Proposal not found or already reviewed");
@@ -188,18 +181,13 @@ export async function acceptProposal(
 
   const allChanges = proposal.changes as unknown as (PlanChange | ConfigChange)[];
   const changesToApply = selectedIndices
-    ? selectedIndices
-        .filter((i) => i >= 0 && i < allChanges.length)
-        .map((i) => allChanges[i]!)
+    ? selectedIndices.filter((i) => i >= 0 && i < allChanges.length).map((i) => allChanges[i]!)
     : allChanges;
 
   if (proposal.proposalType !== "schedule") {
     // Config-level: update the recurring ScheduleConfig template
     const currentConfig = (await getScheduleConfig()) ?? emptyScheduleConfig();
-    const newConfig = applyConfigChanges(
-      currentConfig,
-      changesToApply as ConfigChange[]
-    );
+    const newConfig = applyConfigChanges(currentConfig, changesToApply as ConfigChange[]);
     // saveScheduleConfig calls regenerateSlotsFromConfig + revalidatePath("/")
     await saveScheduleConfig(newConfig);
   } else {

@@ -90,9 +90,7 @@ describe("fetchTweetFromText", () => {
       json: async () => ({ html: "<p>Tweet content</p>" }),
     });
 
-    const result = await fetchTweetFromText(
-      "check this out https://x.com/user/status/123456"
-    );
+    const result = await fetchTweetFromText("check this out https://x.com/user/status/123456");
     expect(result).toEqual({ text: "Tweet content" });
   });
 
@@ -102,9 +100,7 @@ describe("fetchTweetFromText", () => {
       json: async () => ({ html: "<p>Old twitter post</p>" }),
     });
 
-    const result = await fetchTweetFromText(
-      "https://twitter.com/user/status/789"
-    );
+    const result = await fetchTweetFromText("https://twitter.com/user/status/789");
     expect(result).toEqual({ text: "Old twitter post" });
   });
 

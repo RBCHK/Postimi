@@ -118,9 +118,7 @@ function computeExpectedGrowth(
   // Partial month remainder to endDate
   const daysLeft = (end.getTime() - current.getTime()) / (1000 * 60 * 60 * 24);
   if (daysLeft > 1) {
-    const partial = Math.round(
-      followers * (1 + monthlyGrowthRate(followers) * (daysLeft / 30))
-    );
+    const partial = Math.round(followers * (1 + monthlyGrowthRate(followers) * (daysLeft / 30)));
     result.push({ date: endDate, expected: partial });
   }
 
@@ -188,9 +186,7 @@ export function GoalProgressChart({ data }: Props) {
 
   const expectedMap = new Map(expectedPoints.map((p) => [p.date, p.expected]));
 
-  const chartEndDate = showFullPath
-    ? (goalDate ?? targetDate)
-    : targetDate;
+  const chartEndDate = showFullPath ? (goalDate ?? targetDate) : targetDate;
 
   // Merge all dates
   const allDates = Array.from(
@@ -217,7 +213,11 @@ export function GoalProgressChart({ data }: Props) {
 
   // Format goal date for display
   const goalDateLabel = goalDate
-    ? new Date(goalDate).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" })
+    ? new Date(goalDate).toLocaleDateString("en-US", {
+        month: "short",
+        year: "numeric",
+        timeZone: "UTC",
+      })
     : null;
 
   return (
@@ -237,7 +237,8 @@ export function GoalProgressChart({ data }: Props) {
 
         {showFullPath && goalDateLabel && (
           <p className="mb-2 text-[11px] text-emerald-600 dark:text-emerald-400">
-            Expected to reach {targetFollowers.toLocaleString()} by <strong>{goalDateLabel}</strong> at benchmark rates
+            Expected to reach {targetFollowers.toLocaleString()} by <strong>{goalDateLabel}</strong>{" "}
+            at benchmark rates
           </p>
         )}
 
@@ -263,7 +264,12 @@ export function GoalProgressChart({ data }: Props) {
               stroke="#f59e0b"
               strokeDasharray="4 4"
               strokeOpacity={0.5}
-              label={{ value: targetFollowers.toLocaleString(), position: "right", fontSize: 10, fill: "#f59e0b" }}
+              label={{
+                value: targetFollowers.toLocaleString(),
+                position: "right",
+                fontSize: 10,
+                fill: "#f59e0b",
+              }}
             />
             {/* Goal deadline marker */}
             <ReferenceLine

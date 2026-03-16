@@ -14,12 +14,14 @@ If $ARGUMENTS is provided — use it as the rule description instead.
 ## Filter — before doing anything, ask yourself:
 
 Add to CLAUDE.md ONLY if ALL of these are true:
+
 - I made the **same type of mistake** that could easily happen again in a different context
 - The rule is **actionable** ("always do X" / "never do Y") — not just an explanation of what happened
 - It's **not already obvious** from the code, framework docs, or existing CLAUDE.md rules
 - It would have **prevented the mistake** if it existed before
 
 Do NOT add if:
+
 - It was a one-off bug or typo
 - The fix is visible in the code itself
 - It's a domain/business logic decision, not a coding pattern
@@ -34,18 +36,21 @@ Do NOT add if:
 ## Step 2 — If universal: also update ~/.claude/CLAUDE.template.md
 
 Ask yourself: "Could this mistake happen in any project, regardless of stack?"
+
 - Yes → also update `~/.claude/CLAUDE.template.md` with the same steps (read → place → dedup → edit)
 - No (project-specific: Prisma, Next.js, PWA, etc.) → skip
 
 ## What counts as universal
 
 Universal (goes to template):
+
 - Error handling patterns
 - Code quality / TypeScript discipline
 - Testing habits
 - Workflow process rules
 
 Project-specific (CLAUDE.md only):
+
 - Framework-specific conventions (Next.js, Prisma, etc.)
 - Mobile/PWA rules
 - Project architecture decisions

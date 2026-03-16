@@ -23,7 +23,8 @@ export function PlanProposalBanner({ proposal }: PlanProposalBannerProps) {
             <p className="text-sm">
               Стратег предлагает изменить план{" "}
               <span className="text-muted-foreground">
-                ({proposal.changes.length} {proposal.changes.length === 1 ? "изменение" : "изменений"})
+                ({proposal.changes.length}{" "}
+                {proposal.changes.length === 1 ? "изменение" : "изменений"})
               </span>
             </p>
             <Button size="sm" onClick={() => setModalOpen(true)}>
@@ -33,11 +34,7 @@ export function PlanProposalBanner({ proposal }: PlanProposalBannerProps) {
         </CardContent>
       </Card>
 
-      <PlanProposalModal
-        proposal={proposal}
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-      />
+      <PlanProposalModal proposal={proposal} open={modalOpen} onOpenChange={setModalOpen} />
     </>
   );
 }

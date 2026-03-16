@@ -3,9 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 function getAppPassword(): string {
   const pw = process.env.APP_PASSWORD;
   if (!pw) {
-    throw new Error(
-      "APP_PASSWORD environment variable is not set. Add it to .env.local",
-    );
+    throw new Error("APP_PASSWORD environment variable is not set. Add it to .env.local");
   }
   return pw;
 }
@@ -15,10 +13,7 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json(
-      { error: "Invalid JSON body" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const APP_PASSWORD = getAppPassword();

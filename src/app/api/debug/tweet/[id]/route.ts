@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { fetchTweetMetrics } from "@/lib/x-api";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (req.cookies.get("auth")?.value !== "1") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

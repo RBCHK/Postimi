@@ -5,9 +5,9 @@
  * Single-user setup: credentials stored in .env.local
  */
 
-import crypto from 'crypto';
+import crypto from "crypto";
 
-const BASE_URL = 'https://api.twitter.com/2';
+const BASE_URL = "https://api.twitter.com/2";
 
 export interface XTweetMetrics {
   postId: string;
@@ -40,33 +40,33 @@ function generateOAuthSignature(
   const paramString = Object.entries(allParams)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-    .join('&');
+    .join("&");
 
   const baseString = [
     method.toUpperCase(),
     encodeURIComponent(url),
     encodeURIComponent(paramString),
-  ].join('&');
+  ].join("&");
 
   const signingKey = [
-    encodeURIComponent(process.env.X_CONSUMER_KEY_SECRET ?? ''),
-    encodeURIComponent(process.env.X_ACCESS_TOKEN_SECRET ?? ''),
-  ].join('&');
+    encodeURIComponent(process.env.X_CONSUMER_KEY_SECRET ?? ""),
+    encodeURIComponent(process.env.X_ACCESS_TOKEN_SECRET ?? ""),
+  ].join("&");
 
-  return crypto.createHmac('sha1', signingKey).update(baseString).digest('base64');
+  return crypto.createHmac("sha1", signingKey).update(baseString).digest("base64");
 }
 
 function buildAuthHeader(method: string, url: string, params: Record<string, string>): string {
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const nonce = crypto.randomBytes(16).toString('hex');
+  const nonce = crypto.randomBytes(16).toString("hex");
 
   const oauthParams: Record<string, string> = {
-    oauth_consumer_key: process.env.X_CONSUMER_KEY ?? '',
+    oauth_consumer_key: process.env.X_CONSUMER_KEY ?? "",
     oauth_nonce: nonce,
-    oauth_signature_method: 'HMAC-SHA1',
+    oauth_signature_method: "HMAC-SHA1",
     oauth_timestamp: timestamp,
-    oauth_token: process.env.X_ACCESS_TOKEN ?? '',
-    oauth_version: '1.0',
+    oauth_token: process.env.X_ACCESS_TOKEN ?? "",
+    oauth_version: "1.0",
   };
 
   const signature = generateOAuthSignature(method, url, params, oauthParams);
@@ -74,25 +74,22 @@ function buildAuthHeader(method: string, url: string, params: Record<string, str
   const headerParts = { ...oauthParams, oauth_signature: signature };
   const headerStr = Object.entries(headerParts)
     .map(([k, v]) => `${k}="${encodeURIComponent(v)}"`)
-    .join(', ');
+    .join(", ");
 
   return `OAuth ${headerStr}`;
 }
 
-async function xFetch<T>(
-  endpoint: string,
-  params: Record<string, string>
-): Promise<T> {
+async function xFetch<T>(endpoint: string, params: Record<string, string>): Promise<T> {
   const url = `${BASE_URL}${endpoint}`;
   const qs = new URLSearchParams(params).toString();
-  const authHeader = buildAuthHeader('GET', url, params);
+  const authHeader = buildAuthHeader("GET", url, params);
 
   const res = await fetch(`${url}?${qs}`, {
     headers: {
       Authorization: authHeader,
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
-    cache: 'no-store',
+    cache: "no-store",
   });
 
   if (!res.ok) {
@@ -105,7 +102,9 @@ async function xFetch<T>(
 
 /** Fetch current user's ID and username */
 export async function fetchCurrentUser(): Promise<{ id: string; username: string }> {
-  const data = await xFetch<{ data: { id: string; username: string } }>('/users/me', { 'user.fields': 'username' });
+  const data = await xFetch<{ data: { id: string; username: string } }>("/users/me", {
+    "user.fields": "username",
+  });
   return { id: data.data.id, username: data.data.username };
 }
 
@@ -119,7 +118,7 @@ export async function fetchCurrentUserId(): Promise<string> {
 export async function fetchUserData(): Promise<XUserData> {
   const data = await xFetch<{
     data: { public_metrics: { followers_count: number; following_count: number } };
-  }>('/users/me', { 'user.fields': 'public_metrics' });
+  }>("/users/me", { "user.fields": "public_metrics" });
 
   return {
     followersCount: data.data.public_metrics.followers_count,
@@ -129,13 +128,10 @@ export async function fetchUserData(): Promise<XUserData> {
 
 // --- OAuth 2.0 User Token support ---
 
-async function xFetchOAuth2<T>(
-  endpoint: string,
-  params: Record<string, string>
-): Promise<T> {
+async function xFetchOAuth2<T>(endpoint: string, params: Record<string, string>): Promise<T> {
   const token = process.env.X_OAUTH2_ACCESS_TOKEN;
   if (!token) {
-    throw new Error('X_OAUTH2_ACCESS_TOKEN is not set. Run the OAuth 2.0 PKCE flow first.');
+    throw new Error("X_OAUTH2_ACCESS_TOKEN is not set. Run the OAuth 2.0 PKCE flow first.");
   }
 
   const url = `${BASE_URL}${endpoint}`;
@@ -144,9 +140,9 @@ async function xFetchOAuth2<T>(
   const res = await fetch(`${url}?${qs}`, {
     headers: {
       Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
-    cache: 'no-store',
+    cache: "no-store",
   });
 
   if (!res.ok) {
@@ -166,7 +162,7 @@ export async function fetchUserTweets(
 ): Promise<XTweetMetrics[]> {
   const params: Record<string, string> = {
     max_results: Math.min(maxResults, 100).toString(),
-    'tweet.fields': 'created_at,public_metrics,non_public_metrics,organic_metrics',
+    "tweet.fields": "created_at,public_metrics,non_public_metrics,organic_metrics",
   };
   if (sinceId) params.since_id = sinceId;
 
@@ -236,7 +232,7 @@ export async function fetchUserTweetsPaginated(
   do {
     const params: Record<string, string> = {
       max_results: perPage.toString(),
-      'tweet.fields': 'created_at,public_metrics,non_public_metrics,organic_metrics',
+      "tweet.fields": "created_at,public_metrics,non_public_metrics,organic_metrics",
     };
     if (opts.sinceId) params.since_id = opts.sinceId;
     if (opts.startTime) params.start_time = opts.startTime;
@@ -308,10 +304,9 @@ export async function fetchUserTweetsPaginated(
 /** Fetch a single tweet's full text by ID (OAuth 1.0a) */
 export async function fetchTweetById(tweetId: string): Promise<string | null> {
   try {
-    const data = await xFetch<{ data?: { text: string } }>(
-      `/tweets/${tweetId}`,
-      { 'tweet.fields': 'text' }
-    );
+    const data = await xFetch<{ data?: { text: string } }>(`/tweets/${tweetId}`, {
+      "tweet.fields": "text",
+    });
     return data.data?.text ?? null;
   } catch {
     return null;
@@ -344,10 +339,9 @@ export interface XTweetRawResponse {
 /** Fetch a single tweet's full metrics by ID (OAuth 1.0a) */
 export async function fetchTweetMetrics(tweetId: string): Promise<XTweetRawResponse | null> {
   try {
-    const data = await xFetch<{ data?: XTweetRawResponse }>(
-      `/tweets/${tweetId}`,
-      { 'tweet.fields': 'created_at,public_metrics,non_public_metrics,organic_metrics' }
-    );
+    const data = await xFetch<{ data?: XTweetRawResponse }>(`/tweets/${tweetId}`, {
+      "tweet.fields": "created_at,public_metrics,non_public_metrics,organic_metrics",
+    });
     return data.data ?? null;
   } catch (err) {
     throw err;
@@ -370,8 +364,8 @@ export async function fetchPersonalizedTrends(): Promise<
       category?: string;
       trending_since?: string;
     }>;
-  }>('/users/personalized_trends', {
-    'personalized_trend.fields': 'category,post_count,trend_name,trending_since',
+  }>("/users/personalized_trends", {
+    "personalized_trend.fields": "category,post_count,trend_name,trending_since",
   });
 
   if (!data.data?.length) return [];

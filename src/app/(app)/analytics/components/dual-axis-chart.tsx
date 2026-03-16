@@ -33,11 +33,11 @@ type MetricKey = "impressions" | "engagements" | "newFollows" | "profileVisits" 
 type ChartType = "line" | "bar";
 
 const METRIC_CONFIG: Record<MetricKey, { label: string; color: string }> = {
-  impressions:   { label: "Impressions",    color: "#3b82f6" },
-  engagements:   { label: "Engagements",    color: "#f59e0b" },
-  newFollows:    { label: "New Follows",    color: "#22c55e" },
+  impressions: { label: "Impressions", color: "#3b82f6" },
+  engagements: { label: "Engagements", color: "#f59e0b" },
+  newFollows: { label: "New Follows", color: "#22c55e" },
   profileVisits: { label: "Profile Visits", color: "#a855f7" },
-  unfollows:     { label: "Unfollows",      color: "#ef4444" },
+  unfollows: { label: "Unfollows", color: "#ef4444" },
 };
 
 const ALL_METRICS = Object.keys(METRIC_CONFIG) as MetricKey[];
@@ -52,7 +52,11 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   // Parse as UTC midnight — dates are stored as UTC calendar days
   const date = new Date(`${label}T00:00:00.000Z`);
   const dayName = date.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
-  const monthDay = date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  const monthDay = date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
   const dateStr = `${dayName}, ${monthDay}`;
 
   return (
@@ -157,7 +161,10 @@ export function DualAxisChart({ data }: Props) {
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={320}>
-            <ComposedChart data={data} margin={{ top: 4, right: dualAxis ? 16 : 0, left: 0, bottom: 0 }}>
+            <ComposedChart
+              data={data}
+              margin={{ top: 4, right: dualAxis ? 16 : 0, left: 0, bottom: 0 }}
+            >
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
               <XAxis
                 dataKey="date"
@@ -168,7 +175,7 @@ export function DualAxisChart({ data }: Props) {
                 yAxisId="left"
                 tick={{ fontSize: 11 }}
                 width={55}
-                tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v)}
+                tickFormatter={(v: number) => (v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v))}
                 stroke={cfg1.color}
               />
               {dualAxis && (
@@ -177,7 +184,9 @@ export function DualAxisChart({ data }: Props) {
                   orientation="right"
                   tick={{ fontSize: 11 }}
                   width={40}
-                  tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v)}
+                  tickFormatter={(v: number) =>
+                    v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v)
+                  }
                   stroke={cfg2.color}
                 />
               )}
@@ -207,8 +216,8 @@ export function DualAxisChart({ data }: Props) {
               )}
 
               {/* Metric 2 (only if different) */}
-              {dualAxis && (
-                chartType === "line" ? (
+              {dualAxis &&
+                (chartType === "line" ? (
                   <Line
                     yAxisId="right"
                     type="monotone"
@@ -228,8 +237,7 @@ export function DualAxisChart({ data }: Props) {
                     fillOpacity={0.55}
                     radius={[2, 2, 0, 0]}
                   />
-                )
-              )}
+                ))}
             </ComposedChart>
           </ResponsiveContainer>
         )}

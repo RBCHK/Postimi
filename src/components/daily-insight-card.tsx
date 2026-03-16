@@ -21,9 +21,7 @@ function getHourIndex(count: number): number {
 export function DailyInsightCard({ insights, date }: DailyInsightCardProps) {
   const hasInsights = insights && insights.length > 0;
 
-  const [index, setIndex] = useState(() =>
-    hasInsights ? getHourIndex(insights.length) : 0
-  );
+  const [index, setIndex] = useState(() => (hasInsights ? getHourIndex(insights.length) : 0));
 
   useEffect(() => {
     if (!hasInsights) return;
@@ -45,9 +43,7 @@ export function DailyInsightCard({ insights, date }: DailyInsightCardProps) {
         <Sparkles className="size-4 shrink-0 mt-0.5 text-muted-foreground" />
         <div className="min-w-0">
           <p className="text-sm leading-relaxed">{displayText}</p>
-          {date && hasInsights && (
-            <p className="mt-1.5 text-xs text-muted-foreground">{date}</p>
-          )}
+          {date && hasInsights && <p className="mt-1.5 text-xs text-muted-foreground">{date}</p>}
         </div>
       </CardContent>
     </Card>

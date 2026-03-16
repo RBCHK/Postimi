@@ -9,8 +9,10 @@ const sizeClasses = {
   sm: "h-6 w-6 rounded-md [&_svg]:h-3.5 [&_svg]:w-3.5",
 } as const;
 
-export interface SendMessageButtonProps
-  extends Omit<React.ComponentProps<typeof Button>, "size" | "children"> {
+export interface SendMessageButtonProps extends Omit<
+  React.ComponentProps<typeof Button>,
+  "size" | "children"
+> {
   size?: keyof typeof sizeClasses;
 }
 

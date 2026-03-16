@@ -25,7 +25,8 @@ export function AnalyticsView() {
           <h1 className="text-lg font-semibold">Analytics</h1>
           {dateRange && (
             <p className="text-xs text-muted-foreground">
-              {dateRange.from.toISOString().split("T")[0]} — {dateRange.to.toISOString().split("T")[0]}
+              {dateRange.from.toISOString().split("T")[0]} —{" "}
+              {dateRange.to.toISOString().split("T")[0]}
             </p>
           )}
         </div>
@@ -69,10 +70,7 @@ export function AnalyticsView() {
             </TabsContent>
 
             <TabsContent value="content" className="mt-4">
-              <TopContentTable
-                topPosts={summary.topPosts}
-                topReplies={summary.topReplies}
-              />
+              <TopContentTable topPosts={summary.topPosts} topReplies={summary.topReplies} />
             </TabsContent>
           </Tabs>
         </>

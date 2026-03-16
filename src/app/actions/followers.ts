@@ -48,9 +48,7 @@ export async function saveFollowersSnapshot(data: {
 }
 
 /** Get followers history for the last N days */
-export async function getFollowersHistory(
-  days: number = 30
-): Promise<FollowersSnapshotItem[]> {
+export async function getFollowersHistory(days: number = 30): Promise<FollowersSnapshotItem[]> {
   const since = new Date();
   since.setUTCHours(0, 0, 0, 0);
   since.setUTCDate(since.getUTCDate() - days);

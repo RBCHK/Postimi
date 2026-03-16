@@ -107,7 +107,7 @@ export function TextSelectionPopup() {
     hidePopup();
 
     try {
-      const slotType = contentType === "Reply" ? "REPLY" as const : "POST" as const;
+      const slotType = contentType === "Reply" ? ("REPLY" as const) : ("POST" as const);
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const result = await addToQueue(selectedText, conversationId, slotType, timezone);
       if (result) {

@@ -35,7 +35,9 @@ export function GoalTrackingCard({ goalData, hasGoalConfig }: GoalTrackingCardPr
       <Card className="mx-auto w-full max-w-chat bg-transparent border-0 shadow-none">
         <CardContent className="flex items-center gap-3 p-0">
           <Target className="size-4 shrink-0 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Collecting growth data… (at least 1 day needed)</p>
+          <p className="text-sm text-muted-foreground">
+            Collecting growth data… (at least 1 day needed)
+          </p>
         </CardContent>
       </Card>
     );
@@ -63,14 +65,11 @@ export function GoalTrackingCard({ goalData, hasGoalConfig }: GoalTrackingCardPr
   const statusColor = goalData.onTrack
     ? "text-green-600 dark:text-green-400"
     : Math.abs(goalData.deviationDays) < 30
-    ? "text-yellow-600 dark:text-yellow-400"
-    : "text-red-600 dark:text-red-400";
+      ? "text-yellow-600 dark:text-yellow-400"
+      : "text-red-600 dark:text-red-400";
 
-  const DeviationIcon = goalData.deviationDays > 0
-    ? TrendingUp
-    : goalData.deviationDays < 0
-    ? TrendingDown
-    : Minus;
+  const DeviationIcon =
+    goalData.deviationDays > 0 ? TrendingUp : goalData.deviationDays < 0 ? TrendingDown : Minus;
 
   return (
     <Card className="mx-auto w-full max-w-chat bg-transparent border-0 shadow-none">
@@ -79,7 +78,8 @@ export function GoalTrackingCard({ goalData, hasGoalConfig }: GoalTrackingCardPr
           <div className="flex items-center gap-2">
             <Target className="size-4 shrink-0 text-muted-foreground" />
             <span className="text-sm font-medium">
-              {goalData.currentFollowers.toLocaleString()} / {goalData.targetFollowers.toLocaleString()} followers
+              {goalData.currentFollowers.toLocaleString()} /{" "}
+              {goalData.targetFollowers.toLocaleString()} followers
             </span>
           </div>
           <span className="text-xs text-muted-foreground">{pct}%</span>

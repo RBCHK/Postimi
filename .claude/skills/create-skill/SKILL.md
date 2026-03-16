@@ -21,6 +21,7 @@ Create a new skill for the task described in "$ARGUMENTS".
    - Write a clear `description` with trigger phrases so Claude auto-detects when to use it
 
 3. **SKILL.md structure**:
+
 ```
 ---
 name: skill-name

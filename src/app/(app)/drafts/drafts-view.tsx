@@ -22,9 +22,7 @@ export function DraftsView() {
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const fetchSeqRef = useRef(0);
 
-  const activeDraftId = pathname.startsWith("/c/")
-    ? pathname.split("/")[2]
-    : null;
+  const activeDraftId = pathname.startsWith("/c/") ? pathname.split("/")[2] : null;
 
   function fetchAndSetDrafts() {
     const seq = ++fetchSeqRef.current;
@@ -71,9 +69,7 @@ export function DraftsView() {
     try {
       await updateConversation(id, { pinned });
       fetchSeqRef.current++;
-      setDrafts((prev) =>
-        prev.map((d) => (d.id === id ? { ...d, pinned } : d))
-      );
+      setDrafts((prev) => prev.map((d) => (d.id === id ? { ...d, pinned } : d)));
     } catch {
       toast.error(pinned ? "Failed to pin draft" : "Failed to unpin draft");
     }
@@ -96,12 +92,7 @@ export function DraftsView() {
     <PageContainer className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Drafts</h1>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 gap-1.5"
-          onClick={handleNewDraft}
-        >
+        <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={handleNewDraft}>
           <FilePlus className="h-4 w-4" />
           New Draft
         </Button>
@@ -156,9 +147,7 @@ export function DraftsView() {
         ))}
 
         {drafts.length === 0 && (
-          <p className="py-12 text-center text-sm text-muted-foreground">
-            No drafts yet
-          </p>
+          <p className="py-12 text-center text-sm text-muted-foreground">No drafts yet</p>
         )}
       </div>
     </PageContainer>

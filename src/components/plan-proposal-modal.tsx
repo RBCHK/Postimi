@@ -67,9 +67,7 @@ export function PlanProposalModal({ proposal, open, onOpenChange }: PlanProposal
         </DialogHeader>
 
         {/* Summary */}
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {proposal.summary}
-        </p>
+        <p className="text-sm text-muted-foreground leading-relaxed">{proposal.summary}</p>
 
         {/* Changes list */}
         <div className="flex-1 overflow-y-auto space-y-2 py-1">
@@ -131,9 +129,7 @@ function ChangeRow({
 }) {
   const isAdd = change.action === "add";
   const Icon = isAdd ? PlusCircle : MinusCircle;
-  const iconClass = isAdd
-    ? "text-green-600 dark:text-green-400"
-    : "text-red-600 dark:text-red-400";
+  const iconClass = isAdd ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400";
 
   const isConfig = "section" in change;
 
@@ -152,15 +148,21 @@ function ChangeRow({
       <div className="min-w-0 flex-1 space-y-1">
         {isConfig ? (
           <div className="flex flex-wrap items-center gap-1.5">
-            <Badge variant="outline" className="text-xs capitalize">{(change as ConfigChange).section}</Badge>
+            <Badge variant="outline" className="text-xs capitalize">
+              {(change as ConfigChange).section}
+            </Badge>
             <span className="text-sm font-medium">{time24to12((change as ConfigChange).time)}</span>
-            <span className="text-sm text-muted-foreground">{formatDays((change as ConfigChange).days)}</span>
+            <span className="text-sm text-muted-foreground">
+              {formatDays((change as ConfigChange).days)}
+            </span>
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-sm font-medium">{(change as PlanChange).date}</span>
             <span className="text-sm text-muted-foreground">{(change as PlanChange).timeSlot}</span>
-            <Badge variant="outline" className="text-xs">{(change as PlanChange).slotType}</Badge>
+            <Badge variant="outline" className="text-xs">
+              {(change as PlanChange).slotType}
+            </Badge>
           </div>
         )}
         <p className="text-xs text-muted-foreground">{change.reason}</p>

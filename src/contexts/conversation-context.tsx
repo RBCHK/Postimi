@@ -84,9 +84,7 @@ export function ConversationProvider({
   children: ReactNode;
 }) {
   const [notes, setNotes] = useState<Note[]>(initialData?.notes ?? []);
-  const [contentType, setContentType] = useState<ContentType>(
-    initialData?.contentType ?? "Reply"
-  );
+  const [contentType, setContentType] = useState<ContentType>(initialData?.contentType ?? "Reply");
   const [input, setInput] = useState("");
   const [isFetchingTweet, setIsFetchingTweet] = useState(false);
   const router = useRouter();
@@ -121,8 +119,7 @@ export function ConversationProvider({
   // For auto-start (1 user message, no reply yet), pass empty initialMessages so
   // aiSendMessage can add it once. Otherwise useChat would show it twice.
   const isAutoStart =
-    (initialData?.messages ?? []).length === 1 &&
-    initialData?.messages?.[0]?.role === "user";
+    (initialData?.messages ?? []).length === 1 && initialData?.messages?.[0]?.role === "user";
 
   const initialMessages: UIMessage[] = isAutoStart
     ? []
@@ -133,7 +130,12 @@ export function ConversationProvider({
         metadata: undefined,
       }));
 
-  const { messages: aiMessages, sendMessage: aiSendMessage, status, error } = useChat({
+  const {
+    messages: aiMessages,
+    sendMessage: aiSendMessage,
+    status,
+    error,
+  } = useChat({
     transport,
     messages: initialMessages,
     onFinish: async ({ message }: { message: UIMessage }) => {
@@ -151,8 +153,7 @@ export function ConversationProvider({
   useEffect(() => {
     const nts = (initialData?.notes ?? []).map((n) => ({
       ...n,
-      createdAt:
-        n.createdAt instanceof Date ? n.createdAt : new Date(n.createdAt as string),
+      createdAt: n.createdAt instanceof Date ? n.createdAt : new Date(n.createdAt as string),
     }));
     setNotes(nts);
     setContentType(initialData?.contentType ?? "Reply");

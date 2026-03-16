@@ -5,9 +5,7 @@ export function extractTweetUrl(text: string): string | null {
   return match ? match[0] : null;
 }
 
-export async function fetchTweetText(
-  url: string
-): Promise<{ text: string } | { error: string }> {
+export async function fetchTweetText(url: string): Promise<{ text: string } | { error: string }> {
   try {
     const oEmbedUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}&omit_script=true`;
     const res = await fetch(oEmbedUrl, { next: { revalidate: 3600 } });
@@ -39,9 +37,7 @@ export async function fetchTweetText(
   }
 }
 
-export async function fetchTweetFromText(
-  text: string
-): Promise<{ text: string } | null> {
+export async function fetchTweetFromText(text: string): Promise<{ text: string } | null> {
   const url = extractTweetUrl(text);
   if (!url) return null;
   const result = await fetchTweetText(url);

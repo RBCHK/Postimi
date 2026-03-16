@@ -34,7 +34,9 @@ export function ScheduleView() {
         .then(setSlots)
         .catch(() => setSlots([]));
     } else {
-      getScheduledSlots(localDateStr).then(setSlots).catch(() => setSlots([]));
+      getScheduledSlots(localDateStr)
+        .then(setSlots)
+        .catch(() => setSlots([]));
     }
   }, []);
 

@@ -3,7 +3,12 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 import type { AnalyticsSummary, ContentCsvRow, GoalChartData, OverviewCsvRow } from "@/lib/types";
 import { detectCsvType, parseContentCsvRows, parseOverviewCsvRows } from "@/lib/csv-parser";
-import { importContentData, importDailyStats, getAnalyticsSummary, getAnalyticsDateRange } from "@/app/actions/analytics";
+import {
+  importContentData,
+  importDailyStats,
+  getAnalyticsSummary,
+  getAnalyticsDateRange,
+} from "@/app/actions/analytics";
 
 export type PeriodPreset = "7D" | "2W" | "1M" | "3M" | "1Y" | "ALL";
 
@@ -63,7 +68,12 @@ interface Props {
   initialGoalChartData: GoalChartData | null;
 }
 
-export function AnalyticsProvider({ children, initialDateRange, initialSummary, initialGoalChartData }: Props) {
+export function AnalyticsProvider({
+  children,
+  initialDateRange,
+  initialSummary,
+  initialGoalChartData,
+}: Props) {
   const [fullDateRange, setFullDateRange] = useState(initialDateRange);
   const [dateRange, setDateRange] = useState(initialDateRange);
   const [activePreset, setActivePreset] = useState<PeriodPreset>("ALL");
@@ -109,27 +119,30 @@ export function AnalyticsProvider({ children, initialDateRange, initialSummary, 
     }
   }, [dateRange]);
 
-  const setPreset = useCallback(async (preset: PeriodPreset) => {
-    if (!fullDateRange) return;
-    setActivePreset(preset);
-    setIsLoading(true);
-    try {
-      let from: Date;
-      const to = fullDateRange.to;
-      if (preset === "ALL") {
-        from = fullDateRange.from;
-      } else {
-        const days = PRESET_DAYS[preset];
-        from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+  const setPreset = useCallback(
+    async (preset: PeriodPreset) => {
+      if (!fullDateRange) return;
+      setActivePreset(preset);
+      setIsLoading(true);
+      try {
+        let from: Date;
+        const to = fullDateRange.to;
+        if (preset === "ALL") {
+          from = fullDateRange.from;
+        } else {
+          const days = PRESET_DAYS[preset];
+          from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+        }
+        const range = { from, to };
+        setDateRange(range);
+        const data = await getAnalyticsSummary(range.from, range.to);
+        setSummary(data);
+      } finally {
+        setIsLoading(false);
       }
-      const range = { from, to };
-      setDateRange(range);
-      const data = await getAnalyticsSummary(range.from, range.to);
-      setSummary(data);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fullDateRange]);
+    },
+    [fullDateRange]
+  );
 
   const runImport = useCallback(async (): Promise<boolean> => {
     if (!contentCsv && !overviewCsv) return false;

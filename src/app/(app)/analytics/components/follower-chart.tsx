@@ -1,7 +1,15 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from "recharts";
 import type { AnalyticsSummary } from "@/lib/types";
 
 interface Props {
@@ -20,7 +28,11 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   // Parse as UTC midnight — dates are stored as UTC calendar days
   const date = new Date(`${label}T00:00:00.000Z`);
   const dayName = date.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
-  const monthDay = date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  const monthDay = date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
   const dateStr = `${dayName}, ${monthDay}`;
 
   return (
@@ -64,11 +76,7 @@ export function FollowerChart({ data }: Props) {
           <ResponsiveContainer width="100%" height={240}>
             <AreaChart data={data}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 11 }}
-                tickFormatter={(v) => v.slice(5)}
-              />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
               <YAxis tick={{ fontSize: 11 }} width={30} />
               <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(0,0,0,0.1)" }} />
               <Area

@@ -40,13 +40,23 @@ export function StatsCards({ summary }: Props) {
       />
       <StatCard
         label="Net Followers"
-        value={summary.netFollowerGrowth >= 0 ? `+${summary.netFollowerGrowth}` : summary.netFollowerGrowth}
+        value={
+          summary.netFollowerGrowth >= 0
+            ? `+${summary.netFollowerGrowth}`
+            : summary.netFollowerGrowth
+        }
         sub={`+${summary.totalNewFollows} / -${summary.totalUnfollows}`}
       />
       <StatCard
         label="Engagement Rate"
         value={`${summary.avgEngagementRate}%`}
-        sub={summary.avgEngagementRate >= 2.5 ? "strong" : summary.avgEngagementRate >= 1 ? "average" : "low"}
+        sub={
+          summary.avgEngagementRate >= 2.5
+            ? "strong"
+            : summary.avgEngagementRate >= 1
+              ? "average"
+              : "low"
+        }
       />
       <StatCard
         label="Profile Visits / Day"

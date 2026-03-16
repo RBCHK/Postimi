@@ -15,28 +15,33 @@ You are a Code Reviewer for the xREBA project. You review for correctness, secur
 ## What to Check — xREBA Specific
 
 ### Server Actions
+
 - Is user input validated before hitting Prisma?
 - Does the action return typed `{ success, data/error }` — not raw throws?
 - Are Prisma errors caught server-side and not exposed to client?
 - (Future) Is there an auth check at the top?
 
 ### Prisma / Database
+
 - Any N+1 patterns? (loop with DB call inside → use `include`/`select`)
 - Enum mapping used correctly? (`UPPER_CASE` in schema, `PascalCase` in app)
 - Multi-step writes wrapped in `prisma.$transaction`?
 - Import from `src/generated/prisma/` not `@prisma/client`?
 
 ### AI SDK / Prompts
+
 - User content sanitized before inserting into prompts?
 - System prompts in `src/prompts/` not inline?
 - Streaming response correctly using `result.toDataStreamResponse()`?
 
 ### UI Components
+
 - Mobile rules applied? (safe areas, touch targets, hover states)
 - No hardcoded colors — design tokens only?
 - Accessible? (ARIA labels, semantic HTML, keyboard navigable)
 
 ### TypeScript
+
 - No `any` types?
 - No `// @ts-ignore` or `// eslint-disable`?
 - Proper error typing?

@@ -1,16 +1,15 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  useRef,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage, type TextUIPart, type DynamicToolUIPart } from "ai";
-import type { ConfigChange, CsvSummary, ResearchNoteItem, StrategyAnalysisItem, XProfile } from "@/lib/types";
+import type {
+  ConfigChange,
+  CsvSummary,
+  ResearchNoteItem,
+  StrategyAnalysisItem,
+  XProfile,
+} from "@/lib/types";
 import { parseCsv } from "@/lib/csv-parser";
 import { saveAnalysis } from "@/app/actions/strategist";
 import { savePlanProposal } from "@/app/actions/plan-proposal";
@@ -68,9 +67,7 @@ export function StrategistProvider({
   initialResearchNotes,
 }: StrategistProviderProps) {
   const [analyses, setAnalyses] = useState<StrategyAnalysisItem[]>(initialAnalyses);
-  const [selectedId, setSelectedId] = useState<string | null>(
-    initialAnalyses[0]?.id ?? null
-  );
+  const [selectedId, setSelectedId] = useState<string | null>(initialAnalyses[0]?.id ?? null);
   const [csvSummary, setCsvSummary] = useState<CsvSummary | null>(null);
   const [csvError, setCsvError] = useState<string | null>(null);
   const [savedSearchQueries, setSavedSearchQueries] = useState<string[]>([]);

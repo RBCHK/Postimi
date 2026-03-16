@@ -3,11 +3,7 @@ import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { AppHeader } from "@/components/app-header";
 import { AppFooter } from "@/components/app-footer";
 
-export default function AppLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-dvh flex-col bg-background">
       <AppHeader />

@@ -28,9 +28,7 @@ export async function saveResearchNote(data: {
   };
 }
 
-export async function getRecentResearchNotes(
-  limit = 3
-): Promise<ResearchNoteItem[]> {
+export async function getRecentResearchNotes(limit = 3): Promise<ResearchNoteItem[]> {
   const rows = await prisma.researchNote.findMany({
     orderBy: { createdAt: "desc" },
     take: limit,

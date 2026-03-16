@@ -51,7 +51,7 @@ export function CsvUpload({ value, onChange }: CsvUploadProps) {
       <Textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={"Post id,Date,Post text,...\n2027324435...,\"Fri, Feb 27, 2026\",..."}
+        placeholder={'Post id,Date,Post text,...\n2027324435...,"Fri, Feb 27, 2026",...'}
         className="min-h-[140px] font-mono text-xs resize-none"
         spellCheck={false}
       />

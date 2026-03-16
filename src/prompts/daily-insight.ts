@@ -63,7 +63,9 @@ export function buildDailyInsightUserMessage(
     trends && trends.length > 0
       ? `## Trending Today on X\n${trends
           .slice(0, 8)
-          .map((t) => `- ${t.trendName}${t.category ? ` [${t.category}]` : ""} — ${t.postCount} posts`)
+          .map(
+            (t) => `- ${t.trendName}${t.category ? ` [${t.category}]` : ""} — ${t.postCount} posts`
+          )
           .join("\n")}`
       : "";
 

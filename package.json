@@ -8,6 +8,8 @@
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:push": "prisma db push",
@@ -18,7 +20,11 @@
   },
   "lint-staged": {
     "*.{ts,tsx,mjs}": [
-      "eslint --fix --no-warn-ignored"
+      "eslint --fix --no-warn-ignored",
+      "prettier --write"
+    ],
+    "*.{json,css,md}": [
+      "prettier --write"
     ]
   },
   "prisma": {
@@ -55,8 +61,10 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
+    "prettier": "^3.8.1",
     "shadcn": "^3.8.5",
     "tailwindcss": "^4",
     "tsx": "^4",

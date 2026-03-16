@@ -1,4 +1,11 @@
-import type { CsvRow, CsvSummary, CsvTopPost, ContentCsvRow, OverviewCsvRow, XPostType } from "./types";
+import type {
+  CsvRow,
+  CsvSummary,
+  CsvTopPost,
+  ContentCsvRow,
+  OverviewCsvRow,
+  XPostType,
+} from "./types";
 
 function parseNumber(value: string): number {
   const n = parseInt(value.replace(/,/g, "").trim(), 10);
@@ -85,9 +92,7 @@ export function parseCsv(raw: string): CsvSummary {
   const totalNewFollows = rows.reduce((s, r) => s + r.newFollows, 0);
   const totalEngagements = rows.reduce((s, r) => s + r.engagements, 0);
   const avgEngagementRate =
-    totalImpressions > 0
-      ? Math.round((totalEngagements / totalImpressions) * 10000) / 100
-      : 0;
+    totalImpressions > 0 ? Math.round((totalEngagements / totalImpressions) * 10000) / 100 : 0;
 
   const dates = rows.map((r) => r.date).filter(Boolean);
   const dateRange = {

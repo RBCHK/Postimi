@@ -13,12 +13,18 @@ export interface AgentLastRuns {
 
 export async function getAgentLastRuns(): Promise<AgentLastRuns> {
   const [followers, trend, insight, post, note, strategy] = await Promise.all([
-    prisma.followersSnapshot.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    prisma.followersSnapshot.findFirst({
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
     prisma.trendSnapshot.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     prisma.dailyInsight.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     prisma.xPost.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     prisma.researchNote.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-    prisma.strategyAnalysis.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    prisma.strategyAnalysis.findFirst({
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
   ]);
 
   return {

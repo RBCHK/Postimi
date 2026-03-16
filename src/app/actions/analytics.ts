@@ -226,16 +226,16 @@ export async function getAnalyticsSummary(from: Date, to: Date): Promise<Analyti
     periodDays,
     totalPosts: originalPosts.length,
     totalReplies: replies.length,
-    avgPostImpressions: originalPosts.length > 0 ? Math.round(totalPostImpressions / originalPosts.length) : 0,
-    avgReplyImpressions: replies.length > 0 ? Math.round(totalReplyImpressions / replies.length) : 0,
+    avgPostImpressions:
+      originalPosts.length > 0 ? Math.round(totalPostImpressions / originalPosts.length) : 0,
+    avgReplyImpressions:
+      replies.length > 0 ? Math.round(totalReplyImpressions / replies.length) : 0,
     maxPostImpressions: originalPosts.length > 0 ? originalPosts[0].impressions : 0,
     totalNewFollows,
     totalUnfollows,
     netFollowerGrowth: totalNewFollows - totalUnfollows,
     avgEngagementRate:
-      totalImpressions > 0
-        ? Math.round((totalEngagements / totalImpressions) * 10000) / 100
-        : 0,
+      totalImpressions > 0 ? Math.round((totalEngagements / totalImpressions) * 10000) / 100 : 0,
     avgProfileVisitsPerDay: Math.round(totalProfileVisits / periodDays),
     topPosts,
     topReplies,

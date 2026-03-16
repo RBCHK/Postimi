@@ -46,10 +46,7 @@ export function ContentTypeDropdown({
       <Button
         variant="ghost"
         size="sm"
-        className={cn(
-          "h-6 gap-1 rounded-md px-2 text-xs font-normal",
-          className
-        )}
+        className={cn("h-6 gap-1 rounded-md px-2 text-xs font-normal", className)}
         disabled={disabled}
       >
         {contentTypeIcon[value]}
@@ -77,11 +74,7 @@ export function ContentTypeDropdown({
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent align="start">
         {CONTENT_TYPES.map((type) => (
-          <DropdownMenuItem
-            key={type}
-            onClick={() => onValueChange(type)}
-            className="gap-2"
-          >
+          <DropdownMenuItem key={type} onClick={() => onValueChange(type)} className="gap-2">
             {contentTypeIcon[type]}
             <span style={{ color: contentTypeColor[type] }}>{type}</span>
           </DropdownMenuItem>

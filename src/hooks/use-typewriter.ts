@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 
-const INTERVAL_MS = 30;   // тик каждые 30мс (~33fps)
+const INTERVAL_MS = 30; // тик каждые 30мс (~33fps)
 const CHARS_PER_TICK = 3; // символов за тик = ~100 симв/сек
 
 /**

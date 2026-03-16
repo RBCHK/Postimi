@@ -6,8 +6,16 @@ import { TextSelectionPopup } from "@/components/text-selection-popup";
 import { useConversation } from "@/contexts/conversation-context";
 
 export function ConversationView() {
-  const { input, contentType, isLoading, isFetchingTweet, error, setInput, setContentType, sendMessage } =
-    useConversation();
+  const {
+    input,
+    contentType,
+    isLoading,
+    isFetchingTweet,
+    error,
+    setInput,
+    setContentType,
+    sendMessage,
+  } = useConversation();
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">

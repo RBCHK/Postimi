@@ -18,13 +18,13 @@ You are a Security specialist for xREBA. The app is moving from a personal tool 
 ```ts
 // ✅ Every Server Action starts with auth check
 export async function getConversations() {
-  const session = await getServerSession()
-  if (!session?.user?.id) throw new Error('Unauthorized')
+  const session = await getServerSession();
+  if (!session?.user?.id) throw new Error("Unauthorized");
 
   // ✅ Always scope queries to userId — never fetch all
   return prisma.conversation.findMany({
-    where: { userId: session.user.id }  // isolation enforced at DB level
-  })
+    where: { userId: session.user.id }, // isolation enforced at DB level
+  });
 }
 ```
 
@@ -37,10 +37,10 @@ export async function getConversations() {
 ```ts
 // ✅ Prompt injection guard
 const safeInput = userInput
-  .slice(0, 2000)  // length limit
-  .replace(/\[SYSTEM\]|\[INST\]/gi, '')  // strip injection markers
+  .slice(0, 2000) // length limit
+  .replace(/\[SYSTEM\]|\[INST\]/gi, ""); // strip injection markers
 
-const prompt = `User request: ${safeInput}`
+const prompt = `User request: ${safeInput}`;
 ```
 
 ## Rate Limiting

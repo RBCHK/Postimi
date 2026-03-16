@@ -49,7 +49,9 @@ export function NotesSidebar({ onClose }: NotesSidebarProps) {
               <ChevronLeft className="h-4 w-4" aria-hidden />
             </Button>
           )}
-          <h2 className="truncate text-sm font-medium tracking-[-0.02em] text-muted-foreground">Notes</h2>
+          <h2 className="truncate text-sm font-medium tracking-[-0.02em] text-muted-foreground">
+            Notes
+          </h2>
         </div>
         <Button
           variant="ghost"
@@ -83,7 +85,10 @@ export function NotesSidebar({ onClose }: NotesSidebarProps) {
                   variant="ghost"
                   size="icon"
                   className="absolute right-2 top-2 h-6 w-6 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-                  onClick={(e) => { e.stopPropagation(); removeNote(note.id); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeNote(note.id);
+                  }}
                 >
                   <X className="h-3.5 w-3.5" />
                 </Button>
@@ -102,7 +107,9 @@ export function NotesSidebar({ onClose }: NotesSidebarProps) {
             className="flex h-[500px] w-[750px] flex-col gap-4 rounded-2xl bg-sidebar p-6 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="shrink-0 text-sm font-medium">{editingNote ? "Edit Note" : "New Note"}</h3>
+            <h3 className="shrink-0 text-sm font-medium">
+              {editingNote ? "Edit Note" : "New Note"}
+            </h3>
             <textarea
               className="min-h-0 flex-1 resize-none rounded-xl border border-border bg-white/5 px-4 py-3 text-sm leading-relaxed outline-none placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-white/20"
               placeholder="Type your note..."

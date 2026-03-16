@@ -41,9 +41,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-center text-xl">
-            x-growth-copilot
-          </CardTitle>
+          <CardTitle className="text-center text-xl">x-growth-copilot</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -54,9 +52,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               autoFocus
             />
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
+            {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" disabled={loading || !password}>
               {loading ? "..." : "Enter"}
             </Button>

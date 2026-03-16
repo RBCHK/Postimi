@@ -1,7 +1,19 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, X, Bot, TrendingUp, Lightbulb, Download, Search, BarChart3, Play, Loader2 } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  X,
+  Bot,
+  TrendingUp,
+  Lightbulb,
+  Download,
+  Search,
+  BarChart3,
+  Play,
+  Loader2,
+} from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +27,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { getVoiceBankEntries, addVoiceBankEntry, removeVoiceBankEntry } from "@/app/actions/voice-bank";
+import {
+  getVoiceBankEntries,
+  addVoiceBankEntry,
+  removeVoiceBankEntry,
+} from "@/app/actions/voice-bank";
 import {
   getScheduleConfig,
   saveScheduleConfig,
@@ -26,7 +42,14 @@ import {
   type ScheduleConfig,
 } from "@/app/actions/schedule";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage, type LanguageSettings } from "@/lib/types";
-import { MODEL_OPTIONS, MODEL_STORAGE_KEY, getStoredModel, getStoredAgentModel, setStoredAgentModel, type AgentKey } from "@/lib/model";
+import {
+  MODEL_OPTIONS,
+  MODEL_STORAGE_KEY,
+  getStoredModel,
+  getStoredAgentModel,
+  setStoredAgentModel,
+  type AgentKey,
+} from "@/lib/model";
 import { getStoredLanguageSettings } from "@/lib/language";
 import { type ThemePreference, applyTheme, saveTheme, getStoredTheme } from "@/lib/theme";
 import { PageContainer } from "@/components/page-container";
@@ -45,7 +68,9 @@ function VoiceBankTab() {
   const [activeTab, setActiveTab] = useState<"Reply" | "Post">("Reply");
 
   useEffect(() => {
-    getVoiceBankEntries().then(setEntries).catch(() => setEntries([]));
+    getVoiceBankEntries()
+      .then(setEntries)
+      .catch(() => setEntries([]));
   }, []);
 
   async function handleAdd() {
@@ -84,10 +109,7 @@ function VoiceBankTab() {
           className="text-sm"
         />
         <div className="flex items-center gap-2">
-          <Select
-            value={newType}
-            onValueChange={(v) => setNewType(v as "Reply" | "Post")}
-          >
+          <Select value={newType} onValueChange={(v) => setNewType(v as "Reply" | "Post")}>
             <SelectTrigger className="w-28 h-8 text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -96,12 +118,7 @@ function VoiceBankTab() {
               <SelectItem value="Post">Post</SelectItem>
             </SelectContent>
           </Select>
-          <Button
-            size="sm"
-            className="gap-2"
-            onClick={handleAdd}
-            disabled={!newContent.trim()}
-          >
+          <Button size="sm" className="gap-2" onClick={handleAdd} disabled={!newContent.trim()}>
             <Plus className="h-3.5 w-3.5" />
             Add
           </Button>
@@ -110,10 +127,7 @@ function VoiceBankTab() {
 
       <Separator />
 
-      <Tabs
-        value={activeTab}
-        onValueChange={(v) => setActiveTab(v as "Reply" | "Post")}
-      >
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "Reply" | "Post")}>
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="Reply">
             Replies ({entries.filter((e) => e.type === "Reply").length})
@@ -171,17 +185,19 @@ function TimePickerInput({ value, onChange, onDone }: TimePickerInputProps) {
   const minuteRef = useRef<HTMLSpanElement>(null);
   const periodRef = useRef<HTMLSpanElement>(null);
 
-  useEffect(() => { hourRef.current?.focus(); }, []);
+  useEffect(() => {
+    hourRef.current?.focus();
+  }, []);
   useEffect(() => {
     const refs = { h: hourRef, m: minuteRef, period: periodRef };
     refs[segment].current?.focus();
   }, [segment]);
 
   function commitValue() {
-    const out = hour === 12
-      ? (period === "am" ? 0 : 12)
-      : (period === "am" ? hour : hour + 12);
-    onChange({ target: { value: `${out.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}` } });
+    const out = hour === 12 ? (period === "am" ? 0 : 12) : period === "am" ? hour : hour + 12;
+    onChange({
+      target: { value: `${out.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}` },
+    });
   }
 
   function submit() {
@@ -189,58 +205,87 @@ function TimePickerInput({ value, onChange, onDone }: TimePickerInputProps) {
     onDone();
   }
 
-  function goTo(seg: TimeSegment) { setBuffer(""); setSegment(seg); }
+  function goTo(seg: TimeSegment) {
+    setBuffer("");
+    setSegment(seg);
+  }
 
   function handleHourKey(e: React.KeyboardEvent) {
     e.preventDefault();
-    if (e.key === "Enter" || e.key === "Tab") { goTo("m"); }
-    else if (e.key === "Escape") { onDone(); }
-    else if (e.key === "ArrowUp") { setHour(h => h === 12 ? 1 : h + 1); }
-    else if (e.key === "ArrowDown") { setHour(h => h === 1 ? 12 : h - 1); }
-    else if (/^\d$/.test(e.key)) {
+    if (e.key === "Enter" || e.key === "Tab") {
+      goTo("m");
+    } else if (e.key === "Escape") {
+      onDone();
+    } else if (e.key === "ArrowUp") {
+      setHour((h) => (h === 12 ? 1 : h + 1));
+    } else if (e.key === "ArrowDown") {
+      setHour((h) => (h === 1 ? 12 : h - 1));
+    } else if (/^\d$/.test(e.key)) {
       const d = parseInt(e.key);
       if (buffer === "") {
-        if (d === 0) { setBuffer("0"); setHour(12); }
-        else if (d >= 2) { setHour(d); goTo("m"); }
-        else { setBuffer("1"); setHour(1); }
+        if (d === 0) {
+          setBuffer("0");
+          setHour(12);
+        } else if (d >= 2) {
+          setHour(d);
+          goTo("m");
+        } else {
+          setBuffer("1");
+          setHour(1);
+        }
       } else {
         const h = buffer === "0" ? (d === 0 ? 12 : d) : Math.min(10 + d, 12);
-        setHour(h); goTo("m");
+        setHour(h);
+        goTo("m");
       }
     }
   }
 
   function handleMinuteKey(e: React.KeyboardEvent) {
     e.preventDefault();
-    if (e.key === "Enter" || e.key === "Tab") { if (buffer) setMinute(parseInt(buffer)); goTo("period"); }
-    else if (e.key === "Escape") { onDone(); }
-    else if (e.key === "ArrowUp") { setMinute(m => m === 59 ? 0 : m + 1); }
-    else if (e.key === "ArrowDown") { setMinute(m => m === 0 ? 59 : m - 1); }
-    else if (/^\d$/.test(e.key)) {
+    if (e.key === "Enter" || e.key === "Tab") {
+      if (buffer) setMinute(parseInt(buffer));
+      goTo("period");
+    } else if (e.key === "Escape") {
+      onDone();
+    } else if (e.key === "ArrowUp") {
+      setMinute((m) => (m === 59 ? 0 : m + 1));
+    } else if (e.key === "ArrowDown") {
+      setMinute((m) => (m === 0 ? 59 : m - 1));
+    } else if (/^\d$/.test(e.key)) {
       const d = parseInt(e.key);
       if (buffer === "") {
-        if (d >= 6) { setMinute(d); goTo("period"); }
-        else { setBuffer(e.key); setMinute(d); }
+        if (d >= 6) {
+          setMinute(d);
+          goTo("period");
+        } else {
+          setBuffer(e.key);
+          setMinute(d);
+        }
       } else {
-        setMinute(parseInt(buffer) * 10 + d); goTo("period");
+        setMinute(parseInt(buffer) * 10 + d);
+        goTo("period");
       }
     }
   }
 
   function handlePeriodKey(e: React.KeyboardEvent) {
     e.preventDefault();
-    if (e.key === "Enter") { submit(); }
-    else if (e.key === "Escape") { onDone(); }
-    else if (e.key === "a" || e.key === "A") { setPeriod("am"); }
-    else if (e.key === "p" || e.key === "P") { setPeriod("pm"); }
-    else if (e.key === " " || e.key === "ArrowUp" || e.key === "ArrowDown") {
-      setPeriod(p => p === "am" ? "pm" : "am");
+    if (e.key === "Enter") {
+      submit();
+    } else if (e.key === "Escape") {
+      onDone();
+    } else if (e.key === "a" || e.key === "A") {
+      setPeriod("am");
+    } else if (e.key === "p" || e.key === "P") {
+      setPeriod("pm");
+    } else if (e.key === " " || e.key === "ArrowUp" || e.key === "ArrowDown") {
+      setPeriod((p) => (p === "am" ? "pm" : "am"));
     }
   }
 
-  const displayHour = (buffer && segment === "h")
-    ? buffer.padStart(2, "0")
-    : hour.toString().padStart(2, "0");
+  const displayHour =
+    buffer && segment === "h" ? buffer.padStart(2, "0") : hour.toString().padStart(2, "0");
 
   const s = (seg: TimeSegment) =>
     `rounded px-0.5 cursor-default select-none outline-none ${segment === seg ? "bg-blue-500 text-white" : "text-foreground/80 hover:text-foreground"}`;
@@ -248,17 +293,37 @@ function TimePickerInput({ value, onChange, onDone }: TimePickerInputProps) {
   return (
     <div
       className="flex items-center text-sm font-mono"
-      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) commitValue(); }}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) commitValue();
+      }}
     >
-      <span ref={hourRef} tabIndex={0} onKeyDown={handleHourKey} onClick={() => goTo("h")} className={s("h")}>
+      <span
+        ref={hourRef}
+        tabIndex={0}
+        onKeyDown={handleHourKey}
+        onClick={() => goTo("h")}
+        className={s("h")}
+      >
         {displayHour}
       </span>
       <span className="text-foreground/30">:</span>
-      <span ref={minuteRef} tabIndex={0} onKeyDown={handleMinuteKey} onClick={() => goTo("m")} className={s("m")}>
+      <span
+        ref={minuteRef}
+        tabIndex={0}
+        onKeyDown={handleMinuteKey}
+        onClick={() => goTo("m")}
+        className={s("m")}
+      >
         {minute.toString().padStart(2, "0")}
       </span>
       <span className="mx-1" />
-      <span ref={periodRef} tabIndex={0} onKeyDown={handlePeriodKey} onClick={() => goTo("period")} className={s("period")}>
+      <span
+        ref={periodRef}
+        tabIndex={0}
+        onKeyDown={handlePeriodKey}
+        onClick={() => goTo("period")}
+        className={s("period")}
+      >
         {period}
       </span>
     </div>
@@ -298,110 +363,140 @@ interface ScheduleSectionProps {
   onTimeEditDone: () => void;
 }
 
-function ScheduleSection({ label, slots, onAdd, onRemove, onTimeChange, onDayToggle, onAllDaysToggle, onTimeEditDone }: ScheduleSectionProps) {
+function ScheduleSection({
+  label,
+  slots,
+  onAdd,
+  onRemove,
+  onTimeChange,
+  onDayToggle,
+  onAllDaysToggle,
+  onTimeEditDone,
+}: ScheduleSectionProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm font-medium">{label}</p>
       <div className="min-w-0 overflow-x-auto rounded-xl border border-border">
-      <div className="min-w-[520px]">
-      <div className="grid grid-cols-[110px_repeat(8,1fr)] bg-muted/20 px-1">
-          <div className="px-3 py-3 text-xs text-muted-foreground">Time</div>
-          <div className="py-3 text-center text-xs font-semibold text-blue-400">All</div>
-          {DAYS.map((d) => (
-            <div key={d} className="py-3 text-center text-xs font-semibold text-muted-foreground">{d}</div>
-          ))}
-        </div>
+        <div className="min-w-[520px]">
+          <div className="grid grid-cols-[110px_repeat(8,1fr)] bg-muted/20 px-1">
+            <div className="px-3 py-3 text-xs text-muted-foreground">Time</div>
+            <div className="py-3 text-center text-xs font-semibold text-blue-400">All</div>
+            {DAYS.map((d) => (
+              <div key={d} className="py-3 text-center text-xs font-semibold text-muted-foreground">
+                {d}
+              </div>
+            ))}
+          </div>
 
-        {slots.map((slot) => {
-          const allChecked = DAYS.every((d) => slot.days[d]);
-          return (
-            <div
-              key={slot.id}
-              className="grid grid-cols-[110px_repeat(8,1fr)] border-t border-border items-center px-1"
-              onBlur={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node) && editingId === slot.id) {
-                  setEditingId(null);
-                  onTimeEditDone();
-                }
-              }}
-            >
-              <div className="flex items-center gap-1.5 px-3 py-3">
-                {editingId === slot.id ? (
-                  <TimePickerInput
-                    value={slot.time}
-                    onChange={(e) => onTimeChange(slot.id, e.target.value)}
-                    onDone={() => { setEditingId(null); onTimeEditDone(); }}
-                  />
-                ) : (
-                  <button
-                    onClick={() => setEditingId(slot.id)}
-                    className="text-sm text-foreground/80 hover:text-foreground transition-colors"
-                  >
-                    {formatTime12(slot.time)}
-                  </button>
-                )}
-                <button
-                  onClick={() => onRemove(slot.id)}
-                  className="text-muted-foreground/50 hover:text-foreground transition-colors"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <div className="flex justify-center py-3">
-                <button
-                  role="checkbox"
-                  aria-checked={allChecked}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => onAllDaysToggle(slot.id, !allChecked)}
-                  className={`h-5 w-5 rounded-md border-2 flex items-center justify-center transition-all duration-150 ${
-                    allChecked
-                      ? "bg-blue-500 border-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.3)]"
-                      : "border-border/60 bg-muted/30 hover:border-border"
-                  }`}
-                >
-                  {allChecked && (
-                    <svg viewBox="0 0 12 12" className="h-3 w-3 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="2,6 5,9 10,3" />
-                    </svg>
+          {slots.map((slot) => {
+            const allChecked = DAYS.every((d) => slot.days[d]);
+            return (
+              <div
+                key={slot.id}
+                className="grid grid-cols-[110px_repeat(8,1fr)] border-t border-border items-center px-1"
+                onBlur={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node) && editingId === slot.id) {
+                    setEditingId(null);
+                    onTimeEditDone();
+                  }
+                }}
+              >
+                <div className="flex items-center gap-1.5 px-3 py-3">
+                  {editingId === slot.id ? (
+                    <TimePickerInput
+                      value={slot.time}
+                      onChange={(e) => onTimeChange(slot.id, e.target.value)}
+                      onDone={() => {
+                        setEditingId(null);
+                        onTimeEditDone();
+                      }}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setEditingId(slot.id)}
+                      className="text-sm text-foreground/80 hover:text-foreground transition-colors"
+                    >
+                      {formatTime12(slot.time)}
+                    </button>
                   )}
-                </button>
-              </div>
-              {DAYS.map((day) => (
-                <div key={day} className="flex justify-center py-3">
+                  <button
+                    onClick={() => onRemove(slot.id)}
+                    className="text-muted-foreground/50 hover:text-foreground transition-colors"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="flex justify-center py-3">
                   <button
                     role="checkbox"
-                    aria-checked={slot.days[day]}
+                    aria-checked={allChecked}
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => onDayToggle(slot.id, day)}
+                    onClick={() => onAllDaysToggle(slot.id, !allChecked)}
                     className={`h-5 w-5 rounded-md border-2 flex items-center justify-center transition-all duration-150 ${
-                      slot.days[day]
+                      allChecked
                         ? "bg-blue-500 border-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.3)]"
                         : "border-border/60 bg-muted/30 hover:border-border"
                     }`}
                   >
-                    {slot.days[day] && (
-                      <svg viewBox="0 0 12 12" className="h-3 w-3 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    {allChecked && (
+                      <svg
+                        viewBox="0 0 12 12"
+                        className="h-3 w-3 text-white"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <polyline points="2,6 5,9 10,3" />
                       </svg>
                     )}
                   </button>
                 </div>
-              ))}
-            </div>
-          );
-        })}
+                {DAYS.map((day) => (
+                  <div key={day} className="flex justify-center py-3">
+                    <button
+                      role="checkbox"
+                      aria-checked={slot.days[day]}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => onDayToggle(slot.id, day)}
+                      className={`h-5 w-5 rounded-md border-2 flex items-center justify-center transition-all duration-150 ${
+                        slot.days[day]
+                          ? "bg-blue-500 border-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.3)]"
+                          : "border-border/60 bg-muted/30 hover:border-border"
+                      }`}
+                    >
+                      {slot.days[day] && (
+                        <svg
+                          viewBox="0 0 12 12"
+                          className="h-3 w-3 text-white"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polyline points="2,6 5,9 10,3" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
 
-        <div className="border-t border-border">
-          <button
-            onClick={() => setEditingId(onAdd())}
-            className="flex items-center gap-1.5 px-4 py-3 text-muted-foreground/60 hover:text-foreground transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
+          <div className="border-t border-border">
+            <button
+              onClick={() => setEditingId(onAdd())}
+              className="flex items-center gap-1.5 px-4 py-3 text-muted-foreground/60 hover:text-foreground transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
-      </div>
       </div>
     </div>
   );
@@ -414,11 +509,13 @@ function GoalConfigSection() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    getGoalConfig().then((cfg) => {
-      if (cfg?.targetFollowers) setTargetFollowers(String(cfg.targetFollowers));
-      if (cfg?.targetDate) setTargetDate(cfg.targetDate.toISOString().split("T")[0]);
-      setLoaded(true);
-    }).catch(() => setLoaded(true));
+    getGoalConfig()
+      .then((cfg) => {
+        if (cfg?.targetFollowers) setTargetFollowers(String(cfg.targetFollowers));
+        if (cfg?.targetDate) setTargetDate(cfg.targetDate.toISOString().split("T")[0]);
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
   }, []);
 
   async function handleSave() {
@@ -453,11 +550,7 @@ function GoalConfigSection() {
         </div>
         <div className="flex flex-col gap-1.5 flex-1">
           <label className="text-xs text-muted-foreground">Target date</label>
-          <Input
-            type="date"
-            value={targetDate}
-            onChange={(e) => setTargetDate(e.target.value)}
-          />
+          <Input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
         </div>
         <Button onClick={handleSave} disabled={saving} size="sm" className="sm:mb-0 shrink-0">
           {saving ? "Saving…" : "Save"}
@@ -500,14 +593,20 @@ function StrategyConfigTab() {
 
   function addSlot(section: keyof ScheduleConfig): string {
     const newSlot: SlotRow = { id: crypto.randomUUID(), time: "00:00", days: emptyDays() };
-    const newConfig = { ...configRef.current, [section]: { slots: [...configRef.current[section].slots, newSlot] } };
+    const newConfig = {
+      ...configRef.current,
+      [section]: { slots: [...configRef.current[section].slots, newSlot] },
+    };
     configRef.current = newConfig;
     setConfig(newConfig);
     return newSlot.id;
   }
 
   function removeSlot(section: keyof ScheduleConfig, id: string) {
-    const newConfig = { ...configRef.current, [section]: { slots: configRef.current[section].slots.filter((s) => s.id !== id) } };
+    const newConfig = {
+      ...configRef.current,
+      [section]: { slots: configRef.current[section].slots.filter((s) => s.id !== id) },
+    };
     configRef.current = newConfig;
     setConfig(newConfig);
     scheduleSave(newConfig);
@@ -516,7 +615,9 @@ function StrategyConfigTab() {
   function updateTime(section: keyof ScheduleConfig, id: string, time: string) {
     const newConfig = {
       ...configRef.current,
-      [section]: { slots: configRef.current[section].slots.map((s) => (s.id === id ? { ...s, time } : s)) },
+      [section]: {
+        slots: configRef.current[section].slots.map((s) => (s.id === id ? { ...s, time } : s)),
+      },
     };
     configRef.current = newConfig;
     setConfig(newConfig);
@@ -547,7 +648,15 @@ function StrategyConfigTab() {
   }
 
   function toggleAllDays(section: keyof ScheduleConfig, id: string, value: boolean) {
-    const allDays: Record<DayKey, boolean> = { Mon: value, Tue: value, Wed: value, Thu: value, Fri: value, Sat: value, Sun: value };
+    const allDays: Record<DayKey, boolean> = {
+      Mon: value,
+      Tue: value,
+      Wed: value,
+      Thu: value,
+      Fri: value,
+      Sat: value,
+      Sun: value,
+    };
     const newConfig = {
       ...configRef.current,
       [section]: {
@@ -614,9 +723,17 @@ function LanguageTab() {
   }
 
   const fields: { key: keyof LanguageSettings; label: string; desc: string }[] = [
-    { key: "interfaceLanguage",    label: "Interface language",    desc: "UI labels and buttons" },
-    { key: "conversationLanguage", label: "Conversation language", desc: "Language AI analyzes and chats in" },
-    { key: "contentLanguage",      label: "Content language",      desc: "Language for generated posts and replies" },
+    { key: "interfaceLanguage", label: "Interface language", desc: "UI labels and buttons" },
+    {
+      key: "conversationLanguage",
+      label: "Conversation language",
+      desc: "Language AI analyzes and chats in",
+    },
+    {
+      key: "contentLanguage",
+      label: "Content language",
+      desc: "Language for generated posts and replies",
+    },
   ];
 
   return (
@@ -627,7 +744,10 @@ function LanguageTab() {
             <label className="text-sm font-medium">{label}</label>
             <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
           </div>
-          <Select value={settings[key]} onValueChange={(v) => handleChange(key, v as SupportedLanguage)}>
+          <Select
+            value={settings[key]}
+            onValueChange={(v) => handleChange(key, v as SupportedLanguage)}
+          >
             <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
@@ -686,8 +806,14 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
 ];
 
 function ThemeCardPreview({ value }: { value: ThemePreference }) {
-  const lBg = "#e8e3db", lPill = "#c9c3bb", lLine = "#bfb9b0", lInput = "#ffffff";
-  const dBg = "#232323", dPill = "#141414", dLine = "#363636", dInput = "#2d2d2d";
+  const lBg = "#e8e3db",
+    lPill = "#c9c3bb",
+    lLine = "#bfb9b0",
+    lInput = "#ffffff";
+  const dBg = "#232323",
+    dPill = "#141414",
+    dLine = "#363636",
+    dInput = "#2d2d2d";
 
   if (value === "light") {
     return (
@@ -722,7 +848,10 @@ function ThemeCardPreview({ value }: { value: ThemePreference }) {
   // system: split — left: dark, right: light
   return (
     <div className="flex w-full h-full">
-      <div className="w-1/2 h-full flex flex-col p-2.5 overflow-hidden" style={{ backgroundColor: dBg }}>
+      <div
+        className="w-1/2 h-full flex flex-col p-2.5 overflow-hidden"
+        style={{ backgroundColor: dBg }}
+      >
         <div className="flex justify-end mb-2.5">
           <div className="h-2.5 w-9 rounded-full" style={{ backgroundColor: dPill }} />
         </div>
@@ -732,7 +861,10 @@ function ThemeCardPreview({ value }: { value: ThemePreference }) {
         </div>
         <div className="h-7 rounded-l-lg mt-2" style={{ backgroundColor: dInput }} />
       </div>
-      <div className="w-1/2 h-full flex flex-col p-2.5 overflow-hidden" style={{ backgroundColor: lBg }}>
+      <div
+        className="w-1/2 h-full flex flex-col p-2.5 overflow-hidden"
+        style={{ backgroundColor: lBg }}
+      >
         <div className="flex justify-end mb-2.5">
           <div className="h-2.5 w-9 rounded-full" style={{ backgroundColor: lPill }} />
         </div>
@@ -777,7 +909,9 @@ function AppearanceTab() {
             >
               <ThemeCardPreview value={opt.value} />
             </div>
-            <span className={`text-sm transition-colors ${theme === opt.value ? "text-foreground" : "text-muted-foreground"}`}>
+            <span
+              className={`text-sm transition-colors ${theme === opt.value ? "text-foreground" : "text-muted-foreground"}`}
+            >
               {opt.label}
             </span>
           </button>
@@ -953,7 +1087,9 @@ function AgentsTab() {
   const [agentModels, setAgentModels] = useState<Partial<Record<AgentKey, string>>>({});
 
   useEffect(() => {
-    getAgentLastRuns().then(setLastRuns).catch(() => setLastRuns(null));
+    getAgentLastRuns()
+      .then(setLastRuns)
+      .catch(() => setLastRuns(null));
     const timer = setInterval(() => setNow(new Date()), 30_000);
 
     const modelEntries = AGENT_DEFS.filter((d) => d.modelKey).map((d) => [
@@ -973,11 +1109,11 @@ function AgentsTab() {
 
   const CRON_PATHS: Record<string, string> = {
     followersSnapshot: "/api/cron/followers-snapshot",
-    trendSnapshot:     "/api/cron/trend-snapshot",
-    dailyInsight:      "/api/cron/daily-insight",
-    xImport:           "/api/cron/x-import",
-    researcher:        "/api/cron/researcher",
-    strategist:        "/api/cron/strategist",
+    trendSnapshot: "/api/cron/trend-snapshot",
+    dailyInsight: "/api/cron/daily-insight",
+    xImport: "/api/cron/x-import",
+    researcher: "/api/cron/researcher",
+    strategist: "/api/cron/strategist",
   };
 
   async function handleRun(key: string, label: string) {
@@ -990,7 +1126,9 @@ function AgentsTab() {
       const data = await res.json();
       if (data.ok) {
         toast.success(`${label} completed`);
-        getAgentLastRuns().then(setLastRuns).catch(() => {});
+        getAgentLastRuns()
+          .then(setLastRuns)
+          .catch(() => {});
       } else {
         toast.error(`${label} failed: ${data.error ?? `HTTP ${res.status}`}`);
       }
@@ -1007,7 +1145,9 @@ function AgentsTab() {
   function renderGroup(title: string, defs: AgentDef[]) {
     return (
       <div className="flex flex-col gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {title}
+        </p>
         <div className="rounded-xl border border-border overflow-hidden">
           {defs.map((def, i) => {
             const lastRun = lastRuns ? lastRuns[def.key] : undefined;
@@ -1046,7 +1186,9 @@ function AgentsTab() {
                     <span className="text-xs font-medium text-foreground/70">{def.schedule}</span>
                     <div className="flex items-center gap-2">
                       {lastRun ? (
-                        <span className="text-xs text-muted-foreground">{formatRelative(new Date(lastRun))}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {formatRelative(new Date(lastRun))}
+                        </span>
                       ) : (
                         <span className="text-xs text-muted-foreground/50">never</span>
                       )}
@@ -1087,7 +1229,14 @@ function AgentsTab() {
   );
 }
 
-type SettingsSection = "voice-bank" | "strategy" | "agents" | "api-keys" | "language" | "appearance" | "auth";
+type SettingsSection =
+  | "voice-bank"
+  | "strategy"
+  | "agents"
+  | "api-keys"
+  | "language"
+  | "appearance"
+  | "auth";
 
 const SETTINGS_NAV: { value: SettingsSection; label: string }[] = [
   { value: "strategy", label: "Strategy" },

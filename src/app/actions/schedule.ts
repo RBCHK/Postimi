@@ -6,8 +6,7 @@ import type { GoalChartData, GoalTrackingData, SlotStatus, SlotType } from "@/li
 import { SlotType as PrismaSlotType } from "@/generated/prisma";
 import { calendarDateStr } from "@/lib/date-utils";
 
-const slotStatusFromPrisma = (v: string): SlotStatus =>
-  v.toLowerCase() as SlotStatus;
+const slotStatusFromPrisma = (v: string): SlotStatus => v.toLowerCase() as SlotStatus;
 
 const slotTypeFromPrisma = (v: PrismaSlotType): SlotType => {
   const map: Record<PrismaSlotType, SlotType> = {
@@ -49,9 +48,7 @@ async function checkAndUpdatePassedSlots() {
     where: { status: "FILLED" },
   });
 
-  const passedSlots = filledSlots.filter(
-    (s) => getSlotDateTime(s.date, s.timeSlot) < now
-  );
+  const passedSlots = filledSlots.filter((s) => getSlotDateTime(s.date, s.timeSlot) < now);
   if (passedSlots.length === 0) return;
 
   const passedIds = passedSlots.map((s) => s.id);
@@ -135,7 +132,11 @@ export async function getScheduledSlots(localDateStr?: string) {
 
   const today = localDateStr
     ? new Date(`${localDateStr}T00:00:00.000Z`)
-    : (() => { const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d; })();
+    : (() => {
+        const d = new Date();
+        d.setUTCHours(0, 0, 0, 0);
+        return d;
+      })();
 
   const rows = await prisma.scheduledSlot.findMany({
     where: { date: { gte: today } },
@@ -154,7 +155,11 @@ export async function getScheduledSlots(localDateStr?: string) {
       draftTitle: r.conversation?.title ?? undefined,
       postedAt: r.postedAt ?? undefined,
     }))
-    .sort((a, b) => getSlotDateTime(a.date, a.timeSlot).getTime() - getSlotDateTime(b.date, b.timeSlot).getTime());
+    .sort(
+      (a, b) =>
+        getSlotDateTime(a.date, a.timeSlot).getTime() -
+        getSlotDateTime(b.date, b.timeSlot).getTime()
+    );
 }
 
 /**
@@ -177,7 +182,11 @@ export async function ensureSlotsForWeek(localDateStr?: string) {
 
   const today = localDateStr
     ? new Date(`${localDateStr}T00:00:00.000Z`)
-    : (() => { const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d; })();
+    : (() => {
+        const d = new Date();
+        d.setUTCHours(0, 0, 0, 0);
+        return d;
+      })();
 
   for (let d = 0; d < 7; d++) {
     const date = new Date(today);
@@ -238,7 +247,12 @@ export async function saveScheduleConfig(data: ScheduleConfig): Promise<void> {
     await prisma.strategyConfig.update({ where: { id: existing.id }, data: payload });
   } else {
     await prisma.strategyConfig.create({
-      data: { postsPerDay: 2, replySessionsPerDay: 4, timeSlots: [], scheduleConfig: data as object },
+      data: {
+        postsPerDay: 2,
+        replySessionsPerDay: 4,
+        timeSlots: [],
+        scheduleConfig: data as object,
+      },
     });
   }
   // Auto-regenerate scheduled slots starting from tomorrow
@@ -247,7 +261,13 @@ export async function saveScheduleConfig(data: ScheduleConfig): Promise<void> {
 }
 
 const DAY_TO_JS: Record<DayKey, number> = {
-  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
 };
 
 const SECTION_TO_SLOT_TYPE: Record<keyof ScheduleConfig, PrismaSlotType> = {
@@ -268,7 +288,11 @@ async function regenerateSlotsFromConfig(config: ScheduleConfig, localDateStr?: 
   const now = new Date();
   const today = localDateStr
     ? new Date(`${localDateStr}T00:00:00.000Z`)
-    : (() => { const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d; })();
+    : (() => {
+        const d = new Date();
+        d.setUTCHours(0, 0, 0, 0);
+        return d;
+      })();
   const weekEnd = new Date(today);
   weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
 
@@ -295,9 +319,13 @@ async function regenerateSlotsFromConfig(config: ScheduleConfig, localDateStr?: 
   }
 
   // Collect all new slots — no per-slot DB queries
-  const toCreate: { date: Date; timeSlot: string; slotType: PrismaSlotType; status: "EMPTY" }[] = [];
+  const toCreate: { date: Date; timeSlot: string; slotType: PrismaSlotType; status: "EMPTY" }[] =
+    [];
 
-  for (const [section, schedule] of Object.entries(config) as [keyof ScheduleConfig, ContentSchedule][]) {
+  for (const [section, schedule] of Object.entries(config) as [
+    keyof ScheduleConfig,
+    ContentSchedule,
+  ][]) {
     const slotType = SECTION_TO_SLOT_TYPE[section];
 
     for (const slot of schedule.slots) {
@@ -306,7 +334,9 @@ async function regenerateSlotsFromConfig(config: ScheduleConfig, localDateStr?: 
 
       for (const date of dates) {
         const jsDay = date.getUTCDay(); // 0=Sun, 1=Mon, ...
-        const dayKey = (Object.entries(DAY_TO_JS).find(([, num]) => num === jsDay)?.[0]) as DayKey | undefined;
+        const dayKey = Object.entries(DAY_TO_JS).find(([, num]) => num === jsDay)?.[0] as
+          | DayKey
+          | undefined;
         if (!dayKey || !slot.days[dayKey]) continue;
 
         // Skip past slots — but keep all of today's slots so the full day plan is visible
@@ -329,15 +359,19 @@ async function regenerateSlotsFromConfig(config: ScheduleConfig, localDateStr?: 
   }
 }
 
-
-export async function toggleSlotPosted(id: string): Promise<{ postedAt?: Date; status: "POSTED" | "FILLED" | "EMPTY" }> {
+export async function toggleSlotPosted(
+  id: string
+): Promise<{ postedAt?: Date; status: "POSTED" | "FILLED" | "EMPTY" }> {
   const slot = await prisma.scheduledSlot.findUnique({ where: { id } });
   if (!slot) throw new Error("Slot not found");
 
   if (slot.status === "POSTED") {
     // Revert: if had a draft → FILLED, otherwise → EMPTY
     const newStatus = slot.conversationId ? "FILLED" : "EMPTY";
-    await prisma.scheduledSlot.update({ where: { id }, data: { status: newStatus, postedAt: null } });
+    await prisma.scheduledSlot.update({
+      where: { id },
+      data: { status: newStatus, postedAt: null },
+    });
     if (slot.conversationId) {
       await prisma.conversation.update({
         where: { id: slot.conversationId },
@@ -549,10 +583,9 @@ export async function getGoalTrackingData(): Promise<GoalTrackingData | null> {
   // Deviation: how many days ahead/behind schedule
   const targetDate = new Date(config.targetDate);
   const now = new Date();
-  const daysToTarget = Math.ceil(
-    (targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-  );
-  const requiredDailyGrowth = daysToTarget > 0 ? remaining / daysToTarget : (remaining > 0 ? Infinity : 0);
+  const daysToTarget = Math.ceil((targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  const requiredDailyGrowth =
+    daysToTarget > 0 ? remaining / daysToTarget : remaining > 0 ? Infinity : 0;
   const deviationDays = projectedDate
     ? Math.round((targetDate.getTime() - projectedDate.getTime()) / (1000 * 60 * 60 * 24))
     : -Infinity;

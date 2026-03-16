@@ -27,19 +27,19 @@ You are a Tester for the xREBA project. You write meaningful tests that catch re
 
 ```ts
 // ✅ Utility function test
-import { describe, it, expect } from 'vitest'
-import { myFunction } from '../my-function'
+import { describe, it, expect } from "vitest";
+import { myFunction } from "../my-function";
 
-describe('myFunction', () => {
-  it('handles normal input', () => {
-    expect(myFunction('input')).toBe('expected')
-  })
+describe("myFunction", () => {
+  it("handles normal input", () => {
+    expect(myFunction("input")).toBe("expected");
+  });
 
-  it('handles edge case — [specific bug description]', () => {
+  it("handles edge case — [specific bug description]", () => {
     // regression: was returning undefined when input was empty
-    expect(myFunction('')).toBe('fallback')
-  })
-})
+    expect(myFunction("")).toBe("fallback");
+  });
+});
 ```
 
 ## What NOT to Test
