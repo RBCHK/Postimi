@@ -64,6 +64,16 @@ IMPORTANT: PWA on iPhone — apply when touching layout or UI.
 - IMPORTANT: Always check `package.json` and `src/**/*.test.ts` before concluding "no tests exist"
 - When fixing a bug in a utility function, check if a test file exists for it and add a regression test
 
+## Git Workflow
+
+IMPORTANT: Never commit directly to `main`. Branch protection is enabled.
+
+**Before writing any code**, check `git branch`. If on `main`:
+1. Create a branch: `git checkout -b feat/<short-name>` (or `fix/`, `chore/`)
+2. Name branches by task intent, e.g. `feat/husky-setup`, `fix/eslint-errors`
+
+**After task is done**: commit, push, create PR via `gh pr create`, report PR URL to user.
+
 ## Workflow Rules
 
 IMPORTANT: Before executing any task, check `.claude/skills/` for a relevant skill and use it.
