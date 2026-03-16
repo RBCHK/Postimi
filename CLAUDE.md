@@ -38,6 +38,8 @@ IMPORTANT: xREBA is multi-user on Vercel (UTC). Never assume server TZ = user TZ
 
 **Page layout standard**: all new `*-view.tsx` files must use `<PageContainer>` from `@/components/page-container` as the root element. Add extra classes via `className` prop (e.g. `className="space-y-4"`).
 
+**Server pages must be dynamic**: any `page.tsx` that calls Server Actions or Prisma at the top level must have `export const dynamic = "force-dynamic"`. Without it, Next.js tries to statically prerender at build time and fails without a real DB.
+
 ## Mobile / PWA Rules
 
 IMPORTANT: PWA on iPhone — apply when touching layout or UI.
@@ -61,6 +63,16 @@ IMPORTANT: PWA on iPhone — apply when touching layout or UI.
 - **Test files location**: `src/**/*.test.ts` — currently `src/lib/__tests__/` and `src/app/actions/__tests__/`
 - IMPORTANT: Always check `package.json` and `src/**/*.test.ts` before concluding "no tests exist"
 - When fixing a bug in a utility function, check if a test file exists for it and add a regression test
+
+## Git Workflow
+
+IMPORTANT: Never commit directly to `main`. Branch protection is enabled.
+
+**Before writing any code**, check `git branch`. If on `main`:
+1. Create a branch: `git checkout -b feat/<short-name>` (or `fix/`, `chore/`)
+2. Name branches by task intent, e.g. `feat/husky-setup`, `fix/eslint-errors`
+
+**After task is done**: commit, push, create PR via `gh pr create`, report PR URL to user.
 
 ## Workflow Rules
 
