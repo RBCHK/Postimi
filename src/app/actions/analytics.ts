@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { requireUserId } from "@/lib/auth";
 import type { ContentCsvRow, OverviewCsvRow, AnalyticsSummary, HeatmapCell } from "@/lib/types";
 import { X_POST_TYPE_MAP } from "@/lib/types";
 
@@ -10,6 +11,7 @@ import { X_POST_TYPE_MAP } from "@/lib/types";
 export async function importContentData(
   rows: ContentCsvRow[]
 ): Promise<{ enriched: number; skipped: number }> {
+  const userId = await requireUserId();
   let enriched = 0;
   let skipped = 0;
 
@@ -18,7 +20,7 @@ export async function importContentData(
     if (isNaN(date.getTime())) continue;
 
     const existing = await prisma.xPost.findUnique({
-      where: { postId: row.postId },
+      where: { userId_postId: { userId, postId: row.postId } },
       select: { id: true },
     });
 
@@ -30,7 +32,7 @@ export async function importContentData(
 
     // Enrich with CSV-exclusive fields only
     await prisma.xPost.update({
-      where: { postId: row.postId },
+      where: { userId_postId: { userId, postId: row.postId } },
       data: {
         newFollowers: row.newFollowers,
         detailExpands: row.detailExpands,
@@ -46,6 +48,7 @@ export async function importContentData(
 export async function importDailyStats(
   rows: OverviewCsvRow[]
 ): Promise<{ imported: number; updated: number }> {
+  const userId = await requireUserId();
   let imported = 0;
   let updated = 0;
 
@@ -57,42 +60,33 @@ export async function importDailyStats(
     const dayStart = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
 
     const existing = await prisma.dailyAccountStats.findUnique({
-      where: { date: dayStart },
+      where: { userId_date: { userId, date: dayStart } },
     });
 
+    const statsData = {
+      impressions: row.impressions,
+      likes: row.likes,
+      engagements: row.engagements,
+      bookmarks: row.bookmarks,
+      shares: row.shares,
+      newFollows: row.newFollows,
+      unfollows: row.unfollows,
+      replies: row.replies,
+      reposts: row.reposts,
+      profileVisits: row.profileVisits,
+      createPost: row.createPost,
+      videoViews: row.videoViews,
+      mediaViews: row.mediaViews,
+    };
+
     await prisma.dailyAccountStats.upsert({
-      where: { date: dayStart },
+      where: { userId_date: { userId, date: dayStart } },
       create: {
         date: dayStart,
-        impressions: row.impressions,
-        likes: row.likes,
-        engagements: row.engagements,
-        bookmarks: row.bookmarks,
-        shares: row.shares,
-        newFollows: row.newFollows,
-        unfollows: row.unfollows,
-        replies: row.replies,
-        reposts: row.reposts,
-        profileVisits: row.profileVisits,
-        createPost: row.createPost,
-        videoViews: row.videoViews,
-        mediaViews: row.mediaViews,
+        userId,
+        ...statsData,
       },
-      update: {
-        impressions: row.impressions,
-        likes: row.likes,
-        engagements: row.engagements,
-        bookmarks: row.bookmarks,
-        shares: row.shares,
-        newFollows: row.newFollows,
-        unfollows: row.unfollows,
-        replies: row.replies,
-        reposts: row.reposts,
-        profileVisits: row.profileVisits,
-        createPost: row.createPost,
-        videoViews: row.videoViews,
-        mediaViews: row.mediaViews,
-      },
+      update: statsData,
     });
 
     if (existing) updated++;
@@ -106,9 +100,24 @@ export async function importDailyStats(
 // --- Read ---
 
 export async function getAnalyticsDateRange(): Promise<{ from: Date; to: Date } | null> {
+  const userId = await requireUserId();
+  return _getAnalyticsDateRange(userId);
+}
+
+export async function getAnalyticsDateRangeInternal(
+  userId: string
+): Promise<{ from: Date; to: Date } | null> {
+  return _getAnalyticsDateRange(userId);
+}
+
+async function _getAnalyticsDateRange(userId: string): Promise<{ from: Date; to: Date } | null> {
   const [postRange, statsRange] = await Promise.all([
-    prisma.xPost.aggregate({ _min: { date: true }, _max: { date: true } }),
-    prisma.dailyAccountStats.aggregate({ _min: { date: true }, _max: { date: true } }),
+    prisma.xPost.aggregate({ where: { userId }, _min: { date: true }, _max: { date: true } }),
+    prisma.dailyAccountStats.aggregate({
+      where: { userId },
+      _min: { date: true },
+      _max: { date: true },
+    }),
   ]);
 
   const dates = [
@@ -127,27 +136,46 @@ export async function getAnalyticsDateRange(): Promise<{ from: Date; to: Date } 
 }
 
 export async function getDailyStatsForPeriod(from: Date, to: Date) {
+  const userId = await requireUserId();
   return prisma.dailyAccountStats.findMany({
-    where: { date: { gte: from, lte: to } },
+    where: { userId, date: { gte: from, lte: to } },
     orderBy: { date: "asc" },
   });
 }
 
 export async function getPostsForPeriod(from: Date, to: Date) {
+  const userId = await requireUserId();
   return prisma.xPost.findMany({
-    where: { date: { gte: from, lte: to } },
+    where: { userId, date: { gte: from, lte: to } },
     orderBy: { date: "desc" },
   });
 }
 
 export async function getAnalyticsSummary(from: Date, to: Date): Promise<AnalyticsSummary> {
+  const userId = await requireUserId();
+  return _getAnalyticsSummary(userId, from, to);
+}
+
+export async function getAnalyticsSummaryInternal(
+  userId: string,
+  from: Date,
+  to: Date
+): Promise<AnalyticsSummary> {
+  return _getAnalyticsSummary(userId, from, to);
+}
+
+async function _getAnalyticsSummary(
+  userId: string,
+  from: Date,
+  to: Date
+): Promise<AnalyticsSummary> {
   const [posts, dailyStats] = await Promise.all([
     prisma.xPost.findMany({
-      where: { date: { gte: from, lte: to } },
+      where: { userId, date: { gte: from, lte: to } },
       orderBy: { impressions: "desc" },
     }),
     prisma.dailyAccountStats.findMany({
-      where: { date: { gte: from, lte: to } },
+      where: { userId, date: { gte: from, lte: to } },
       orderBy: { date: "asc" },
     }),
   ]);
@@ -254,8 +282,9 @@ export async function getAnalyticsSummary(from: Date, to: Date): Promise<Analyti
 }
 
 export async function getEngagementHeatmap(from: Date, to: Date): Promise<HeatmapCell[]> {
+  const userId = await requireUserId();
   const posts = await prisma.xPost.findMany({
-    where: { date: { gte: from, lte: to }, impressions: { gt: 0 } },
+    where: { userId, date: { gte: from, lte: to }, impressions: { gt: 0 } },
     select: { date: true, engagements: true, impressions: true },
   });
 

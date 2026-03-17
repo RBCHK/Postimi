@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
+import { requireUserId } from "@/lib/auth";
 import {
   ProposalStatus as PrismaProposalStatus,
   SlotType as PrismaSlotType,
@@ -132,8 +133,36 @@ export async function savePlanProposal(data: {
   proposalType?: "config" | "schedule";
   metricsSnapshot?: MetricsSnapshot;
 }): Promise<PlanProposalItem> {
+  const userId = await requireUserId();
+  return _savePlanProposal(userId, data);
+}
+
+export async function savePlanProposalInternal(
+  userId: string,
+  data: {
+    changes: PlanChange[] | ConfigChange[];
+    summary: string;
+    analysisId?: string;
+    proposalType?: "config" | "schedule";
+    metricsSnapshot?: MetricsSnapshot;
+  }
+): Promise<PlanProposalItem> {
+  return _savePlanProposal(userId, data);
+}
+
+async function _savePlanProposal(
+  userId: string,
+  data: {
+    changes: PlanChange[] | ConfigChange[];
+    summary: string;
+    analysisId?: string;
+    proposalType?: "config" | "schedule";
+    metricsSnapshot?: MetricsSnapshot;
+  }
+): Promise<PlanProposalItem> {
   const row = await prisma.planProposal.create({
     data: {
+      userId,
       changes: data.changes as object,
       summary: data.summary,
       analysisId: data.analysisId ?? null,
@@ -147,8 +176,9 @@ export async function savePlanProposal(data: {
 
 /** Get the current pending proposal (if any) */
 export async function getPendingProposal(): Promise<PlanProposalItem | null> {
+  const userId = await requireUserId();
   const row = await prisma.planProposal.findFirst({
-    where: { status: "PENDING" },
+    where: { userId, status: "PENDING" },
     orderBy: { createdAt: "desc" },
   });
   if (!row) return null;
@@ -157,10 +187,22 @@ export async function getPendingProposal(): Promise<PlanProposalItem | null> {
 
 /** Get accepted proposals from the last N days (for effectiveness review) */
 export async function getAcceptedProposals(days: number): Promise<PlanProposalItem[]> {
+  const userId = await requireUserId();
+  return _getAcceptedProposals(userId, days);
+}
+
+export async function getAcceptedProposalsInternal(
+  userId: string,
+  days: number
+): Promise<PlanProposalItem[]> {
+  return _getAcceptedProposals(userId, days);
+}
+
+async function _getAcceptedProposals(userId: string, days: number): Promise<PlanProposalItem[]> {
   const since = new Date();
   since.setUTCDate(since.getUTCDate() - days);
   const rows = await prisma.planProposal.findMany({
-    where: { status: "ACCEPTED", reviewedAt: { gte: since } },
+    where: { userId, status: "ACCEPTED", reviewedAt: { gte: since } },
     orderBy: { reviewedAt: "desc" },
   });
   return rows.map(mapRow);
@@ -174,7 +216,10 @@ export async function getAcceptedProposals(days: number): Promise<PlanProposalIt
  * If selectedIndices is provided, only those changes are applied.
  */
 export async function acceptProposal(id: string, selectedIndices?: number[]): Promise<void> {
-  const proposal = await prisma.planProposal.findUnique({ where: { id } });
+  const userId = await requireUserId();
+  const proposal = await prisma.planProposal.findFirst({
+    where: { id, userId },
+  });
   if (!proposal || proposal.status !== "PENDING") {
     throw new Error("Proposal not found or already reviewed");
   }
@@ -202,6 +247,7 @@ export async function acceptProposal(id: string, selectedIndices?: number[]): Pr
         const dayEnd = new Date(date.getTime() + 86400000);
         const existing = await prisma.scheduledSlot.findFirst({
           where: {
+            userId,
             date: { gte: dayStart, lt: dayEnd },
             timeSlot: change.timeSlot,
             slotType,
@@ -209,7 +255,7 @@ export async function acceptProposal(id: string, selectedIndices?: number[]): Pr
         });
         if (!existing) {
           await prisma.scheduledSlot.create({
-            data: { date, timeSlot: change.timeSlot, slotType, status: "EMPTY" },
+            data: { userId, date, timeSlot: change.timeSlot, slotType, status: "EMPTY" },
           });
         }
       } else if (change.action === "remove") {
@@ -217,6 +263,7 @@ export async function acceptProposal(id: string, selectedIndices?: number[]): Pr
         const dayEnd = new Date(date.getTime() + 86400000);
         await prisma.scheduledSlot.deleteMany({
           where: {
+            userId,
             date: { gte: dayStart, lt: dayEnd },
             timeSlot: change.timeSlot,
             slotType,
@@ -236,6 +283,12 @@ export async function acceptProposal(id: string, selectedIndices?: number[]): Pr
 
 /** Reject a proposal */
 export async function rejectProposal(id: string): Promise<void> {
+  const userId = await requireUserId();
+  const proposal = await prisma.planProposal.findFirst({
+    where: { id, userId },
+  });
+  if (!proposal) throw new Error("Proposal not found");
+
   await prisma.planProposal.update({
     where: { id },
     data: { status: "REJECTED", reviewedAt: new Date() },

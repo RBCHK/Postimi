@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { requireUserId } from "@/lib/auth";
 
 export interface AgentLastRuns {
   followersSnapshot: Date | null;
@@ -12,16 +13,33 @@ export interface AgentLastRuns {
 }
 
 export async function getAgentLastRuns(): Promise<AgentLastRuns> {
+  const userId = await requireUserId();
+
   const [followers, trend, insight, post, note, strategy] = await Promise.all([
     prisma.followersSnapshot.findFirst({
+      where: { userId },
       orderBy: { createdAt: "desc" },
       select: { createdAt: true },
     }),
+    // TrendSnapshot is global (no userId) — no filtering needed
     prisma.trendSnapshot.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-    prisma.dailyInsight.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-    prisma.xPost.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-    prisma.researchNote.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    prisma.dailyInsight.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
+    prisma.xPost.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
+    prisma.researchNote.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
     prisma.strategyAnalysis.findFirst({
+      where: { userId },
       orderBy: { createdAt: "desc" },
       select: { createdAt: true },
     }),

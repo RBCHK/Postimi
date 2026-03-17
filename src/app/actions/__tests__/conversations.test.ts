@@ -11,6 +11,9 @@ const mockFetchTweet = vi.mocked(fetchTweetFromText);
 
 // resolveTitleFromInput is a server action — it imports prisma/next internals,
 // so we mock those too
+vi.mock("@/lib/auth", () => ({
+  requireUserId: vi.fn().mockResolvedValue("test-user-id"),
+}));
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 vi.mock("@/lib/x-api", () => ({ fetchTweetById: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));

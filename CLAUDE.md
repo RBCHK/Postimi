@@ -2,7 +2,8 @@
 
 ## Stack
 
-- **Next.js 15** (App Router), **TypeScript**, **Prisma** (PostgreSQL)
+- **Next.js 15** (App Router), **TypeScript**, **Prisma** (PostgreSQL on Supabase)
+- **Auth**: Clerk (`@clerk/nextjs`) — email + Google OAuth
 - AI: `@ai-sdk/react` + `@ai-sdk/anthropic`, streaming via `/api/chat`
 - Prisma client: import from `src/generated/prisma/`, NOT `@prisma/client`
 
@@ -11,8 +12,10 @@
 - `src/app/(app)/` — routes: home (`/`), conversation (`/c/[id]`)
 - `src/app/actions/` — Server Actions (DB layer)
 - `src/app/api/chat/` — streaming AI endpoint
+- `src/app/api/webhooks/clerk/` — Clerk webhook for user sync
 - `src/contexts/conversation-context.tsx` — conversation state + AI chat
 - `src/prompts/` — system prompts (analyst-reply.ts, analyst-post.ts)
+- `src/lib/auth.ts` — `requireUserId()` helper (Clerk → Prisma User)
 - `src/lib/types.ts` — shared types
 
 ## Architecture Decisions
@@ -31,6 +34,15 @@ IMPORTANT: xREBA is multi-user on Vercel (UTC). Never assume server TZ = user TZ
 - **Server-side "today"**: `now.toLocaleDateString("en-CA", { timeZone })` → `new Date(\`${str}T00:00:00.000Z\`)`
 - **Calendar dates**: extract with `calendarDateStr()` — never `toLocaleDateString(tz)` ([ADR-001](docs/adr/001-calendar-date-convention.md))
 - **Cron routes**: `setUTCDate` / `setUTCHours` — never bare `setDate` / `setHours`
+
+## Auth (Clerk)
+
+- **All server actions** must call `const userId = await requireUserId()` as their first line and include `userId` in every Prisma where/create.
+- **API routes** use `const { userId: clerkId } = await auth()` from `@clerk/nextjs/server`.
+- **Cron routes** use Bearer token only (`CRON_SECRET`), loop over all users via `prisma.user.findMany()`.
+- **Cron-compatible actions** export both `doThing()` (auth-checked) and `doThingInternal(userId, ...)` (for cron).
+- **User sync**: Clerk webhook at `/api/webhooks/clerk` upserts Prisma `User` via `svix` signature verification.
+- **Social network OAuth** (X, LinkedIn, Threads) is separate from auth — per-user tokens stored in DB.
 
 ## Conventions
 

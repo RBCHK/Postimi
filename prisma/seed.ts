@@ -172,6 +172,19 @@ const POSTS: { content: string; topic: string }[] = [
 ];
 
 async function main() {
+  // Seed requires at least one user — find or create a placeholder
+  let user = await prisma.user.findFirst();
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        clerkId: "seed_placeholder",
+        email: "seed@example.com",
+        name: "Seed User",
+      },
+    });
+    console.log("Created placeholder user for seed data.");
+  }
+
   const existing = await prisma.voiceBankEntry.count();
   if (existing > 0) {
     console.log(`Voice Bank already has ${existing} entries. Skipping seed.`);
@@ -181,14 +194,14 @@ async function main() {
   console.log(`Seeding ${REPLIES.length} reply examples...`);
   for (const reply of REPLIES) {
     await prisma.voiceBankEntry.create({
-      data: { content: reply.content, type: "REPLY", topic: reply.topic },
+      data: { content: reply.content, type: "REPLY", topic: reply.topic, userId: user.id },
     });
   }
 
   console.log(`Seeding ${POSTS.length} post examples...`);
   for (const post of POSTS) {
     await prisma.voiceBankEntry.create({
-      data: { content: post.content, type: "POST", topic: post.topic },
+      data: { content: post.content, type: "POST", topic: post.topic, userId: user.id },
     });
   }
 

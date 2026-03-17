@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { requireUserId } from "@/lib/auth";
 import type { GoalChartData, GoalTrackingData, SlotStatus, SlotType } from "@/lib/types";
 import { SlotType as PrismaSlotType } from "@/generated/prisma";
 import { calendarDateStr } from "@/lib/date-utils";
@@ -42,10 +43,10 @@ function getSlotDateTime(date: Date, timeSlot: string): Date {
 }
 
 // Lazy update: auto-transition FILLED slots past their scheduled time → POSTED
-async function checkAndUpdatePassedSlots() {
+async function checkAndUpdatePassedSlots(userId: string) {
   const now = new Date();
   const filledSlots = await prisma.scheduledSlot.findMany({
-    where: { status: "FILLED" },
+    where: { status: "FILLED", userId },
   });
 
   const passedSlots = filledSlots.filter((s) => getSlotDateTime(s.date, s.timeSlot) < now);
@@ -72,8 +73,8 @@ async function checkAndUpdatePassedSlots() {
 }
 
 // Ensure slots exist for a specific date (used when no free slots found)
-async function ensureSlotsForDate(date: Date) {
-  const config = await getStrategyConfig();
+async function ensureSlotsForDate(date: Date, userId: string) {
+  const config = await getStrategyConfigInternal(userId);
   const timeSlots = config?.timeSlots ?? ["9:00 AM", "12:00 PM", "3:00 PM", "6:00 PM"];
   const postsPerDay = config?.postsPerDay ?? 2;
 
@@ -84,20 +85,25 @@ async function ensureSlotsForDate(date: Date) {
     const dayEnd = new Date(date.getTime() + 86400000);
     const existing = await prisma.scheduledSlot.findFirst({
       where: {
+        userId,
         date: { gte: dayStart, lt: dayEnd },
         timeSlot: ts,
       },
     });
     if (!existing) {
       await prisma.scheduledSlot.create({
-        data: { date, timeSlot: ts, slotType, status: "EMPTY" },
+        data: { date, timeSlot: ts, slotType, status: "EMPTY", userId },
       });
     }
   }
 }
 
-export async function getStrategyConfig() {
-  const row = await prisma.strategyConfig.findFirst({ orderBy: { createdAt: "desc" } });
+/** Internal: get strategy config for a known userId (no auth call) */
+async function getStrategyConfigInternal(userId: string) {
+  const row = await prisma.strategyConfig.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+  });
   if (!row) return null;
   const timeSlots = row.timeSlots as string[];
   return {
@@ -108,12 +114,20 @@ export async function getStrategyConfig() {
   };
 }
 
+export { getStrategyConfigInternal };
+
+export async function getStrategyConfig() {
+  const userId = await requireUserId();
+  return getStrategyConfigInternal(userId);
+}
+
 export async function upsertStrategyConfig(data: {
   postsPerDay: number;
   replySessionsPerDay: number;
   timeSlots: string[];
 }) {
-  const existing = await prisma.strategyConfig.findFirst();
+  const userId = await requireUserId();
+  const existing = await prisma.strategyConfig.findFirst({ where: { userId } });
   const payload = {
     postsPerDay: data.postsPerDay,
     replySessionsPerDay: data.replySessionsPerDay,
@@ -122,13 +136,14 @@ export async function upsertStrategyConfig(data: {
   if (existing) {
     await prisma.strategyConfig.update({ where: { id: existing.id }, data: payload });
   } else {
-    await prisma.strategyConfig.create({ data: payload });
+    await prisma.strategyConfig.create({ data: { ...payload, userId } });
   }
 }
 
 export async function getScheduledSlots(localDateStr?: string) {
+  const userId = await requireUserId();
   // Lazy update: mark past FILLED slots as POSTED before returning
-  await checkAndUpdatePassedSlots();
+  await checkAndUpdatePassedSlots(userId);
 
   const today = localDateStr
     ? new Date(`${localDateStr}T00:00:00.000Z`)
@@ -139,7 +154,7 @@ export async function getScheduledSlots(localDateStr?: string) {
       })();
 
   const rows = await prisma.scheduledSlot.findMany({
-    where: { date: { gte: today } },
+    where: { userId, date: { gte: today } },
     orderBy: { date: "asc" },
     include: { conversation: true },
   });
@@ -168,15 +183,16 @@ export async function getScheduledSlots(localDateStr?: string) {
  * Falls back to the legacy config (postsPerDay + timeSlots[]) for backward compatibility.
  */
 export async function ensureSlotsForWeek(localDateStr?: string) {
+  const userId = await requireUserId();
   // If new scheduleConfig exists, use it for slot generation
-  const scheduleConfig = await getScheduleConfig();
+  const scheduleConfig = await getScheduleConfigInternal(userId);
   if (scheduleConfig) {
-    await regenerateSlotsFromConfig(scheduleConfig, localDateStr);
+    await regenerateSlotsFromConfig(scheduleConfig, userId, localDateStr);
     return;
   }
 
   // Fallback: legacy config (postsPerDay + timeSlots array)
-  const config = await getStrategyConfig();
+  const config = await getStrategyConfigInternal(userId);
   const timeSlots = config?.timeSlots ?? ["9:00 AM", "12:00 PM", "3:00 PM", "6:00 PM"];
   const postsPerDay = config?.postsPerDay ?? 2;
 
@@ -199,13 +215,14 @@ export async function ensureSlotsForWeek(localDateStr?: string) {
       const dayEnd = new Date(date.getTime() + 86400000);
       const existing = await prisma.scheduledSlot.findFirst({
         where: {
+          userId,
           date: { gte: dayStart, lt: dayEnd },
           timeSlot: ts,
         },
       });
       if (!existing) {
         await prisma.scheduledSlot.create({
-          data: { date, timeSlot: ts, slotType, status: "EMPTY" },
+          data: { date, timeSlot: ts, slotType, status: "EMPTY", userId },
         });
       }
     }
@@ -234,14 +251,26 @@ export type ScheduleConfig = {
   articles: ContentSchedule;
 };
 
-export async function getScheduleConfig(): Promise<ScheduleConfig | null> {
-  const row = await prisma.strategyConfig.findFirst({ orderBy: { createdAt: "desc" } });
+/** Internal: get schedule config for a known userId (no auth call) */
+async function getScheduleConfigInternal(userId: string): Promise<ScheduleConfig | null> {
+  const row = await prisma.strategyConfig.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+  });
   if (!row || !row.scheduleConfig) return null;
   return row.scheduleConfig as ScheduleConfig;
 }
 
+export { getScheduleConfigInternal };
+
+export async function getScheduleConfig(): Promise<ScheduleConfig | null> {
+  const userId = await requireUserId();
+  return getScheduleConfigInternal(userId);
+}
+
 export async function saveScheduleConfig(data: ScheduleConfig): Promise<void> {
-  const existing = await prisma.strategyConfig.findFirst();
+  const userId = await requireUserId();
+  const existing = await prisma.strategyConfig.findFirst({ where: { userId } });
   const payload = { scheduleConfig: data as object };
   if (existing) {
     await prisma.strategyConfig.update({ where: { id: existing.id }, data: payload });
@@ -252,11 +281,12 @@ export async function saveScheduleConfig(data: ScheduleConfig): Promise<void> {
         replySessionsPerDay: 4,
         timeSlots: [],
         scheduleConfig: data as object,
+        userId,
       },
     });
   }
   // Auto-regenerate scheduled slots starting from tomorrow
-  await regenerateSlotsFromConfig(data);
+  await regenerateSlotsFromConfig(data, userId);
   revalidatePath("/");
 }
 
@@ -284,7 +314,11 @@ const SECTION_TO_SLOT_TYPE: Record<keyof ScheduleConfig, PrismaSlotType> = {
  * Uses batch DB operations: one findMany + one createMany instead of N×(findFirst+create).
  * Called automatically after saveScheduleConfig() and from ensureSlotsForWeek() when config exists.
  */
-async function regenerateSlotsFromConfig(config: ScheduleConfig, localDateStr?: string) {
+async function regenerateSlotsFromConfig(
+  config: ScheduleConfig,
+  userId: string,
+  localDateStr?: string
+) {
   const now = new Date();
   const today = localDateStr
     ? new Date(`${localDateStr}T00:00:00.000Z`)
@@ -298,12 +332,12 @@ async function regenerateSlotsFromConfig(config: ScheduleConfig, localDateStr?: 
 
   // Remove EMPTY slots from today onwards (don't touch FILLED/POSTED)
   await prisma.scheduledSlot.deleteMany({
-    where: { status: "EMPTY", date: { gte: today } },
+    where: { userId, status: "EMPTY", date: { gte: today } },
   });
 
   // Fetch all remaining (FILLED/POSTED) slots in range to check conflicts — single query
   const occupied = await prisma.scheduledSlot.findMany({
-    where: { date: { gte: today, lt: weekEnd } },
+    where: { userId, date: { gte: today, lt: weekEnd } },
     select: { date: true, timeSlot: true, slotType: true },
   });
   const occupiedKeys = new Set(
@@ -319,8 +353,13 @@ async function regenerateSlotsFromConfig(config: ScheduleConfig, localDateStr?: 
   }
 
   // Collect all new slots — no per-slot DB queries
-  const toCreate: { date: Date; timeSlot: string; slotType: PrismaSlotType; status: "EMPTY" }[] =
-    [];
+  const toCreate: {
+    date: Date;
+    timeSlot: string;
+    slotType: PrismaSlotType;
+    status: "EMPTY";
+    userId: string;
+  }[] = [];
 
   for (const [section, schedule] of Object.entries(config) as [
     keyof ScheduleConfig,
@@ -348,7 +387,7 @@ async function regenerateSlotsFromConfig(config: ScheduleConfig, localDateStr?: 
         const conflictKey = `${dateKey}_${timeSlot}_${slotType}`;
         if (occupiedKeys.has(conflictKey)) continue;
 
-        toCreate.push({ date, timeSlot, slotType, status: "EMPTY" });
+        toCreate.push({ date, timeSlot, slotType, status: "EMPTY", userId });
         occupiedKeys.add(conflictKey); // prevent duplicate rows at same time
       }
     }
@@ -362,7 +401,8 @@ async function regenerateSlotsFromConfig(config: ScheduleConfig, localDateStr?: 
 export async function toggleSlotPosted(
   id: string
 ): Promise<{ postedAt?: Date; status: "POSTED" | "FILLED" | "EMPTY" }> {
-  const slot = await prisma.scheduledSlot.findUnique({ where: { id } });
+  const userId = await requireUserId();
+  const slot = await prisma.scheduledSlot.findFirst({ where: { id, userId } });
   if (!slot) throw new Error("Slot not found");
 
   if (slot.status === "POSTED") {
@@ -395,7 +435,8 @@ export async function toggleSlotPosted(
 }
 
 export async function deleteSlot(id: string) {
-  const slot = await prisma.scheduledSlot.findUnique({ where: { id } });
+  const userId = await requireUserId();
+  const slot = await prisma.scheduledSlot.findFirst({ where: { id, userId } });
   if (!slot) return;
   if (slot.conversationId) {
     await prisma.conversation.update({
@@ -408,7 +449,8 @@ export async function deleteSlot(id: string) {
 }
 
 export async function unscheduleSlot(id: string) {
-  const slot = await prisma.scheduledSlot.findUnique({ where: { id } });
+  const userId = await requireUserId();
+  const slot = await prisma.scheduledSlot.findFirst({ where: { id, userId } });
   if (!slot) return;
   if (slot.conversationId) {
     await prisma.conversation.update({
@@ -464,13 +506,14 @@ export async function addToQueue(
   /** User's IANA timezone, e.g. "America/Los_Angeles" — passed from client via Intl API */
   timezone: string = "UTC"
 ) {
+  const userId = await requireUserId();
   // "Today" in the user's timezone → UTC midnight of that calendar day (how dates are stored)
   const now = new Date();
   const localDateStr = now.toLocaleDateString("en-CA", { timeZone: timezone }); // "YYYY-MM-DD"
   const todayUTCMidnight = new Date(`${localDateStr}T00:00:00.000Z`);
 
   const candidates = await prisma.scheduledSlot.findMany({
-    where: { status: "EMPTY", slotType, date: { gte: todayUTCMidnight } },
+    where: { userId, status: "EMPTY", slotType, date: { gte: todayUTCMidnight } },
     orderBy: [{ date: "asc" }, { timeSlot: "asc" }],
   });
 
@@ -480,9 +523,9 @@ export async function addToQueue(
   if (!slot) {
     const tomorrow = new Date(todayUTCMidnight);
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-    await ensureSlotsForDate(tomorrow);
+    await ensureSlotsForDate(tomorrow, userId);
     const moreCandidates = await prisma.scheduledSlot.findMany({
-      where: { status: "EMPTY", slotType, date: { gte: tomorrow } },
+      where: { userId, status: "EMPTY", slotType, date: { gte: tomorrow } },
       orderBy: [{ date: "asc" }, { timeSlot: "asc" }],
     });
     slot = moreCandidates[0] ?? null;
@@ -512,7 +555,9 @@ export async function getGoalConfig(): Promise<{
   targetFollowers: number | null;
   targetDate: Date | null;
 } | null> {
+  const userId = await requireUserId();
   const row = await prisma.strategyConfig.findFirst({
+    where: { userId },
     orderBy: { createdAt: "desc" },
     select: { targetFollowers: true, targetDate: true },
   });
@@ -524,7 +569,8 @@ export async function updateGoalConfig(data: {
   targetFollowers: number;
   targetDate: Date;
 }): Promise<void> {
-  const existing = await prisma.strategyConfig.findFirst();
+  const userId = await requireUserId();
+  const existing = await prisma.strategyConfig.findFirst({ where: { userId } });
   if (existing) {
     await prisma.strategyConfig.update({
       where: { id: existing.id },
@@ -538,6 +584,7 @@ export async function updateGoalConfig(data: {
         timeSlots: [],
         targetFollowers: data.targetFollowers,
         targetDate: data.targetDate,
+        userId,
       },
     });
   }
@@ -546,7 +593,19 @@ export async function updateGoalConfig(data: {
 
 /** Compute goal tracking data from FollowersSnapshot + StrategyConfig */
 export async function getGoalTrackingData(): Promise<GoalTrackingData | null> {
+  const userId = await requireUserId();
+  return _getGoalTrackingData(userId);
+}
+
+export async function getGoalTrackingDataInternal(
+  userId: string
+): Promise<GoalTrackingData | null> {
+  return _getGoalTrackingData(userId);
+}
+
+async function _getGoalTrackingData(userId: string): Promise<GoalTrackingData | null> {
   const config = await prisma.strategyConfig.findFirst({
+    where: { userId },
     orderBy: { createdAt: "desc" },
     select: { targetFollowers: true, targetDate: true },
   });
@@ -558,7 +617,7 @@ export async function getGoalTrackingData(): Promise<GoalTrackingData | null> {
   since.setUTCDate(since.getUTCDate() - 30);
 
   const snapshots = await prisma.followersSnapshot.findMany({
-    where: { date: { gte: since } },
+    where: { userId, date: { gte: since } },
     orderBy: { date: "asc" },
   });
 
@@ -605,13 +664,16 @@ export async function getGoalTrackingData(): Promise<GoalTrackingData | null> {
 
 /** All FollowersSnapshot points + goal config for the goal progress chart */
 export async function getGoalChartData(): Promise<GoalChartData | null> {
+  const userId = await requireUserId();
   const config = await prisma.strategyConfig.findFirst({
+    where: { userId },
     orderBy: { createdAt: "desc" },
     select: { targetFollowers: true, targetDate: true },
   });
   if (!config?.targetFollowers || !config?.targetDate) return null;
 
   const snapshots = await prisma.followersSnapshot.findMany({
+    where: { userId },
     orderBy: { date: "asc" },
     select: { date: true, followersCount: true },
   });

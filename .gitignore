@@ -46,3 +46,6 @@ next-env.d.ts
 
 # plan files
 *.plan.md
+
+# clerk configuration (can include secrets)
+/.clerk/

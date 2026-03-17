@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { anthropic } from "@ai-sdk/anthropic";
 import { streamText, convertToModelMessages, type UIMessage } from "ai";
 import { SUPPORTED_LANGUAGES, type ContentType } from "@/lib/types";
@@ -14,9 +15,8 @@ import { prisma } from "@/lib/prisma";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
-  // Auth check
-  const auth = req.cookies.get("auth")?.value;
-  if (auth !== "1") {
+  const { userId: clerkId } = await auth();
+  if (!clerkId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

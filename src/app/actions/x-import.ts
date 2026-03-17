@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { requireUserId } from "@/lib/auth";
 import { fetchCurrentUser, fetchUserTweets } from "@/lib/x-api";
 import type { XPostType as PrismaXPostType } from "@/generated/prisma";
 
@@ -12,22 +13,24 @@ function detectPostType(text: string): PrismaXPostType {
 export async function importFromXApi(
   maxResults: number = 100
 ): Promise<{ imported: number; updated: number; total: number }> {
-  const { id: userId, username } = await fetchCurrentUser();
+  const userId = await requireUserId();
+  const { id: xUserId, username } = await fetchCurrentUser();
 
   // Get the most recent post ID from DB to avoid re-fetching existing tweets
   const latest = await prisma.xPost.findFirst({
+    where: { userId },
     orderBy: { date: "desc" },
     select: { postId: true },
   });
 
-  const tweets = await fetchUserTweets(userId, username, maxResults, latest?.postId);
+  const tweets = await fetchUserTweets(xUserId, username, maxResults, latest?.postId);
 
   let imported = 0;
   let updated = 0;
 
   for (const tweet of tweets) {
     const existing = await prisma.xPost.findUnique({
-      where: { postId: tweet.postId },
+      where: { userId_postId: { userId, postId: tweet.postId } },
       select: { createdAt: true },
     });
 
@@ -51,8 +54,9 @@ export async function importFromXApi(
     }
 
     await prisma.xPost.upsert({
-      where: { postId: tweet.postId },
+      where: { userId_postId: { userId, postId: tweet.postId } },
       create: {
+        userId,
         postId: tweet.postId,
         date: tweet.createdAt,
         text: tweet.text,

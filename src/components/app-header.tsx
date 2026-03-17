@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { UserButton } from "@clerk/nextjs";
 import { FilePlus, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createConversation } from "@/app/actions/conversations";
@@ -43,6 +44,7 @@ export function AppHeader() {
           >
             <Settings className="h-4 w-4" />
           </Button>
+          <UserButton />
         </div>
       </div>
     </header>

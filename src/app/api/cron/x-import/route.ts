@@ -15,112 +15,131 @@ function detectPostType(text: string): PrismaXPostType {
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
-  if (
-    authHeader !== `Bearer ${process.env.CRON_SECRET}` &&
-    req.cookies.get("auth")?.value !== "1"
-  ) {
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const mode = req.nextUrl.searchParams.get("mode"); // "refresh" or default (new posts)
 
   try {
-    const { id: userId, username } = await fetchCurrentUser();
+    const users = await prisma.user.findMany({ select: { id: true } });
+    const { id: xUserId, username } = await fetchCurrentUser();
 
-    let tweets;
-    if (mode === "refresh") {
-      // Refresh mode: re-fetch metrics for posts from the last REFRESH_DAYS days
-      const startTime = new Date();
-      startTime.setUTCDate(startTime.getUTCDate() - REFRESH_DAYS);
-      tweets = await fetchUserTweetsPaginated(userId, username, {
-        startTime: startTime.toISOString(),
-      });
-    } else {
-      // Default mode: fetch only new posts since the most recent in DB
-      const latest = await prisma.xPost.findFirst({
-        orderBy: { date: "desc" },
-        select: { postId: true },
-      });
-      tweets = await fetchUserTweetsPaginated(userId, username, {
-        sinceId: latest?.postId,
-      });
-    }
+    const allResults: {
+      userId: string;
+      imported?: number;
+      updated?: number;
+      snapshots?: number;
+      error?: string;
+    }[] = [];
 
-    let imported = 0;
-    let updated = 0;
-    let snapshots = 0;
+    for (const user of users) {
+      try {
+        let tweets;
+        if (mode === "refresh") {
+          const startTime = new Date();
+          startTime.setUTCDate(startTime.getUTCDate() - REFRESH_DAYS);
+          tweets = await fetchUserTweetsPaginated(xUserId, username, {
+            startTime: startTime.toISOString(),
+          });
+        } else {
+          const latest = await prisma.xPost.findFirst({
+            where: { userId: user.id },
+            orderBy: { date: "desc" },
+            select: { postId: true },
+          });
+          tweets = await fetchUserTweetsPaginated(xUserId, username, {
+            sinceId: latest?.postId,
+          });
+        }
 
-    const snapshotDate = new Date();
-    snapshotDate.setUTCHours(0, 0, 0, 0);
+        let imported = 0;
+        let updated = 0;
+        let snapshots = 0;
 
-    for (const tweet of tweets) {
-      const existing = await prisma.xPost.findUnique({
-        where: { postId: tweet.postId },
-        select: { createdAt: true },
-      });
+        const snapshotDate = new Date();
+        snapshotDate.setUTCHours(0, 0, 0, 0);
 
-      // API-owned metrics (never touches newFollowers, detailExpands)
-      const apiMetrics = {
-        impressions: tweet.impressions,
-        likes: tweet.likes,
-        engagements: tweet.engagements,
-        bookmarks: tweet.bookmarks,
-        replies: tweet.replies,
-        reposts: tweet.reposts,
-        quoteCount: tweet.quoteCount,
-        urlClicks: tweet.urlClicks,
-      };
+        for (const tweet of tweets) {
+          const existing = await prisma.xPost.findUnique({
+            where: { userId_postId: { userId: user.id, postId: tweet.postId } },
+            select: { createdAt: true },
+          });
 
-      // Only update profileVisits if API actually provided it
-      const updateData: Record<string, unknown> = {
-        ...apiMetrics,
-        dataSource: "API",
-      };
-      if (tweet.profileVisits !== undefined) {
-        updateData.profileVisits = tweet.profileVisits;
-      }
+          const apiMetrics = {
+            impressions: tweet.impressions,
+            likes: tweet.likes,
+            engagements: tweet.engagements,
+            bookmarks: tweet.bookmarks,
+            replies: tweet.replies,
+            reposts: tweet.reposts,
+            quoteCount: tweet.quoteCount,
+            urlClicks: tweet.urlClicks,
+          };
 
-      await prisma.xPost.upsert({
-        where: { postId: tweet.postId },
-        create: {
-          postId: tweet.postId,
-          date: tweet.createdAt,
-          text: tweet.text,
-          postLink: tweet.postLink,
-          postType: detectPostType(tweet.text),
-          ...apiMetrics,
-          profileVisits: tweet.profileVisits ?? 0,
-          dataSource: "API",
-        },
-        update: updateData,
-      });
+          const updateData: Record<string, unknown> = {
+            ...apiMetrics,
+            dataSource: "API",
+          };
+          if (tweet.profileVisits !== undefined) {
+            updateData.profileVisits = tweet.profileVisits;
+          }
 
-      if (existing) updated++;
-      else imported++;
-
-      // Save engagement snapshot for velocity tracking (posts < REFRESH_DAYS old)
-      const postAgeDays = (Date.now() - tweet.createdAt.getTime()) / (1000 * 60 * 60 * 24);
-      if (postAgeDays < REFRESH_DAYS) {
-        const snapshotMetrics = {
-          ...apiMetrics,
-          profileVisits: tweet.profileVisits ?? 0,
-        };
-
-        await prisma.postEngagementSnapshot.upsert({
-          where: {
-            postId_snapshotDate: {
+          await prisma.xPost.upsert({
+            where: { userId_postId: { userId: user.id, postId: tweet.postId } },
+            create: {
+              userId: user.id,
               postId: tweet.postId,
-              snapshotDate: snapshotDate,
+              date: tweet.createdAt,
+              text: tweet.text,
+              postLink: tweet.postLink,
+              postType: detectPostType(tweet.text),
+              ...apiMetrics,
+              profileVisits: tweet.profileVisits ?? 0,
+              dataSource: "API",
             },
-          },
-          create: {
-            postId: tweet.postId,
-            snapshotDate: snapshotDate,
-            ...snapshotMetrics,
-          },
-          update: snapshotMetrics,
+            update: updateData,
+          });
+
+          if (existing) updated++;
+          else imported++;
+
+          // Save engagement snapshot for velocity tracking
+          const postAgeDays = (Date.now() - tweet.createdAt.getTime()) / (1000 * 60 * 60 * 24);
+          if (postAgeDays < REFRESH_DAYS) {
+            const snapshotMetrics = {
+              ...apiMetrics,
+              profileVisits: tweet.profileVisits ?? 0,
+            };
+
+            await prisma.postEngagementSnapshot.upsert({
+              where: {
+                userId_postId_snapshotDate: {
+                  userId: user.id,
+                  postId: tweet.postId,
+                  snapshotDate: snapshotDate,
+                },
+              },
+              create: {
+                userId: user.id,
+                postId: tweet.postId,
+                snapshotDate: snapshotDate,
+                ...snapshotMetrics,
+              },
+              update: snapshotMetrics,
+            });
+            snapshots++;
+          }
+        }
+
+        allResults.push({ userId: user.id, imported, updated, snapshots });
+      } catch (err) {
+        Sentry.captureException(err);
+        console.error(`[x-import] user=${user.id}`, err);
+        allResults.push({
+          userId: user.id,
+          error: err instanceof Error ? err.message : String(err),
         });
-        snapshots++;
       }
     }
 
@@ -129,10 +148,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       mode: mode ?? "default",
-      imported,
-      updated,
-      snapshots,
-      total: tweets.length,
+      results: allResults,
     });
   } catch (err) {
     Sentry.captureException(err);

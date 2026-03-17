@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { requireUserId } from "@/lib/auth";
 import type { ContentType, DraftStatus } from "@/lib/types";
 import { fetchTweetFromText, extractTweetUrl } from "@/lib/parse-tweet";
 import { fetchTweetById } from "@/lib/x-api";
@@ -34,9 +35,10 @@ const statusFromPrisma = (v: PrismaConversationStatus): DraftStatus => {
 };
 
 export async function getConversations() {
+  const userId = await requireUserId();
   const rows = await prisma.conversation.findMany({
     orderBy: { createdAt: "desc" },
-    where: { status: { in: ["DRAFT"] } },
+    where: { userId, status: { in: ["DRAFT"] } },
   });
   return rows.map((r) => ({
     id: r.id,
@@ -49,8 +51,9 @@ export async function getConversations() {
 }
 
 export async function getConversation(id: string) {
-  const c = await prisma.conversation.findUnique({
-    where: { id },
+  const userId = await requireUserId();
+  const c = await prisma.conversation.findFirst({
+    where: { id, userId },
     include: {
       messages: { orderBy: { createdAt: "asc" } },
       notes: { orderBy: { createdAt: "asc" } },
@@ -84,9 +87,11 @@ export async function createConversation(data: {
   contentType?: ContentType;
   initialContent?: string;
 }) {
+  const userId = await requireUserId();
   const contentType = data.contentType ?? "Reply";
   const conv = await prisma.conversation.create({
     data: {
+      userId,
       title: data.title,
       contentType: contentTypeToPrisma[contentType],
       status: "DRAFT",
@@ -108,12 +113,13 @@ export async function updateConversation(
   id: string,
   data: { title?: string; contentType?: ContentType; status?: DraftStatus; pinned?: boolean }
 ) {
+  const userId = await requireUserId();
   const update: Record<string, unknown> = {};
   if (data.title != null) update.title = data.title;
   if (data.contentType != null) update.contentType = contentTypeToPrisma[data.contentType];
   if (data.status != null) update.status = statusToPrisma[data.status];
   if (data.pinned != null) update.pinned = data.pinned;
-  await prisma.conversation.update({ where: { id }, data: update });
+  await prisma.conversation.updateMany({ where: { id, userId }, data: update });
 }
 
 export async function addMessage(
@@ -121,18 +127,20 @@ export async function addMessage(
   role: "user" | "assistant",
   content: string
 ) {
+  const userId = await requireUserId();
   await prisma.message.create({
     data: { conversationId, role, content },
   });
-  await prisma.conversation.update({
-    where: { id: conversationId },
+  await prisma.conversation.updateMany({
+    where: { id: conversationId, userId },
     data: { lastActivityAt: new Date() },
   });
   revalidatePath(`/c/${conversationId}`);
 }
 
 export async function deleteConversation(id: string) {
-  await prisma.conversation.delete({ where: { id } });
+  const userId = await requireUserId();
+  await prisma.conversation.deleteMany({ where: { id, userId } });
   revalidatePath("/");
 }
 
@@ -142,7 +150,9 @@ export async function deleteConversation(id: string) {
  * Excludes the current conversation so it doesn't count itself.
  */
 export async function getRecentUsedModes(excludeId?: string, limit = 5): Promise<string[]> {
+  const userId = await requireUserId();
   const where = {
+    userId,
     contentType: "REPLY" as const,
     ...(excludeId ? { id: { not: excludeId } } : {}),
   };
@@ -162,8 +172,9 @@ export async function getRecentUsedModes(excludeId?: string, limit = 5): Promise
 }
 
 export async function markAsPosted(conversationId: string) {
-  await prisma.conversation.update({
-    where: { id: conversationId },
+  const userId = await requireUserId();
+  await prisma.conversation.updateMany({
+    where: { id: conversationId, userId },
     data: { status: "POSTED" },
   });
   revalidatePath("/");
@@ -181,6 +192,7 @@ export async function markAsPosted(conversationId: string) {
  * Called from client components as a server action.
  */
 export async function fetchTweetFullTextAction(text: string): Promise<string | null> {
+  await requireUserId();
   const url = extractTweetUrl(text);
   if (!url) return null;
 
@@ -196,6 +208,7 @@ export async function fetchTweetFullTextAction(text: string): Promise<string | n
 }
 
 export async function resolveTitleFromInput(text: string): Promise<string> {
+  await requireUserId();
   const tweet = await fetchTweetFromText(text);
   if (tweet) {
     return tweet.text.length > 80 ? tweet.text.slice(0, 80) + "…" : tweet.text;

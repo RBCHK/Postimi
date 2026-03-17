@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { anthropic } from "@ai-sdk/anthropic";
 import { streamText, tool, stepCountIs } from "ai";
 import { z } from "zod";
@@ -17,8 +18,8 @@ import type {
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
-  const auth = req.cookies.get("auth")?.value;
-  if (auth !== "1") {
+  const { userId: clerkId } = await auth();
+  if (!clerkId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

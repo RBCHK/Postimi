@@ -10,6 +10,33 @@ datasource db {
   provider = "postgresql"
 }
 
+// ─── Auth ────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String
+  name      String?
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  conversations          Conversation[]
+  voiceBankEntries       VoiceBankEntry[]
+  scheduledSlots         ScheduledSlot[]
+  strategyConfigs        StrategyConfig[]
+  xPosts                 XPost[]
+  dailyAccountStats      DailyAccountStats[]
+  strategyAnalyses       StrategyAnalysis[]
+  researchNotes          ResearchNote[]
+  dailyInsights          DailyInsight[]
+  followersSnapshots     FollowersSnapshot[]
+  postEngagementSnapshots PostEngagementSnapshot[]
+  planProposals          PlanProposal[]
+}
+
+// ─── Enums ───────────────────────────────────────────────
+
 enum ContentType {
   REPLY
   POST
@@ -41,8 +68,27 @@ enum VoiceBankType {
   POST
 }
 
+enum XPostType {
+  POST
+  REPLY
+}
+
+enum DataSource {
+  CSV
+  API
+}
+
+enum ProposalStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+// ─── Content ─────────────────────────────────────────────
+
 model Conversation {
   id                String              @id @default(cuid())
+  userId            String
   title             String
   contentType       ContentType
   status            ConversationStatus  @default(DRAFT)
@@ -53,9 +99,12 @@ model Conversation {
   updatedAt         DateTime            @updatedAt
   lastActivityAt    DateTime            @default(now())
 
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages Message[]
   notes    Note[]
   slots    ScheduledSlot[]
+
+  @@index([userId])
 }
 
 model Message {
@@ -79,14 +128,22 @@ model Note {
 
 model VoiceBankEntry {
   id        String         @id @default(cuid())
+  userId    String
   content   String
   type      VoiceBankType
   topic     String?
   createdAt DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
+
+// ─── Schedule ────────────────────────────────────────────
 
 model ScheduledSlot {
   id             String     @id @default(cuid())
+  userId         String
   date           DateTime
   timeSlot       String
   slotType       SlotType
@@ -95,11 +152,15 @@ model ScheduledSlot {
   conversationId String?
   postedAt       DateTime?
 
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
 }
 
 model StrategyConfig {
   id                 String    @id @default(cuid())
+  userId             String
   postsPerDay        Int       @default(2)
   replySessionsPerDay Int      @default(4)
   timeSlots          Json      // e.g. ["9:00 AM", "12:00 PM", "3:00 PM", "6:00 PM"]
@@ -108,21 +169,18 @@ model StrategyConfig {
   targetDate         DateTime? // goal deadline, e.g. 2026-12-31
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
-enum XPostType {
-  POST
-  REPLY
-}
-
-enum DataSource {
-  CSV
-  API
-}
+// ─── X Analytics ─────────────────────────────────────────
 
 model XPost {
   id            String     @id @default(cuid())
-  postId        String     @unique
+  userId        String
+  postId        String
   date          DateTime
   text          String
   postLink      String?
@@ -147,11 +205,17 @@ model XPost {
   dataSource    DataSource @default(CSV)
   updatedAt     DateTime   @updatedAt
   createdAt     DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@index([userId])
 }
 
 model DailyAccountStats {
   id            String   @id @default(cuid())
-  date          DateTime @unique
+  userId        String
+  date          DateTime
   impressions   Int      @default(0)
   likes         Int      @default(0)
   engagements   Int      @default(0)
@@ -166,44 +230,75 @@ model DailyAccountStats {
   videoViews    Int      @default(0)
   mediaViews    Int      @default(0)
   createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
 }
+
+// ─── AI Agents ───────────────────────────────────────────
 
 model StrategyAnalysis {
   id             String   @id @default(cuid())
+  userId         String
   csvSummary     Json     // { totalPosts, avgImpressions, topPosts[], dateRange }
   searchQueries  String[] // queries the agent ran, for transparency
   recommendation String   // full markdown output from Claude
   weekStart      DateTime // the Monday of the week this analysis covers
   autoGenerated  Boolean  @default(false) // true for cron-generated analyses
   createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model ResearchNote {
   id        String   @id @default(cuid())
+  userId    String
   topic     String
   summary   String
   sources   Json     // [{ title, url, snippet }]
   queries   String[]
   createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model DailyInsight {
   id        String   @id @default(cuid())
-  date      DateTime @unique // UTC midnight, one record per day
-  insights  Json            // string[] of 5 insights in Russian
-  context   Json            // { strategyAnalysisId, researchNoteIds[], daysOfStats }
+  userId    String
+  date      DateTime // UTC midnight, one record per day per user
+  insights  Json     // string[] of 5 insights in Russian
+  context   Json     // { strategyAnalysisId, researchNoteIds[], daysOfStats }
   createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
 }
 
 model FollowersSnapshot {
   id              String   @id @default(cuid())
-  date            DateTime @unique // UTC midnight, one per day
+  userId          String
+  date            DateTime // UTC midnight, one per day per user
   followersCount  Int
   followingCount  Int
   deltaFollowers  Int      @default(0) // today - yesterday
   deltaFollowing  Int      @default(0)
   createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
 }
+
+// ─── Trends (global, not per-user) ──────────────────────
 
 model TrendSnapshot {
   id             String    @id @default(cuid())
@@ -219,8 +314,11 @@ model TrendSnapshot {
   @@index([date, fetchHour])
 }
 
+// ─── Engagement Tracking ─────────────────────────────────
+
 model PostEngagementSnapshot {
   id            String   @id @default(cuid())
+  userId        String
   postId        String
   snapshotDate  DateTime
   impressions   Int      @default(0)
@@ -234,18 +332,18 @@ model PostEngagementSnapshot {
   urlClicks     Int      @default(0)
   createdAt     DateTime @default(now())
 
-  @@unique([postId, snapshotDate])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId, snapshotDate])
+  @@index([userId])
   @@index([postId])
 }
 
-enum ProposalStatus {
-  PENDING
-  ACCEPTED
-  REJECTED
-}
+// ─── Plan Proposals ──────────────────────────────────────
 
 model PlanProposal {
   id              String         @id @default(cuid())
+  userId          String
   status          ProposalStatus @default(PENDING)
   proposalType    String         @default("config") // "config" | "schedule" (legacy)
   changes         Json           // ConfigChange[] or PlanChange[] depending on proposalType
@@ -254,4 +352,8 @@ model PlanProposal {
   metricsSnapshot Json?          // MetricsSnapshot at time of proposal creation
   createdAt       DateTime       @default(now())
   reviewedAt      DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
