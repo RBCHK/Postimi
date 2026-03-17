@@ -8,7 +8,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="flex h-dvh flex-col bg-background">
       <AppHeader />
 
-      <div className="flex flex-1 overflow-hidden md:gap-[15px] md:px-[15px]">
+      <div className="flex flex-1 overflow-hidden md:px-[15px]">
         <LeftSidebarContainer />
 
         <main className="flex flex-1 flex-col overflow-y-auto md:rounded-[12px] md:bg-sidebar pb-[calc(54px+env(safe-area-inset-bottom))] md:pb-0">

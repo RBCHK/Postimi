@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Cpu } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -31,7 +31,6 @@ export function ModelDropdown({ disabled }: { disabled?: boolean }) {
           disabled={disabled}
           suppressHydrationWarning
         >
-          <Cpu className="h-3.5 w-3.5" />
           {current.shortLabel}
           <ChevronDown className="h-3 w-3 opacity-50" />
         </Button>
@@ -43,7 +42,6 @@ export function ModelDropdown({ disabled }: { disabled?: boolean }) {
             onClick={() => handleSelect(opt.value)}
             className="gap-2"
           >
-            <Cpu className="h-3.5 w-3.5" />
             {opt.label}
           </DropdownMenuItem>
         ))}

@@ -18,6 +18,8 @@ export async function requireUserId(): Promise<string> {
 
   // Auto-create user if webhook hasn't synced yet
   const clerkUser = await currentUser();
+  if (!clerkUser) throw new Error("Unauthorized");
+
   const user = await prisma.user.upsert({
     where: { clerkId },
     update: {},
