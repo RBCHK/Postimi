@@ -1,5 +1,11 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
+
+const ADMIN_CLERK_IDS = (process.env.ADMIN_CLERK_IDS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 /**
  * Returns the internal DB userId for the currently authenticated Clerk user.
@@ -33,4 +39,33 @@ export async function requireUserId(): Promise<string> {
   });
 
   return user.id;
+}
+
+/**
+ * Returns the internal DB userId if the current Clerk user is an admin.
+ * Redirects to "/" if not admin. Use in server components / layouts.
+ */
+export async function requireAdmin(): Promise<string> {
+  const { userId: clerkId } = await auth();
+  if (!clerkId || !ADMIN_CLERK_IDS.includes(clerkId)) {
+    redirect("/");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { clerkId },
+    select: { id: true },
+  });
+  if (!user) redirect("/");
+
+  return user.id;
+}
+
+/**
+ * Returns true if the current Clerk user is an admin.
+ * For conditional UI rendering in server components.
+ */
+export async function isAdmin(): Promise<boolean> {
+  const { userId: clerkId } = await auth();
+  if (!clerkId) return false;
+  return ADMIN_CLERK_IDS.includes(clerkId);
 }
