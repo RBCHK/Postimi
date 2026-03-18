@@ -66,6 +66,7 @@ IMPORTANT: PWA on iPhone — apply when touching layout or UI.
 
 ## Quality
 
+- **No hacks or workarounds**: always implement the architecturally correct solution. Separate concerns properly (e.g. build vs deploy, CI vs production). If a quick fix "works", ask whether it's the right fix.
 - **TypeScript**: no `any`, no suppressed errors
 - **Error handling**: try/catch on all external boundaries (HTTP, Prisma, fs, JSON.parse, cron jobs)
 - **Accessibility**: semantic HTML, ARIA labels, keyboard navigable
