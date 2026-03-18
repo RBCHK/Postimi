@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect, useCallback } from "react";
 import {
   Clock,
   CheckCircle2,
@@ -10,6 +10,7 @@ import {
   RefreshCw,
   ChevronDown,
   ChevronUp,
+  DollarSign,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
@@ -17,7 +18,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/page-container";
 import { toast } from "sonner";
-import { toggleCronJob, getCronConfigs, getCronRuns } from "@/app/actions/admin";
+import {
+  toggleCronJob,
+  getCronConfigs,
+  getCronRuns,
+  getApiCostSummary,
+  getApiCostDaily,
+} from "@/app/actions/admin";
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -43,6 +50,20 @@ interface CronRun {
   resultJson: unknown;
   error: string | null;
   startedAt: Date;
+}
+
+interface CostSummary {
+  period: string;
+  totalCostCents: number;
+  totalResources: number;
+  totalCalls: number;
+}
+
+interface CostDaily {
+  date: string;
+  costCents: number;
+  calls: number;
+  resources: number;
 }
 
 interface AdminViewProps {
@@ -90,6 +111,12 @@ function formatTimeAgo(date: Date): string {
   return `${days}d ago`;
 }
 
+function formatCents(cents: number): string {
+  if (cents < 1) return `$${cents.toFixed(3)}`;
+  if (cents < 100) return `${cents.toFixed(1)}¢`;
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
 // ─── Component ─────────────────────────────────────────────
 
 export function AdminView({ initialConfigs, initialRuns }: AdminViewProps) {
@@ -100,8 +127,37 @@ export function AdminView({ initialConfigs, initialRuns }: AdminViewProps) {
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [runFilter, setRunFilter] = useState<string>("all");
 
+  // API Costs state
+  const [costSummaries, setCostSummaries] = useState<CostSummary[]>([]);
+  const [costDaily, setCostDaily] = useState<CostDaily[]>([]);
+  const [costsLoaded, setCostsLoaded] = useState(false);
+
+  const loadCosts = useCallback(() => {
+    startTransition(async () => {
+      try {
+        const [today, week, month, daily] = await Promise.all([
+          getApiCostSummary("today"),
+          getApiCostSummary("week"),
+          getApiCostSummary("month"),
+          getApiCostDaily(14),
+        ]);
+        setCostSummaries([today, week, month]);
+        setCostDaily(daily);
+        setCostsLoaded(true);
+      } catch {
+        toast.error("Failed to load API costs");
+      }
+    });
+  }, []);
+
+  // Load costs when switching to costs tab
+  useEffect(() => {
+    if (tab === "costs" && !costsLoaded) {
+      loadCosts();
+    }
+  }, [tab, costsLoaded, loadCosts]);
+
   function handleToggle(jobName: string, enabled: boolean) {
-    // Optimistic update
     setConfigs((prev) => prev.map((c) => (c.jobName === jobName ? { ...c, enabled } : c)));
 
     startTransition(async () => {
@@ -109,7 +165,6 @@ export function AdminView({ initialConfigs, initialRuns }: AdminViewProps) {
         await toggleCronJob(jobName, enabled);
         toast.success(`${jobName}: ${enabled ? "enabled" : "disabled"}`);
       } catch {
-        // Revert on error
         setConfigs((prev) =>
           prev.map((c) => (c.jobName === jobName ? { ...c, enabled: !enabled } : c))
         );
@@ -127,6 +182,9 @@ export function AdminView({ initialConfigs, initialRuns }: AdminViewProps) {
         ]);
         setConfigs(newConfigs);
         setRuns(newRuns);
+        if (tab === "costs") {
+          setCostsLoaded(false);
+        }
         toast.success("Refreshed");
       } catch {
         toast.error("Failed to refresh");
@@ -135,8 +193,13 @@ export function AdminView({ initialConfigs, initialRuns }: AdminViewProps) {
   }
 
   const filteredRuns = runFilter === "all" ? runs : runs.filter((r) => r.jobName === runFilter);
-
   const uniqueJobNames = Array.from(new Set(runs.map((r) => r.jobName))).sort();
+
+  const PERIOD_LABELS: Record<string, string> = {
+    today: "Today",
+    week: "7 days",
+    month: "30 days",
+  };
 
   return (
     <PageContainer className="space-y-6">
@@ -152,9 +215,11 @@ export function AdminView({ initialConfigs, initialRuns }: AdminViewProps) {
         <TabsList>
           <TabsTrigger value="crons">Cron Jobs</TabsTrigger>
           <TabsTrigger value="runs">Run Log</TabsTrigger>
+          <TabsTrigger value="costs">API Costs</TabsTrigger>
         </TabsList>
       </Tabs>
 
+      {/* ─── Cron Jobs Tab ─────────────────────────────────── */}
       {tab === "crons" && (
         <div className="space-y-2">
           {configs.map((config) => (
@@ -192,9 +257,9 @@ export function AdminView({ initialConfigs, initialRuns }: AdminViewProps) {
         </div>
       )}
 
+      {/* ─── Run Log Tab ───────────────────────────────────── */}
       {tab === "runs" && (
         <div className="space-y-4">
-          {/* Filter */}
           <div className="flex gap-2 overflow-x-auto">
             <Button
               variant={runFilter === "all" ? "default" : "outline"}
@@ -215,7 +280,6 @@ export function AdminView({ initialConfigs, initialRuns }: AdminViewProps) {
             ))}
           </div>
 
-          {/* Runs list */}
           <div className="space-y-2">
             {filteredRuns.length === 0 && (
               <p className="py-8 text-center text-muted-foreground">No runs found</p>
@@ -264,6 +328,58 @@ export function AdminView({ initialConfigs, initialRuns }: AdminViewProps) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ─── API Costs Tab ─────────────────────────────────── */}
+      {tab === "costs" && (
+        <div className="space-y-6">
+          {/* Summary cards */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {costSummaries.map((s) => (
+              <div key={s.period} className="rounded-lg border p-4">
+                <div className="text-sm text-muted-foreground">
+                  {PERIOD_LABELS[s.period] ?? s.period}
+                </div>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <DollarSign className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-2xl font-bold">{formatCents(s.totalCostCents)}</span>
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {s.totalCalls} calls · {s.totalResources} resources
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Daily breakdown table */}
+          {costDaily.length > 0 ? (
+            <div className="rounded-lg border">
+              <div className="border-b px-4 py-3 font-medium">Daily breakdown (14 days)</div>
+              <div className="divide-y">
+                {costDaily.map((day) => (
+                  <div
+                    key={day.date}
+                    className="flex items-center justify-between px-4 py-2 text-sm"
+                  >
+                    <span className="text-muted-foreground">{day.date}</span>
+                    <div className="flex items-center gap-4">
+                      <span className="text-xs text-muted-foreground">
+                        {day.calls} calls · {day.resources} res
+                      </span>
+                      <span className="font-medium">{formatCents(day.costCents)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            !isPending && (
+              <p className="py-8 text-center text-muted-foreground">
+                No API cost data yet. Costs will appear after X API calls are logged.
+              </p>
+            )
+          )}
         </div>
       )}
     </PageContainer>

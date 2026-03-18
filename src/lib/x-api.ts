@@ -6,6 +6,7 @@
  */
 
 import crypto from "crypto";
+import { logXApiCall } from "@/lib/x-api-logger";
 
 const BASE_URL = "https://api.twitter.com/2";
 
@@ -100,25 +101,48 @@ async function xFetch<T>(endpoint: string, params: Record<string, string>): Prom
   return res.json() as Promise<T>;
 }
 
+/** Options for tracking X API calls */
+interface XApiLogOpts {
+  callerJob?: string;
+  userId?: string;
+}
+
 /** Fetch current user's ID and username */
-export async function fetchCurrentUser(): Promise<{ id: string; username: string }> {
+export async function fetchCurrentUser(
+  opts?: XApiLogOpts
+): Promise<{ id: string; username: string }> {
   const data = await xFetch<{ data: { id: string; username: string } }>("/users/me", {
     "user.fields": "username",
+  });
+  logXApiCall({
+    endpoint: "/users/me",
+    resourceType: "USER_READ",
+    resourceCount: 1,
+    httpStatus: 200,
+    ...opts,
   });
   return { id: data.data.id, username: data.data.username };
 }
 
 /** Fetch current user's ID (needed for /users/:id/tweets) */
-export async function fetchCurrentUserId(): Promise<string> {
-  const { id } = await fetchCurrentUser();
+export async function fetchCurrentUserId(opts?: XApiLogOpts): Promise<string> {
+  const { id } = await fetchCurrentUser(opts);
   return id;
 }
 
 /** Fetch current user's followers/following count */
-export async function fetchUserData(): Promise<XUserData> {
+export async function fetchUserData(opts?: XApiLogOpts): Promise<XUserData> {
   const data = await xFetch<{
     data: { public_metrics: { followers_count: number; following_count: number } };
   }>("/users/me", { "user.fields": "public_metrics" });
+
+  logXApiCall({
+    endpoint: "/users/me",
+    resourceType: "USER_READ",
+    resourceCount: 1,
+    httpStatus: 200,
+    ...opts,
+  });
 
   return {
     followersCount: data.data.public_metrics.followers_count,
@@ -158,7 +182,8 @@ export async function fetchUserTweets(
   userId: string,
   username: string,
   maxResults = 100,
-  sinceId?: string
+  sinceId?: string,
+  opts?: XApiLogOpts
 ): Promise<XTweetMetrics[]> {
   const params: Record<string, string> = {
     max_results: Math.min(maxResults, 100).toString(),
@@ -193,7 +218,7 @@ export async function fetchUserTweets(
 
   if (!data.data?.length) return [];
 
-  return data.data.map((tweet) => {
+  const tweets = data.data.map((tweet) => {
     const pub = tweet.public_metrics;
     const priv = tweet.non_public_metrics;
 
@@ -217,13 +242,24 @@ export async function fetchUserTweets(
       profileVisits: tweet.organic_metrics?.user_profile_clicks,
     };
   });
+
+  logXApiCall({
+    endpoint: `/users/${userId}/tweets`,
+    resourceType: "POST_READ",
+    resourceCount: tweets.length,
+    httpStatus: 200,
+    ...opts,
+  });
+
+  return tweets;
 }
 
 /** Fetch user tweets with pagination support (>100 tweets) */
 export async function fetchUserTweetsPaginated(
   userId: string,
   username: string,
-  opts: { maxResults?: number; startTime?: string; sinceId?: string } = {}
+  opts: { maxResults?: number; startTime?: string; sinceId?: string } = {},
+  logOpts?: XApiLogOpts
 ): Promise<XTweetMetrics[]> {
   const allTweets: XTweetMetrics[] = [];
   let paginationToken: string | undefined;
@@ -298,11 +334,21 @@ export async function fetchUserTweetsPaginated(
     }
   } while (paginationToken);
 
+  if (allTweets.length > 0) {
+    logXApiCall({
+      endpoint: `/users/${userId}/tweets`,
+      resourceType: "POST_READ",
+      resourceCount: allTweets.length,
+      httpStatus: 200,
+      ...logOpts,
+    });
+  }
+
   return allTweets;
 }
 
 /** Fetch a single tweet's full text by ID (OAuth 1.0a) */
-export async function fetchTweetById(tweetId: string): Promise<string | null> {
+export async function fetchTweetById(tweetId: string, opts?: XApiLogOpts): Promise<string | null> {
   try {
     const data = await xFetch<{
       data?: { text: string; note_tweet?: { text: string } };
@@ -310,6 +356,13 @@ export async function fetchTweetById(tweetId: string): Promise<string | null> {
       "tweet.fields": "text,note_tweet",
     });
     if (!data.data) return null;
+    logXApiCall({
+      endpoint: `/tweets/${tweetId}`,
+      resourceType: "POST_READ",
+      resourceCount: 1,
+      httpStatus: 200,
+      ...opts,
+    });
     // note_tweet.text contains the full text for long-form X Premium posts;
     // fall back to standard text for regular tweets
     return data.data.note_tweet?.text ?? data.data.text;
@@ -342,11 +395,23 @@ export interface XTweetRawResponse {
 }
 
 /** Fetch a single tweet's full metrics by ID (OAuth 1.0a) */
-export async function fetchTweetMetrics(tweetId: string): Promise<XTweetRawResponse | null> {
+export async function fetchTweetMetrics(
+  tweetId: string,
+  opts?: XApiLogOpts
+): Promise<XTweetRawResponse | null> {
   try {
     const data = await xFetch<{ data?: XTweetRawResponse }>(`/tweets/${tweetId}`, {
       "tweet.fields": "created_at,public_metrics,non_public_metrics,organic_metrics",
     });
+    if (data.data) {
+      logXApiCall({
+        endpoint: `/tweets/${tweetId}`,
+        resourceType: "POST_READ",
+        resourceCount: 1,
+        httpStatus: 200,
+        ...opts,
+      });
+    }
     return data.data ?? null;
   } catch (err) {
     throw err;
@@ -354,7 +419,7 @@ export async function fetchTweetMetrics(tweetId: string): Promise<XTweetRawRespo
 }
 
 /** Fetch personalized trends (requires OAuth 2.0 User Token) */
-export async function fetchPersonalizedTrends(): Promise<
+export async function fetchPersonalizedTrends(opts?: XApiLogOpts): Promise<
   {
     trendName: string;
     postCount: number;
@@ -375,10 +440,20 @@ export async function fetchPersonalizedTrends(): Promise<
 
   if (!data.data?.length) return [];
 
-  return data.data.map((t) => ({
+  const trends = data.data.map((t) => ({
     trendName: t.trend_name,
     postCount: t.post_count ?? 0,
     category: t.category,
     trendingSince: t.trending_since,
   }));
+
+  logXApiCall({
+    endpoint: "/users/personalized_trends",
+    resourceType: "TREND_READ",
+    resourceCount: trends.length,
+    httpStatus: 200,
+    ...opts,
+  });
+
+  return trends;
 }
