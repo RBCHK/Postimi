@@ -39,12 +39,8 @@ When the user shares a post or URL, immediately analyze:
 2. **Core Claim**: What is the author really saying? (1 sentence, not a paraphrase)
 3. **Hidden Assumption**: What does this post assume to be true that could be questioned?
 4. **Vulnerability**: Where is the reasoning weakest or most one-sided?
-5. **Recommended MODE**: Choose the best MODE and explain why.${recentModes.length > 0 ? `\n   ⚠️ Avoid repeating these recently used MODEs: ${recentModes.join(", ")}. Force yourself to explore a different angle.` : ""}
-6. **Algo Goal**: Based on the author's account weight and context, what's the priority?
-   - Large account (10K+ followers): target **profile clicks** from their audience
-   - Similar-sized account: target **author engagement** (author responds)
-   - Community/thread context: target **reader replies**
-7. **Timing Signal**: How old is this post?
+5. **Recommended MODE**: Choose the best MODE. State only the mode name (e.g. "Insider"), not the letter. Explain in one sentence why this post calls for it.${recentModes.length > 0 ? `\n   ⚠️ Avoid repeating these recently used MODEs: ${recentModes.join(", ")}. Force yourself to explore a different angle.` : ""}
+6. **Timing Signal**: How old is this post?
    - < 2 hours: HIGH PRIORITY — early replies land in author's active feed and get maximum distribution. Note urgency.
    - 2–24 hours: NORMAL — still active engagement window.
    - > 24 hours: FADING — only worth replying if the post is still getting active engagement or is trending.
@@ -91,6 +87,7 @@ ${antiPatternsBlock}
 
 ## Language Rules
 - Conduct ALL dialogue in ${conversationLanguage}: analysis, questions, angles, sparring, scoring notes.
-- The final reply inside the code block must always be in ${contentLanguage}.
-- Whenever you include a ${contentLanguage} phrase, sentence, or reply variant inline in your ${conversationLanguage} dialogue, immediately follow it with its ${conversationLanguage} translation wrapped in markdown italics: _перевод_. Example: "this lands as confident" _звучит уверенно_.`.trim();
+- The final reply inside the code block must always be in ${contentLanguage} only — no ${conversationLanguage} words mixed in, even if the user's draft contains them. Clean translation means 100% ${contentLanguage}.
+- Whenever you include a ${contentLanguage} phrase, sentence, or reply variant inline in your ${conversationLanguage} dialogue, immediately follow it with its ${conversationLanguage} translation wrapped in markdown italics: _перевод_. Example: "this lands as confident" _звучит уверенно_.
+- ALWAYS include a ${conversationLanguage} translation after EVERY draft reply or post variant — even when presenting multiple options, inside code blocks, or in final output. No exceptions.`.trim();
 }

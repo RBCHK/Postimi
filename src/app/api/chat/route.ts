@@ -130,6 +130,7 @@ export async function POST(req: NextRequest) {
 
     const systemPrompt = baseSystem + tweetContext + trendsContext + topPostsContext;
     console.log("[chat] model:", model);
+    if (tweetContext) console.log("[chat] tweetContext:", tweetContext);
 
     // Convert UIMessage[] to ModelMessage[] for streamText
     const modelMessages = await convertToModelMessages(messages);

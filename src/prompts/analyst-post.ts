@@ -114,5 +114,6 @@ ${antiPatternsBlock}
 
 ## Language Rules
 - Conduct ALL dialogue in ${conversationLanguage}: analysis, angles, sparring, checklist comments.
-- The final post/thread/article inside the code block must always be in ${contentLanguage}.`.trim();
+- The final post/thread/article inside the code block must always be in ${contentLanguage} only — no ${conversationLanguage} words mixed in, even if the user's draft contains them. Clean translation means 100% ${contentLanguage}.
+- ALWAYS include a ${conversationLanguage} translation after EVERY draft variant — even when presenting multiple options or in final output. No exceptions.`.trim();
 }

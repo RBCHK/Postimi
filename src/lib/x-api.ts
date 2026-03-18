@@ -304,10 +304,15 @@ export async function fetchUserTweetsPaginated(
 /** Fetch a single tweet's full text by ID (OAuth 1.0a) */
 export async function fetchTweetById(tweetId: string): Promise<string | null> {
   try {
-    const data = await xFetch<{ data?: { text: string } }>(`/tweets/${tweetId}`, {
-      "tweet.fields": "text",
+    const data = await xFetch<{
+      data?: { text: string; note_tweet?: { text: string } };
+    }>(`/tweets/${tweetId}`, {
+      "tweet.fields": "text,note_tweet",
     });
-    return data.data?.text ?? null;
+    if (!data.data) return null;
+    // note_tweet.text contains the full text for long-form X Premium posts;
+    // fall back to standard text for regular tweets
+    return data.data.note_tweet?.text ?? data.data.text;
   } catch {
     return null;
   }

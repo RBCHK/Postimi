@@ -24,7 +24,7 @@ export const ANTI_PATTERNS = {
 
   // Structural patterns that reveal AI authorship
   aiTells: [
-    "Using em dash (—) anywhere — the user does not use em dash in their writing",
+    "Using em dash (—) anywhere — the user NEVER uses em dash. It signals AI-polished text instantly. Replace with: ellipsis (...), new line, or comma",
     "Starting with 'I think' or 'I believe'",
     "Bullet-point dump in a reply (3+ bullets)",
     "Ending with an open question ('What do you think?', 'Thoughts?')",
