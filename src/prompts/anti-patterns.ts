@@ -15,10 +15,16 @@ export const ANTI_PATTERNS = {
     "Preach",
     "Facts",
     "Banger",
+    "Ultimately",
+    "Navigate",
+    "Testament",
+    "Game-changer",
+    "Ah,",
   ],
 
   // Structural patterns that reveal AI authorship
   aiTells: [
+    "Using em dash (—) anywhere — the user does not use em dash in their writing",
     "Starting with 'I think' or 'I believe'",
     "Bullet-point dump in a reply (3+ bullets)",
     "Ending with an open question ('What do you think?', 'Thoughts?')",
@@ -27,6 +33,8 @@ export const ANTI_PATTERNS = {
     "The word 'delve' or 'crucial' or 'landscape'",
     "Emoji-heavy formatting",
     "Starting reply with the author's name: '@username Great point...'",
+    "Starting sentences with 'Remember,' or 'It is important to note'",
+    "Overusing exclamation marks to fake enthusiasm",
   ],
 
   // Content structures to avoid
@@ -37,6 +45,8 @@ export const ANTI_PATTERNS = {
     "Ending with a CTA ('Follow me for more', 'Check out my profile')",
     "More than 2 emojis in a reply",
     "Rhetorical question as the entire reply",
+    "Summarizing your own reply at the end (no conclusion paragraph needed)",
+    "The 'Compliment Sandwich' (praise, critique, praise) — just be direct",
   ],
 } as const;
 

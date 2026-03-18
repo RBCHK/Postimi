@@ -138,6 +138,11 @@ export async function POST(req: NextRequest) {
       model: anthropic(model),
       system: systemPrompt,
       messages: modelMessages,
+      providerOptions: {
+        anthropic: {
+          cacheControl: { type: "ephemeral" },
+        },
+      },
     });
 
     return result.toUIMessageStreamResponse();
