@@ -20,7 +20,6 @@ import {
   ExternalLink,
   TrendingUp,
   BarChart3,
-  PanelLeftClose,
   PanelLeft,
   Check,
 } from "lucide-react";
@@ -417,7 +416,6 @@ export function LeftSidebar({
 
   useEffect(() => {
     fetchAndSetDrafts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
   useEffect(() => {
@@ -452,7 +450,6 @@ export function LeftSidebar({
     const handler = fetchAndSetDrafts;
     window.addEventListener("drafts-updated", handler);
     return () => window.removeEventListener("drafts-updated", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -643,17 +640,6 @@ export function LeftSidebar({
             <TabsTrigger value="drafts">Drafts</TabsTrigger>
             <TabsTrigger value="scheduled">Scheduled</TabsTrigger>
           </TabsList>
-          {onToggle && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0 text-muted-foreground"
-              onClick={onToggle}
-              title="Collapse sidebar"
-            >
-              <PanelLeftClose className="h-4 w-4" />
-            </Button>
-          )}
         </div>
 
         <TabsContent value="drafts" className="flex flex-1 flex-col overflow-hidden">

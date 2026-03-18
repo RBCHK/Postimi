@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useRouter } from "next/navigation";
 import { useConversation } from "@/contexts/conversation-context";
-import { addToQueue } from "@/app/actions/schedule";
+import { addToQueue, hasEmptySlots } from "@/app/actions/schedule";
 import { createConversation } from "@/app/actions/conversations";
 import { NOTES_PANEL_OPEN } from "@/components/notes-sidebar-container";
 
@@ -23,9 +23,23 @@ interface Position {
 export function TextSelectionPopup() {
   const [position, setPosition] = useState<Position | null>(null);
   const [selectedText, setSelectedText] = useState("");
+  const [canQueue, setCanQueue] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const { addNote, conversationId, contentType } = useConversation();
+
+  const slotType = contentType.toUpperCase() as "REPLY" | "POST" | "THREAD" | "ARTICLE";
+
+  useEffect(() => {
+    hasEmptySlots(slotType).then(setCanQueue);
+  }, [slotType]);
+
+  // Refresh after slots change (e.g. after adding to queue)
+  useEffect(() => {
+    const handler = () => hasEmptySlots(slotType).then(setCanQueue);
+    window.addEventListener("slots-updated", handler);
+    return () => window.removeEventListener("slots-updated", handler);
+  }, [slotType]);
 
   const hidePopup = useCallback(() => {
     setPosition(null);
@@ -107,7 +121,6 @@ export function TextSelectionPopup() {
     hidePopup();
 
     try {
-      const slotType = contentType === "Reply" ? ("REPLY" as const) : ("POST" as const);
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const result = await addToQueue(selectedText, conversationId, slotType, timezone);
       if (result) {
@@ -184,12 +197,17 @@ export function TextSelectionPopup() {
             size="sm"
             className="h-8 gap-2 px-2.5 text-xs"
             onClick={handleAddToQueue}
+            disabled={!canQueue}
           >
             <CalendarPlus className="h-3.5 w-3.5" />
             Queue
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Copy + schedule in next empty slot</TooltipContent>
+        <TooltipContent>
+          {canQueue
+            ? "Copy + schedule in next empty slot"
+            : "No empty slots — adjust your schedule"}
+        </TooltipContent>
       </Tooltip>
     </div>
   );

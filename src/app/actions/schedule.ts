@@ -72,32 +72,6 @@ async function checkAndUpdatePassedSlots(userId: string) {
   );
 }
 
-// Ensure slots exist for a specific date (used when no free slots found)
-async function ensureSlotsForDate(date: Date, userId: string) {
-  const config = await getStrategyConfigInternal(userId);
-  const timeSlots = config?.timeSlots ?? ["9:00 AM", "12:00 PM", "3:00 PM", "6:00 PM"];
-  const postsPerDay = config?.postsPerDay ?? 2;
-
-  for (let i = 0; i < timeSlots.length; i++) {
-    const ts = timeSlots[i];
-    const slotType: PrismaSlotType = i < postsPerDay ? "POST" : "REPLY";
-    const dayStart = new Date(date);
-    const dayEnd = new Date(date.getTime() + 86400000);
-    const existing = await prisma.scheduledSlot.findFirst({
-      where: {
-        userId,
-        date: { gte: dayStart, lt: dayEnd },
-        timeSlot: ts,
-      },
-    });
-    if (!existing) {
-      await prisma.scheduledSlot.create({
-        data: { date, timeSlot: ts, slotType, status: "EMPTY", userId },
-      });
-    }
-  }
-}
-
 /** Internal: get strategy config for a known userId (no auth call) */
 async function getStrategyConfigInternal(userId: string) {
   const row = await prisma.strategyConfig.findFirst({
@@ -191,42 +165,7 @@ export async function ensureSlotsForWeek(localDateStr?: string) {
     return;
   }
 
-  // Fallback: legacy config (postsPerDay + timeSlots array)
-  const config = await getStrategyConfigInternal(userId);
-  const timeSlots = config?.timeSlots ?? ["9:00 AM", "12:00 PM", "3:00 PM", "6:00 PM"];
-  const postsPerDay = config?.postsPerDay ?? 2;
-
-  const today = localDateStr
-    ? new Date(`${localDateStr}T00:00:00.000Z`)
-    : (() => {
-        const d = new Date();
-        d.setUTCHours(0, 0, 0, 0);
-        return d;
-      })();
-
-  for (let d = 0; d < 7; d++) {
-    const date = new Date(today);
-    date.setUTCDate(date.getUTCDate() + d);
-
-    for (let i = 0; i < timeSlots.length; i++) {
-      const ts = timeSlots[i];
-      const slotType: PrismaSlotType = i < postsPerDay ? "POST" : "REPLY";
-      const dayStart = new Date(date);
-      const dayEnd = new Date(date.getTime() + 86400000);
-      const existing = await prisma.scheduledSlot.findFirst({
-        where: {
-          userId,
-          date: { gte: dayStart, lt: dayEnd },
-          timeSlot: ts,
-        },
-      });
-      if (!existing) {
-        await prisma.scheduledSlot.create({
-          data: { date, timeSlot: ts, slotType, status: "EMPTY", userId },
-        });
-      }
-    }
-  }
+  // No scheduleConfig and no legacy config → user hasn't set up a schedule yet
 }
 
 // Add selected text to the next available slot of matching type.
@@ -266,6 +205,18 @@ export { getScheduleConfigInternal };
 export async function getScheduleConfig(): Promise<ScheduleConfig | null> {
   const userId = await requireUserId();
   return getScheduleConfigInternal(userId);
+}
+
+/** Returns true if the user has at least one future EMPTY slot of the given type */
+export async function hasEmptySlots(slotType: PrismaSlotType): Promise<boolean> {
+  const userId = await requireUserId();
+  const now = new Date();
+  const todayStr = now.toLocaleDateString("en-CA"); // "YYYY-MM-DD"
+  const todayUTC = new Date(`${todayStr}T00:00:00.000Z`);
+  const slot = await prisma.scheduledSlot.findFirst({
+    where: { userId, status: "EMPTY", slotType, date: { gte: todayUTC } },
+  });
+  return !!slot;
 }
 
 export async function saveScheduleConfig(data: ScheduleConfig): Promise<void> {
@@ -502,7 +453,7 @@ function isSlotFuture(slotDate: Date, timeSlot: string, timezone: string): boole
 export async function addToQueue(
   content: string,
   conversationId?: string,
-  slotType: "REPLY" | "POST" = "POST",
+  slotType: PrismaSlotType = "POST",
   /** User's IANA timezone, e.g. "America/Los_Angeles" — passed from client via Intl API */
   timezone: string = "UTC"
 ) {
@@ -517,20 +468,7 @@ export async function addToQueue(
     orderBy: [{ date: "asc" }, { timeSlot: "asc" }],
   });
 
-  let slot = candidates.find((s) => isSlotFuture(s.date, s.timeSlot, timezone)) ?? null;
-
-  // No future slot found → generate tomorrow's slots and retry once
-  if (!slot) {
-    const tomorrow = new Date(todayUTCMidnight);
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-    await ensureSlotsForDate(tomorrow, userId);
-    const moreCandidates = await prisma.scheduledSlot.findMany({
-      where: { userId, status: "EMPTY", slotType, date: { gte: tomorrow } },
-      orderBy: [{ date: "asc" }, { timeSlot: "asc" }],
-    });
-    slot = moreCandidates[0] ?? null;
-  }
-
+  const slot = candidates.find((s) => isSlotFuture(s.date, s.timeSlot, timezone)) ?? null;
   if (!slot) return null;
 
   await prisma.scheduledSlot.update({

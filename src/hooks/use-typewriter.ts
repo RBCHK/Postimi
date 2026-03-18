@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 
 const INTERVAL_MS = 30; // тик каждые 30мс (~33fps)
-const CHARS_PER_TICK = 3; // символов за тик = ~100 симв/сек
+const CHARS_PER_TICK = 15; // символов за тик = ~500 симв/сек
 
 /**
  * Буферизует стримящийся текст и выводит его с фиксированной скоростью,
@@ -20,22 +20,23 @@ export function useTypewriter(fullText: string, active: boolean): string {
   const activeRef = useRef(active);
   const displayedLengthRef = useRef(active ? 0 : fullText.length);
 
-  fullTextRef.current = fullText;
-  activeRef.current = active;
+  useEffect(() => {
+    fullTextRef.current = fullText;
+  }, [fullText]);
 
   useEffect(() => {
-    // Историческое сообщение — показываем сразу
-    if (!active) {
-      setDisplayed(fullText);
-      return;
-    }
+    activeRef.current = active;
+  }, [active]);
 
-    const id = setInterval(() => {
+  useEffect(() => {
+    // Историческое сообщение — useState уже инициализирован с fullText
+    if (!active) return;
+
+    const tick = () => {
       const current = displayedLengthRef.current;
       const target = fullTextRef.current.length;
 
       if (current >= target) {
-        // Догнали: если стриминг завершён — чистим интервал
         if (!activeRef.current) clearInterval(id);
         return;
       }
@@ -43,9 +44,23 @@ export function useTypewriter(fullText: string, active: boolean): string {
       const next = Math.min(target, current + CHARS_PER_TICK);
       displayedLengthRef.current = next;
       setDisplayed(fullTextRef.current.slice(0, next));
-    }, INTERVAL_MS);
+    };
 
-    return () => clearInterval(id);
+    const id = setInterval(tick, INTERVAL_MS);
+
+    // При возврате на вкладку — догоняем весь накопленный текст сразу
+    const onVisible = () => {
+      if (!document.hidden) {
+        displayedLengthRef.current = fullTextRef.current.length;
+        setDisplayed(fullTextRef.current);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return displayed;
