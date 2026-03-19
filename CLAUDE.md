@@ -88,6 +88,8 @@ IMPORTANT: Never commit directly to `main`. Branch protection is enabled.
 1. Create a branch: `git checkout -b feat/<short-name>` (or `fix/`, `chore/`)
 2. Name branches by task intent, e.g. `feat/husky-setup`, `fix/eslint-errors`
 
+**Before creating a new branch**: run `git branch --no-merged main`. If unmerged branches exist — merge them first (or confirm they're abandoned), then branch from fresh `main`. Never start new work on top of unmerged changes.
+
 **After task is done**: verify CI passes + Vercel preview deploy succeeds + feature works in preview URL — only then create PR via `gh pr create` and report PR URL to user.
 
 **After PR merge**: `git checkout main && git pull --rebase` to sync local main before starting next task.
