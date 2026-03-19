@@ -19,6 +19,7 @@ import {
 } from "@/app/actions/plan-proposal";
 import { prisma } from "@/lib/prisma";
 import { fetchUserData } from "@/lib/x-api";
+import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
 import { withCronLogging } from "@/lib/cron-helpers";
 import type { ConfigChange, MetricsSnapshot, PastDecisionItem } from "@/lib/types";
 
@@ -69,14 +70,17 @@ export const GET = withCronLogging("strategist", async () => {
         | { name: string; username: string; bio: string; followers: string; following: string }
         | undefined;
       try {
-        const userData = await fetchUserData();
-        profile = {
-          name: "",
-          username: "",
-          bio: "",
-          followers: String(userData.followersCount),
-          following: String(userData.followingCount),
-        };
+        const credentials = await getXApiTokenForUserInternal(user.id);
+        if (credentials) {
+          const userData = await fetchUserData(credentials);
+          profile = {
+            name: "",
+            username: credentials.xUsername,
+            bio: "",
+            followers: String(userData.followersCount),
+            following: String(userData.followingCount),
+          };
+        }
       } catch {
         // X API unavailable — proceed without profile
       }

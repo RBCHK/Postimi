@@ -1,21 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth";
 import { fetchTweetMetrics } from "@/lib/x-api";
+import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { userId: clerkId } = await auth();
-  if (!clerkId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const userId = await requireUserId();
   const { id: tweetId } = await params;
 
   try {
+    const credentials = await getXApiTokenForUserInternal(userId);
+    if (!credentials) {
+      return NextResponse.json({ error: "No X account connected" }, { status: 400 });
+    }
+
     const [apiRaw, dbRecord, snapshots] = await Promise.all([
-      fetchTweetMetrics(tweetId),
+      fetchTweetMetrics(credentials, tweetId),
       prisma.xPost.findFirst({ where: { userId, postId: tweetId } }),
       prisma.postEngagementSnapshot.findMany({
         where: { userId, postId: tweetId },

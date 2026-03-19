@@ -6,6 +6,7 @@ import { requireUserId } from "@/lib/auth";
 import type { ContentType, DraftStatus } from "@/lib/types";
 import { fetchTweetFromText, extractTweetUrl } from "@/lib/parse-tweet";
 import { fetchTweetById } from "@/lib/x-api";
+import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
 import {
   ContentType as PrismaContentType,
   ConversationStatus as PrismaConversationStatus,
@@ -192,14 +193,17 @@ export async function markAsPosted(conversationId: string) {
  * Called from client components as a server action.
  */
 export async function fetchTweetFullTextAction(text: string): Promise<string | null> {
-  await requireUserId();
+  const userId = await requireUserId();
   const url = extractTweetUrl(text);
   if (!url) return null;
 
   const tweetIdMatch = url.match(/\/status\/(\d+)/);
   if (tweetIdMatch) {
-    const fullText = await fetchTweetById(tweetIdMatch[1]);
-    if (fullText) return fullText;
+    const credentials = await getXApiTokenForUserInternal(userId);
+    if (credentials) {
+      const fullText = await fetchTweetById(credentials, tweetIdMatch[1]);
+      if (fullText) return fullText;
+    }
   }
 
   // Fallback: oEmbed

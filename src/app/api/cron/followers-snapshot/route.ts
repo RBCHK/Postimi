@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { fetchUserData } from "@/lib/x-api";
+import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
 import { saveFollowersSnapshotInternal } from "@/app/actions/followers";
 import { withCronLogging } from "@/lib/cron-helpers";
 
@@ -12,12 +13,19 @@ export const GET = withCronLogging("followers-snapshot", async () => {
     userId: string;
     followers?: number;
     deltaFollowers?: number;
+    skipped?: boolean;
     error?: string;
   }[] = [];
 
   for (const user of users) {
     try {
-      const userData = await fetchUserData();
+      const credentials = await getXApiTokenForUserInternal(user.id);
+      if (!credentials) {
+        results.push({ userId: user.id, skipped: true });
+        continue;
+      }
+
+      const userData = await fetchUserData(credentials);
       const snapshot = await saveFollowersSnapshotInternal(user.id, {
         followersCount: userData.followersCount,
         followingCount: userData.followingCount,

@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
-import { fetchCurrentUser, fetchUserTweetsPaginated } from "@/lib/x-api";
+import { fetchUserTweetsPaginated } from "@/lib/x-api";
+import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
 import { revalidatePath } from "next/cache";
 import { withCronLogging } from "@/lib/cron-helpers";
 import type { XPostType as PrismaXPostType } from "@/generated/prisma";
@@ -17,23 +18,30 @@ export const GET = withCronLogging("x-import", async (req) => {
   const mode = req.nextUrl.searchParams.get("mode"); // "refresh" or default (new posts)
 
   const users = await prisma.user.findMany({ select: { id: true } });
-  const { id: xUserId, username } = await fetchCurrentUser();
 
   const allResults: {
     userId: string;
     imported?: number;
     updated?: number;
     snapshots?: number;
+    skipped?: boolean;
     error?: string;
   }[] = [];
 
   for (const user of users) {
     try {
+      // Load per-user X credentials — skip users without connected X account
+      const credentials = await getXApiTokenForUserInternal(user.id);
+      if (!credentials) {
+        allResults.push({ userId: user.id, skipped: true });
+        continue;
+      }
+
       let tweets;
       if (mode === "refresh") {
         const startTime = new Date();
         startTime.setUTCDate(startTime.getUTCDate() - REFRESH_DAYS);
-        tweets = await fetchUserTweetsPaginated(xUserId, username, {
+        tweets = await fetchUserTweetsPaginated(credentials, {
           startTime: startTime.toISOString(),
         });
       } else {
@@ -42,7 +50,7 @@ export const GET = withCronLogging("x-import", async (req) => {
           orderBy: { date: "desc" },
           select: { postId: true },
         });
-        tweets = await fetchUserTweetsPaginated(xUserId, username, {
+        tweets = await fetchUserTweetsPaginated(credentials, {
           sinceId: latest?.postId,
         });
       }

@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth";
-import { fetchCurrentUser, fetchUserTweets } from "@/lib/x-api";
+import { fetchUserTweets, XApiNoTokenError } from "@/lib/x-api";
+import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
 import type { XPostType as PrismaXPostType } from "@/generated/prisma";
 
 function detectPostType(text: string): PrismaXPostType {
@@ -14,7 +15,10 @@ export async function importFromXApi(
   maxResults: number = 100
 ): Promise<{ imported: number; updated: number; total: number }> {
   const userId = await requireUserId();
-  const { id: xUserId, username } = await fetchCurrentUser();
+  const credentials = await getXApiTokenForUserInternal(userId);
+  if (!credentials) {
+    throw new XApiNoTokenError(userId);
+  }
 
   // Get the most recent post ID from DB to avoid re-fetching existing tweets
   const latest = await prisma.xPost.findFirst({
@@ -23,7 +27,7 @@ export async function importFromXApi(
     select: { postId: true },
   });
 
-  const tweets = await fetchUserTweets(xUserId, username, maxResults, latest?.postId);
+  const tweets = await fetchUserTweets(credentials, maxResults, latest?.postId);
 
   let imported = 0;
   let updated = 0;

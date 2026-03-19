@@ -862,10 +862,100 @@ function AppearanceTab() {
   );
 }
 
-type SettingsSection = "voice-bank" | "strategy" | "language" | "appearance";
+function ConnectionsTab() {
+  const [status, setStatus] = useState<{
+    connected: boolean;
+    xUsername?: string;
+    connectedAt?: string;
+  } | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  useEffect(() => {
+    import("@/app/actions/x-token").then(({ getXConnectionStatus }) =>
+      getXConnectionStatus().then((s) =>
+        setStatus({
+          connected: s.connected,
+          xUsername: s.xUsername,
+          connectedAt: s.connectedAt?.toISOString(),
+        })
+      )
+    );
+
+    // Check for OAuth callback result
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("x_connected") === "true") {
+      toast.success("X account connected!");
+      window.history.replaceState({}, "", "/settings");
+    }
+    const xError = params.get("x_error");
+    if (xError) {
+      toast.error(`X connection failed: ${decodeURIComponent(xError)}`);
+      window.history.replaceState({}, "", "/settings");
+    }
+  }, []);
+
+  async function handleDisconnect() {
+    setDisconnecting(true);
+    try {
+      const { disconnectXAccount } = await import("@/app/actions/x-token");
+      await disconnectXAccount();
+      setStatus({ connected: false });
+      toast.success("X account disconnected");
+    } catch {
+      toast.error("Failed to disconnect");
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
+  if (status === null) return null;
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div>
+        <p className="text-sm font-medium">X (Twitter)</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Connect your X account to import posts, track followers, and fetch trends.
+        </p>
+      </div>
+
+      {status.connected ? (
+        <div className="flex items-center justify-between rounded-lg border border-border p-4">
+          <div className="flex flex-col gap-0.5">
+            <p className="text-sm font-medium">@{status.xUsername}</p>
+            {status.connectedAt && (
+              <p className="text-xs text-muted-foreground">
+                Connected {new Date(status.connectedAt).toLocaleDateString()}
+              </p>
+            )}
+          </div>
+          <Button variant="outline" size="sm" onClick={handleDisconnect} disabled={disconnecting}>
+            {disconnecting ? "Disconnecting..." : "Disconnect"}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+          <p className="text-sm text-muted-foreground">No X account connected.</p>
+          <Button
+            size="sm"
+            className="w-fit"
+            onClick={() => {
+              window.location.href = "/api/auth/x";
+            }}
+          >
+            Connect X Account
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type SettingsSection = "voice-bank" | "strategy" | "connections" | "language" | "appearance";
 
 const SETTINGS_NAV: { value: SettingsSection; label: string }[] = [
   { value: "strategy", label: "Strategy" },
+  { value: "connections", label: "Connections" },
   { value: "voice-bank", label: "Voice Bank" },
   { value: "language", label: "Language" },
   { value: "appearance", label: "Appearance" },
@@ -919,6 +1009,7 @@ export function SettingsView() {
           <div className="max-w-2xl pb-8">
             {active === "voice-bank" && <VoiceBankTab />}
             {active === "strategy" && <StrategyConfigTab />}
+            {active === "connections" && <ConnectionsTab />}
             {active === "language" && <LanguageTab />}
             {active === "appearance" && <AppearanceTab />}
           </div>

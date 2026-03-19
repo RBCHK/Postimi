@@ -9,6 +9,7 @@ import { getReplyPrompt } from "@/prompts/analyst-reply";
 import { getPostPrompt } from "@/prompts/analyst-post";
 import { fetchTweetFromText, extractTweetUrl } from "@/lib/parse-tweet";
 import { fetchTweetById } from "@/lib/x-api";
+import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
 import { getLatestTrends } from "@/app/actions/trends";
 import { prisma } from "@/lib/prisma";
 
@@ -19,6 +20,10 @@ export async function POST(req: NextRequest) {
   if (!clerkId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Look up Prisma user and X credentials for tweet fetching
+  const dbUser = await prisma.user.findUnique({ where: { clerkId }, select: { id: true } });
+  const xCredentials = dbUser ? await getXApiTokenForUserInternal(dbUser.id) : null;
 
   try {
     const body = await req.json();
@@ -89,7 +94,8 @@ export async function POST(req: NextRequest) {
         let tweetText: string | null = null;
         if (tweetUrl) {
           const tweetIdMatch = tweetUrl.match(/\/status\/(\d+)/);
-          if (tweetIdMatch) tweetText = await fetchTweetById(tweetIdMatch[1]);
+          if (tweetIdMatch && xCredentials)
+            tweetText = await fetchTweetById(xCredentials, tweetIdMatch[1]);
         }
         if (!tweetText) {
           const tweet = await fetchTweetFromText(firstText);
