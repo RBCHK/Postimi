@@ -72,48 +72,6 @@ async function checkAndUpdatePassedSlots(userId: string) {
   );
 }
 
-/** Internal: get strategy config for a known userId (no auth call) */
-async function getStrategyConfigInternal(userId: string) {
-  const row = await prisma.strategyConfig.findFirst({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-  });
-  if (!row) return null;
-  const timeSlots = row.timeSlots as string[];
-  return {
-    id: row.id,
-    postsPerDay: row.postsPerDay,
-    replySessionsPerDay: row.replySessionsPerDay,
-    timeSlots: Array.isArray(timeSlots) ? timeSlots : [],
-  };
-}
-
-export { getStrategyConfigInternal };
-
-export async function getStrategyConfig() {
-  const userId = await requireUserId();
-  return getStrategyConfigInternal(userId);
-}
-
-export async function upsertStrategyConfig(data: {
-  postsPerDay: number;
-  replySessionsPerDay: number;
-  timeSlots: string[];
-}) {
-  const userId = await requireUserId();
-  const existing = await prisma.strategyConfig.findFirst({ where: { userId } });
-  const payload = {
-    postsPerDay: data.postsPerDay,
-    replySessionsPerDay: data.replySessionsPerDay,
-    timeSlots: data.timeSlots as object,
-  };
-  if (existing) {
-    await prisma.strategyConfig.update({ where: { id: existing.id }, data: payload });
-  } else {
-    await prisma.strategyConfig.create({ data: { ...payload, userId } });
-  }
-}
-
 export async function getScheduledSlots(localDateStr?: string) {
   const userId = await requireUserId();
   // Lazy update: mark past FILLED slots as POSTED before returning
@@ -152,20 +110,14 @@ export async function getScheduledSlots(localDateStr?: string) {
 }
 
 /**
- * Ensures scheduled slots exist for the upcoming week.
- * Prefers the new ScheduleConfig (grid per content type) if saved.
- * Falls back to the legacy config (postsPerDay + timeSlots[]) for backward compatibility.
+ * Ensures scheduled slots exist for the upcoming week based on ScheduleConfig.
  */
 export async function ensureSlotsForWeek(localDateStr?: string) {
   const userId = await requireUserId();
-  // If new scheduleConfig exists, use it for slot generation
   const scheduleConfig = await getScheduleConfigInternal(userId);
   if (scheduleConfig) {
     await regenerateSlotsFromConfig(scheduleConfig, userId, localDateStr);
-    return;
   }
-
-  // No scheduleConfig and no legacy config → user hasn't set up a schedule yet
 }
 
 // Add selected text to the next available slot of matching type.
@@ -228,9 +180,6 @@ export async function saveScheduleConfig(data: ScheduleConfig): Promise<void> {
   } else {
     await prisma.strategyConfig.create({
       data: {
-        postsPerDay: 2,
-        replySessionsPerDay: 4,
-        timeSlots: [],
         scheduleConfig: data as object,
         userId,
       },
@@ -517,9 +466,6 @@ export async function updateGoalConfig(data: {
   } else {
     await prisma.strategyConfig.create({
       data: {
-        postsPerDay: 2,
-        replySessionsPerDay: 4,
-        timeSlots: [],
         targetFollowers: data.targetFollowers,
         targetDate: data.targetDate,
         userId,

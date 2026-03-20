@@ -191,16 +191,13 @@ model ScheduledSlot {
 }
 
 model StrategyConfig {
-  id                 String    @id @default(cuid())
-  userId             String
-  postsPerDay        Int       @default(2)
-  replySessionsPerDay Int      @default(4)
-  timeSlots          Json      // e.g. ["9:00 AM", "12:00 PM", "3:00 PM", "6:00 PM"]
-  scheduleConfig     Json?     // { posts: { slots: [...] }, threads: {...}, articles: {...} }
-  targetFollowers    Int?      // growth goal, e.g. 10000
-  targetDate         DateTime? // goal deadline, e.g. 2026-12-31
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  userId          String
+  scheduleConfig  Json?     // { posts: { slots: [...] }, threads: {...}, articles: {...} }
+  targetFollowers Int?      // growth goal, e.g. 10000
+  targetDate      DateTime? // goal deadline, e.g. 2026-12-31
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
