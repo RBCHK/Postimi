@@ -6,6 +6,7 @@
 - **Auth**: Clerk (`@clerk/nextjs`) — email + Google OAuth
 - AI: `@ai-sdk/react` + `@ai-sdk/anthropic`, streaming via `/api/chat`
 - Prisma client: import from `src/generated/prisma/`, NOT `@prisma/client`
+- Prisma uses a driver adapter (`@prisma/adapter-pg`) — `new PrismaClient()` alone will fail. Always initialize with the adapter, same as `src/lib/prisma.ts`.
 
 ## Key Directories
 
