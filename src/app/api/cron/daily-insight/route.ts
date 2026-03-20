@@ -40,7 +40,7 @@ export const GET = withCronLogging("daily-insight", async () => {
 
       // 4. Latest trends and followers snapshot
       const [trends, latestFollowers] = await Promise.all([
-        getLatestTrendsInternal(),
+        getLatestTrendsInternal(user.id),
         getLatestFollowersSnapshotInternal(user.id),
       ]);
 

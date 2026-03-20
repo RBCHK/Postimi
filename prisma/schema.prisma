@@ -35,6 +35,7 @@ model User {
   planProposals          PlanProposal[]
   xApiCallLogs           XApiCallLog[]
   xApiToken              XApiToken?
+  trendSnapshots         TrendSnapshot[]
 }
 
 model XApiToken {
@@ -327,10 +328,11 @@ model FollowersSnapshot {
   @@index([userId])
 }
 
-// ─── Trends (global, not per-user) ──────────────────────
+// ─── Trends (per-user) ──────────────────────────────────
 
 model TrendSnapshot {
   id             String    @id @default(cuid())
+  userId         String
   date           DateTime  // UTC midnight of the day fetched
   trendName      String
   postCount      Int       @default(0)
@@ -340,7 +342,10 @@ model TrendSnapshot {
 
   fetchHour     Int       @default(0) // UTC hour of fetch (0-23), enables multiple snapshots per day
 
-  @@index([date, fetchHour])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date, fetchHour, trendName])
+  @@index([userId, date, fetchHour])
 }
 
 // ─── Engagement Tracking ─────────────────────────────────

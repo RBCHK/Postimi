@@ -142,24 +142,6 @@ async function exchangeRefreshToken(
   return res.json() as Promise<OAuthTokenResponse>;
 }
 
-/**
- * Get any valid X API token (for global endpoints like trends).
- * Prefers the first user with a valid token.
- */
-export async function getAnyValidXApiToken(): Promise<XApiCredentials | null> {
-  const tokens = await prisma.xApiToken.findMany({
-    orderBy: { createdAt: "asc" },
-    take: 5,
-  });
-
-  for (const token of tokens) {
-    const credentials = await getXApiTokenForUserInternal(token.userId);
-    if (credentials) return credentials;
-  }
-
-  return null;
-}
-
 // ─── Auth-checked actions (for UI / server actions) ──────
 
 /** Save tokens after OAuth callback */

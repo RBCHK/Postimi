@@ -16,7 +16,7 @@ Each user connects their X account via **OAuth 2.0 PKCE** (confidential client):
 - Callback at `/api/auth/x/callback` exchanges code for tokens, fetches profile, saves to DB
 - Tokens encrypted with AES-256-GCM (`v1:iv:authTag:ciphertext` format for future key rotation)
 - Auto-refresh with optimistic locking (re-read `updatedAt` before refresh to prevent race conditions)
-- Global endpoints (trends) use any connected user's token via `getAnyValidXApiToken()`
+- All endpoints (including trends) use per-user tokens via `getXApiTokenForUserInternal(userId)`
 - No `.env` fallback — single code path
 
 ## Implementation

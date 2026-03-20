@@ -10,20 +10,22 @@ export async function saveTrendSnapshots(
   trends: (TrendItem & { trendingSince?: string })[],
   fetchHour?: number
 ): Promise<number> {
-  await requireUserId();
-  return _saveTrendSnapshots(date, trends, fetchHour);
+  const userId = await requireUserId();
+  return _saveTrendSnapshots(userId, date, trends, fetchHour);
 }
 
 /** Internal variant for cron routes (no auth check) */
 export async function saveTrendSnapshotsInternal(
+  userId: string,
   date: Date,
   trends: (TrendItem & { trendingSince?: string })[],
   fetchHour?: number
 ): Promise<number> {
-  return _saveTrendSnapshots(date, trends, fetchHour);
+  return _saveTrendSnapshots(userId, date, trends, fetchHour);
 }
 
 async function _saveTrendSnapshots(
+  userId: string,
   date: Date,
   trends: (TrendItem & { trendingSince?: string })[],
   fetchHour?: number
@@ -33,6 +35,7 @@ async function _saveTrendSnapshots(
   day.setUTCHours(0, 0, 0, 0);
 
   const data = trends.map((t) => ({
+    userId,
     date: day,
     fetchHour: hour,
     trendName: t.trendName,
@@ -45,27 +48,28 @@ async function _saveTrendSnapshots(
   return result.count;
 }
 
-/** Get trends from the most recent fetch (latest date + fetchHour) */
+/** Get trends from the most recent fetch for the current user */
 export async function getLatestTrends(): Promise<TrendItem[]> {
-  await requireUserId();
-  return _getLatestTrends();
+  const userId = await requireUserId();
+  return _getLatestTrends(userId);
 }
 
 /** Internal variant for cron routes (no auth check) */
-export async function getLatestTrendsInternal(): Promise<TrendItem[]> {
-  return _getLatestTrends();
+export async function getLatestTrendsInternal(userId: string): Promise<TrendItem[]> {
+  return _getLatestTrends(userId);
 }
 
-async function _getLatestTrends(): Promise<TrendItem[]> {
-  // Find the most recent snapshot by date DESC, then fetchHour DESC
+async function _getLatestTrends(userId: string): Promise<TrendItem[]> {
+  // Find the most recent snapshot for this user by date DESC, then fetchHour DESC
   const latest = await prisma.trendSnapshot.findFirst({
+    where: { userId },
     orderBy: [{ date: "desc" }, { fetchHour: "desc" }],
     select: { date: true, fetchHour: true },
   });
   if (!latest) return [];
 
   const rows = await prisma.trendSnapshot.findMany({
-    where: { date: latest.date, fetchHour: latest.fetchHour },
+    where: { userId, date: latest.date, fetchHour: latest.fetchHour },
     orderBy: { postCount: "desc" },
   });
 
@@ -76,24 +80,27 @@ async function _getLatestTrends(): Promise<TrendItem[]> {
   }));
 }
 
-/** Delete trend snapshots older than keepDays (default 10) */
+/** Delete trend snapshots older than keepDays (default 10) for the current user */
 export async function cleanupOldTrends(keepDays: number = 10): Promise<number> {
-  await requireUserId();
-  return _cleanupOldTrends(keepDays);
+  const userId = await requireUserId();
+  return _cleanupOldTrends(userId, keepDays);
 }
 
 /** Internal variant for cron routes (no auth check) */
-export async function cleanupOldTrendsInternal(keepDays: number = 10): Promise<number> {
-  return _cleanupOldTrends(keepDays);
+export async function cleanupOldTrendsInternal(
+  userId: string,
+  keepDays: number = 10
+): Promise<number> {
+  return _cleanupOldTrends(userId, keepDays);
 }
 
-async function _cleanupOldTrends(keepDays: number): Promise<number> {
+async function _cleanupOldTrends(userId: string, keepDays: number): Promise<number> {
   const cutoff = new Date();
   cutoff.setUTCHours(0, 0, 0, 0);
   cutoff.setUTCDate(cutoff.getUTCDate() - keepDays);
 
   const result = await prisma.trendSnapshot.deleteMany({
-    where: { date: { lt: cutoff } },
+    where: { userId, date: { lt: cutoff } },
   });
   return result.count;
 }

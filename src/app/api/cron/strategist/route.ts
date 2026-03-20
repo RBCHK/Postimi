@@ -57,7 +57,7 @@ export const GET = withCronLogging("strategist", async () => {
       ] = await Promise.all([
         getAnalyticsSummaryInternal(user.id, from30, dateRange.to),
         getFollowersHistoryInternal(user.id, 30),
-        getLatestTrendsInternal(),
+        getLatestTrendsInternal(user.id),
         getRecentResearchNotesInternal(user.id, 3),
         getGoalTrackingDataInternal(user.id),
         getAnalysesInternal(user.id),

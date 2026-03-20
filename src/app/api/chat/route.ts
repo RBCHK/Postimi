@@ -10,7 +10,7 @@ import { getPostPrompt } from "@/prompts/analyst-post";
 import { fetchTweetFromText, extractTweetUrl } from "@/lib/parse-tweet";
 import { fetchTweetById } from "@/lib/x-api";
 import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
-import { getLatestTrends } from "@/app/actions/trends";
+import { getLatestTrendsInternal } from "@/app/actions/trends";
 import { prisma } from "@/lib/prisma";
 
 export const maxDuration = 60;
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     const [voiceBankEntries, recentModes, trends, topPosts] = await Promise.all([
       getVoiceBankEntries(contentType === "Reply" ? "REPLY" : "POST", 25),
       contentType === "Reply" ? getRecentUsedModes(conversationId, 5) : Promise.resolve([]),
-      getLatestTrends(),
+      getLatestTrendsInternal(dbUser!.id),
       prisma.xPost.findMany({
         where: { date: { gte: thirtyDaysAgo }, postType: "POST" },
         orderBy: { engagements: "desc" },
