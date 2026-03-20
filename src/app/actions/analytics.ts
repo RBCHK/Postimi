@@ -3,7 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth";
-import type { ContentCsvRow, OverviewCsvRow, AnalyticsSummary, HeatmapCell } from "@/lib/types";
+import type {
+  ContentCsvRow,
+  OverviewCsvRow,
+  AnalyticsSummary,
+  HeatmapCell,
+  PostWithSnapshotSummary,
+  PostVelocityData,
+} from "@/lib/types";
 import { X_POST_TYPE_MAP } from "@/lib/types";
 
 // --- Import ---
@@ -312,4 +319,79 @@ export async function getEngagementHeatmap(from: Date, to: Date): Promise<Heatma
       postCount: count,
     };
   });
+}
+
+// --- Post Velocity ---
+
+export async function getRecentPostsWithSnapshots(
+  limit: number = 20
+): Promise<PostWithSnapshotSummary[]> {
+  const userId = await requireUserId();
+
+  // Get postIds that have snapshots, ordered by most recent snapshot
+  const snapshotGroups = await prisma.postEngagementSnapshot.groupBy({
+    by: ["postId"],
+    where: { userId },
+    _count: { postId: true },
+    _max: { impressions: true },
+    orderBy: { _max: { snapshotDate: "desc" } },
+    take: limit,
+  });
+
+  if (snapshotGroups.length === 0) return [];
+
+  const postIds = snapshotGroups.map((g) => g.postId);
+  const posts = await prisma.xPost.findMany({
+    where: { userId, postId: { in: postIds } },
+    select: { postId: true, text: true, date: true },
+  });
+
+  const postMap = new Map(posts.map((p) => [p.postId, p]));
+
+  return snapshotGroups
+    .map((g) => {
+      const post = postMap.get(g.postId);
+      if (!post) return null;
+      return {
+        postId: g.postId,
+        text: post.text.slice(0, 120),
+        date: post.date.toISOString().split("T")[0],
+        snapshotCount: g._count.postId,
+        latestImpressions: g._max.impressions ?? 0,
+      };
+    })
+    .filter((p): p is PostWithSnapshotSummary => p !== null);
+}
+
+export async function getPostVelocity(postId: string): Promise<PostVelocityData | null> {
+  const userId = await requireUserId();
+
+  const post = await prisma.xPost.findUnique({
+    where: { userId_postId: { userId, postId } },
+    select: { postId: true, text: true, date: true },
+  });
+  if (!post) return null;
+
+  const snapshots = await prisma.postEngagementSnapshot.findMany({
+    where: { userId, postId },
+    orderBy: { snapshotDate: "asc" },
+  });
+
+  const postTime = post.date.getTime();
+
+  return {
+    postId: post.postId,
+    postText: post.text.slice(0, 200),
+    postDate: post.date.toISOString().split("T")[0],
+    snapshots: snapshots.map((s) => ({
+      daysSincePost: Math.round((s.snapshotDate.getTime() - postTime) / (1000 * 60 * 60 * 24)),
+      snapshotDate: s.snapshotDate.toISOString().split("T")[0],
+      impressions: s.impressions,
+      likes: s.likes,
+      engagements: s.engagements,
+      bookmarks: s.bookmarks,
+      replies: s.replies,
+      reposts: s.reposts,
+    })),
+  };
 }

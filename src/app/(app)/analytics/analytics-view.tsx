@@ -9,6 +9,7 @@ import { PostingFrequencyChart } from "./components/posting-frequency-chart";
 import { TopContentTable } from "./components/top-content-table";
 import { EngagementHeatmap } from "./components/engagement-heatmap";
 import { GoalProgressChart } from "./components/goal-progress-chart";
+import { PostVelocityChart } from "./components/post-velocity-chart";
 import { PeriodPicker } from "./components/period-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText } from "lucide-react";
@@ -54,6 +55,7 @@ export function AnalyticsView() {
             <TabsList>
               <TabsTrigger value="overview">Account Overview</TabsTrigger>
               <TabsTrigger value="content">Content</TabsTrigger>
+              <TabsTrigger value="velocity">Post Velocity</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="mt-4 space-y-3">
@@ -71,6 +73,10 @@ export function AnalyticsView() {
 
             <TabsContent value="content" className="mt-4">
               <TopContentTable topPosts={summary.topPosts} topReplies={summary.topReplies} />
+            </TabsContent>
+
+            <TabsContent value="velocity" className="mt-4">
+              <PostVelocityChart />
             </TabsContent>
           </Tabs>
         </>

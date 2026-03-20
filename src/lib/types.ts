@@ -262,6 +262,34 @@ export interface TrendItem {
   category?: string;
 }
 
+// --- Post Velocity ---
+
+export interface PostVelocitySnapshot {
+  daysSincePost: number;
+  snapshotDate: string;
+  impressions: number;
+  likes: number;
+  engagements: number;
+  bookmarks: number;
+  replies: number;
+  reposts: number;
+}
+
+export interface PostVelocityData {
+  postId: string;
+  postText: string;
+  postDate: string;
+  snapshots: PostVelocitySnapshot[];
+}
+
+export interface PostWithSnapshotSummary {
+  postId: string;
+  text: string;
+  date: string;
+  snapshotCount: number;
+  latestImpressions: number;
+}
+
 // --- Engagement Heatmap ---
 
 export interface HeatmapCell {
