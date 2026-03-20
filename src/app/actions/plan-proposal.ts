@@ -64,6 +64,7 @@ function emptyScheduleConfig(): ScheduleConfig {
     posts: { slots: [] },
     threads: { slots: [] },
     articles: { slots: [] },
+    quotes: { slots: [] },
   };
 }
 
@@ -72,6 +73,7 @@ const SECTION_MAP: Record<ConfigChange["section"], keyof ScheduleConfig> = {
   posts: "posts",
   threads: "threads",
   articles: "articles",
+  quotes: "quotes",
 };
 
 /** Apply a list of ConfigChange items to a ScheduleConfig and return the new config */
@@ -82,6 +84,7 @@ function applyConfigChanges(config: ScheduleConfig, changes: ConfigChange[]): Sc
     posts: { slots: config.posts.slots.map((s) => ({ ...s, days: { ...s.days } })) },
     threads: { slots: config.threads.slots.map((s) => ({ ...s, days: { ...s.days } })) },
     articles: { slots: config.articles.slots.map((s) => ({ ...s, days: { ...s.days } })) },
+    quotes: { slots: config.quotes.slots.map((s) => ({ ...s, days: { ...s.days } })) },
   };
 
   for (const change of changes) {

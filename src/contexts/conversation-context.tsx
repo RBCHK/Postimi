@@ -6,6 +6,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   type ReactNode,
 } from "react";
@@ -34,7 +35,6 @@ interface ConversationContextValue {
   error: Error | undefined;
 
   setInput: (value: string) => void;
-  setContentType: (type: ContentType) => void;
   sendMessage: () => void;
   addNote: (content: string) => void;
   removeNote: (id: string) => void;
@@ -93,10 +93,19 @@ export function ConversationProvider({
   const notesRef = useRef(notes);
   const contentTypeRef = useRef(contentType);
   const tweetContextRef = useRef("");
-  notesRef.current = notes;
-  contentTypeRef.current = contentType;
 
-  // Create transport once per conversation mount
+  // Keep refs in sync with latest state values.
+  // useLayoutEffect (synchronous) ensures refs are current before any user
+  // interaction triggers the transport body closure.
+  useLayoutEffect(() => {
+    notesRef.current = notes;
+    contentTypeRef.current = contentType;
+  });
+
+  // Create transport once per conversation mount.
+  // The body closure captures ref objects and reads .current lazily at send
+  // time — not during render. The react-hooks/refs rule is a false positive here.
+  /* eslint-disable react-hooks/refs */
   const [transport] = useState(
     () =>
       new DefaultChatTransport({
@@ -115,6 +124,7 @@ export function ConversationProvider({
         },
       })
   );
+  /* eslint-enable react-hooks/refs */
 
   // For auto-start (1 user message, no reply yet), pass empty initialMessages so
   // aiSendMessage can add it once. Otherwise useChat would show it twice.
@@ -268,7 +278,6 @@ export function ConversationProvider({
         isFetchingTweet,
         error,
         setInput,
-        setContentType,
         sendMessage,
         addNote,
         removeNote,

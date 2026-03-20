@@ -15,6 +15,7 @@ const slotTypeFromPrisma = (v: PrismaSlotType): SlotType => {
     POST: "Post",
     THREAD: "Thread",
     ARTICLE: "Article",
+    QUOTE: "Quote",
   };
   return map[v];
 };
@@ -140,6 +141,7 @@ export type ScheduleConfig = {
   posts: ContentSchedule;
   threads: ContentSchedule;
   articles: ContentSchedule;
+  quotes: ContentSchedule;
 };
 
 /** Internal: get schedule config for a known userId (no auth call) */
@@ -204,6 +206,7 @@ const SECTION_TO_SLOT_TYPE: Record<keyof ScheduleConfig, PrismaSlotType> = {
   replies: "REPLY",
   posts: "POST",
   threads: "THREAD",
+  quotes: "QUOTE",
   articles: "ARTICLE",
 };
 
