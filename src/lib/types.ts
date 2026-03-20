@@ -1,4 +1,4 @@
-export const CONTENT_TYPES = ["Reply", "Post", "Thread", "Article"] as const;
+export const CONTENT_TYPES = ["Reply", "Post", "Thread", "Article", "Quote"] as const;
 export type ContentType = (typeof CONTENT_TYPES)[number];
 
 export const DRAFT_STATUSES = ["draft", "packaged", "scheduled", "posted"] as const;
@@ -7,7 +7,7 @@ export type DraftStatus = (typeof DRAFT_STATUSES)[number];
 export const SLOT_STATUSES = ["empty", "filled", "posted"] as const;
 export type SlotStatus = (typeof SLOT_STATUSES)[number];
 
-export const SLOT_TYPES = ["Reply", "Post", "Thread", "Article"] as const;
+export const SLOT_TYPES = ["Reply", "Post", "Thread", "Article", "Quote"] as const;
 export type SlotType = (typeof SLOT_TYPES)[number];
 
 export interface Draft {
@@ -318,7 +318,7 @@ export interface PlanChange {
 /** Config-level change: modifies the recurring weekly ScheduleConfig template */
 export interface ConfigChange {
   action: "add" | "remove";
-  section: "replies" | "posts" | "threads" | "articles";
+  section: "replies" | "posts" | "threads" | "articles" | "quotes";
   time: string; // "HH:MM" 24h format, e.g. "08:00"
   days: Partial<Record<DayKey, boolean>>;
   reason: string;

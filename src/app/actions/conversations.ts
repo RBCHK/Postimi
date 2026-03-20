@@ -17,6 +17,7 @@ const contentTypeToPrisma: Record<ContentType, PrismaContentType> = {
   Post: "POST",
   Thread: "THREAD",
   Article: "ARTICLE",
+  Quote: "QUOTE",
 };
 
 const statusToPrisma: Record<DraftStatus, PrismaConversationStatus> = {

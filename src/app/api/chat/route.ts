@@ -7,6 +7,7 @@ import { getVoiceBankEntries } from "@/app/actions/voice-bank";
 import { getRecentUsedModes } from "@/app/actions/conversations";
 import { getReplyPrompt } from "@/prompts/analyst-reply";
 import { getPostPrompt } from "@/prompts/analyst-post";
+import { getQuotePrompt } from "@/prompts/analyst-quote";
 import { fetchTweetFromText, extractTweetUrl } from "@/lib/parse-tweet";
 import { fetchTweetById } from "@/lib/x-api";
 import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
@@ -111,13 +112,15 @@ export async function POST(req: NextRequest) {
     const baseSystem =
       contentType === "Reply"
         ? getReplyPrompt(notes, voiceBank, recentModes, convLangLabel, contentLangLabel)
-        : getPostPrompt(
-            contentType as "Post" | "Thread" | "Article",
-            notes,
-            voiceBank,
-            convLangLabel,
-            contentLangLabel
-          );
+        : contentType === "Quote"
+          ? getQuotePrompt()
+          : getPostPrompt(
+              contentType as "Post" | "Thread" | "Article",
+              notes,
+              voiceBank,
+              convLangLabel,
+              contentLangLabel
+            );
 
     const trendsContext =
       trends.length > 0

@@ -328,6 +328,7 @@ const DEFAULT_SCHEDULE: ScheduleConfig = {
   posts: { slots: [] },
   threads: { slots: [] },
   articles: { slots: [] },
+  quotes: { slots: [] },
 };
 
 interface ScheduleSectionProps {
@@ -654,6 +655,7 @@ function StrategyConfigTab() {
     { label: "Posts", section: "posts" },
     { label: "Threads", section: "threads" },
     { label: "Articles", section: "articles" },
+    { label: "Quotes", section: "quotes" },
   ];
 
   return (

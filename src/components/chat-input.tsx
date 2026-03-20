@@ -14,7 +14,8 @@ interface ChatInputProps {
   value: string;
   onChange: (value: string) => void;
   contentType: ContentType;
-  onContentTypeChange: (type: ContentType) => void;
+  /** When omitted, the content type badge is read-only (active conversation). */
+  onContentTypeChange?: (type: ContentType) => void;
   onSend: () => void;
   disabled?: boolean;
   isFetchingTweet?: boolean;

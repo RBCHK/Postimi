@@ -16,6 +16,7 @@ import {
   FileText,
   AlignLeft,
   BookOpen,
+  Repeat2,
   Calendar,
   CalendarX,
   ExternalLink,
@@ -56,6 +57,7 @@ export const slotTypeIcon: Record<SlotType, React.ReactNode> = {
   Post: <FileText className="h-3.5 w-3.5 shrink-0" />,
   Thread: <AlignLeft className="h-3.5 w-3.5 shrink-0" />,
   Article: <BookOpen className="h-3.5 w-3.5 shrink-0" />,
+  Quote: <Repeat2 className="h-3.5 w-3.5 shrink-0" />,
 };
 
 export function slotStatusConfig(status: SlotStatus) {
