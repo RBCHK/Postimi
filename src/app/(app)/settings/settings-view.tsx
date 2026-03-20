@@ -153,7 +153,21 @@ interface TimePickerInputProps {
   onDone: () => void;
 }
 
-function TimePickerInput({ value, onChange, onDone }: TimePickerInputProps) {
+function TimePickerInputTouch({ value, onChange, onDone }: TimePickerInputProps) {
+  return (
+    <input
+      type="time"
+      defaultValue={value}
+      autoFocus
+      onChange={(e) => onChange({ target: { value: e.target.value } })}
+      onBlur={onDone}
+      className="bg-transparent text-sm font-mono outline-none border-none"
+      style={{ fontSize: "16px" }}
+    />
+  );
+}
+
+function TimePickerInputDesktop({ value, onChange, onDone }: TimePickerInputProps) {
   const [h24, m24] = value.split(":").map(Number);
   const [hour, setHour] = useState(h24 % 12 || 12);
   const [minute, setMinute] = useState(m24);
@@ -309,6 +323,11 @@ function TimePickerInput({ value, onChange, onDone }: TimePickerInputProps) {
   );
 }
 
+function TimePickerInput(props: TimePickerInputProps) {
+  const isTouch = window.matchMedia("(pointer: coarse)").matches;
+  return isTouch ? <TimePickerInputTouch {...props} /> : <TimePickerInputDesktop {...props} />;
+}
+
 const DAYS: DayKey[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function emptyDays(): Record<DayKey, boolean> {
@@ -387,7 +406,9 @@ function ScheduleSection({
                   {editingId === slot.id ? (
                     <TimePickerInput
                       value={slot.time}
-                      onChange={(e) => onTimeChange(slot.id, e.target.value)}
+                      onChange={(e: { target: { value: string } }) =>
+                        onTimeChange(slot.id, e.target.value)
+                      }
                       onDone={() => {
                         setEditingId(null);
                         onTimeEditDone();
