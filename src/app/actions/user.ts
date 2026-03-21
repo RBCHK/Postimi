@@ -10,6 +10,11 @@ import { prisma } from "@/lib/prisma";
  */
 export async function syncTimezone(timezone: string): Promise<void> {
   const userId = await requireUserId();
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { timezone: true },
+  });
+  if (user?.timezone === timezone) return;
   await prisma.user.update({
     where: { id: userId },
     data: { timezone },
