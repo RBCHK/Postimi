@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/page-container";
@@ -15,26 +15,60 @@ import type { ScheduledSlot, SlotStatus } from "@/lib/types";
 
 export function ScheduleView() {
   const [slots, setSlots] = useState<ScheduledSlot[]>([]);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const loadedDaysRef = useRef(14);
+  const isLoadingMoreRef = useRef(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    getScheduledSlots()
+    getScheduledSlots({ days: loadedDaysRef.current })
       .then(setSlots)
       .catch(() => setSlots([]));
   }, []);
 
   useEffect(() => {
     const handler = () =>
-      getScheduledSlots()
+      getScheduledSlots({ days: loadedDaysRef.current })
         .then(setSlots)
         .catch(() => {});
     window.addEventListener("slots-updated", handler);
     return () => window.removeEventListener("slots-updated", handler);
   }, []);
 
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMore();
+      },
+      { threshold: 0 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, []);
+
   function refreshSlots() {
-    getScheduledSlots()
+    getScheduledSlots({ days: loadedDaysRef.current })
       .then(setSlots)
       .catch(() => {});
+  }
+
+  async function loadMore() {
+    if (isLoadingMoreRef.current) return;
+    isLoadingMoreRef.current = true;
+    setIsLoadingMore(true);
+    const newDays = loadedDaysRef.current + 14;
+    try {
+      const data = await getScheduledSlots({ days: newDays });
+      setSlots(data);
+      loadedDaysRef.current = newDays;
+    } catch {
+      // ignore
+    } finally {
+      isLoadingMoreRef.current = false;
+      setIsLoadingMore(false);
+    }
   }
 
   async function handleTogglePosted(id: string) {
@@ -107,6 +141,10 @@ export function ScheduleView() {
               ))}
             </div>
           ))}
+          <div ref={sentinelRef} className="h-1" />
+          {isLoadingMore && (
+            <p className="py-4 text-center text-sm text-muted-foreground">Loading…</p>
+          )}
         </div>
       )}
     </PageContainer>

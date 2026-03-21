@@ -414,7 +414,12 @@ export function LeftSidebar({
   const [slots, setSlots] = useState<ScheduledSlot[]>([]);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"drafts" | "scheduled">(defaultTab ?? "scheduled");
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const fetchSeqRef = useRef(0);
+  const loadedDaysRef = useRef(14);
+  const isLoadingMoreRef = useRef(false);
+  const scheduleScrollAreaRef = useRef<HTMLDivElement>(null);
+  const scheduleSentinelRef = useRef<HTMLDivElement>(null);
 
   const activeDraftId = pathname.startsWith("/c/") ? pathname.split("/")[2] : null;
 
@@ -434,14 +439,14 @@ export function LeftSidebar({
   }, [pathname]);
 
   useEffect(() => {
-    getScheduledSlots()
+    getScheduledSlots({ days: loadedDaysRef.current })
       .then(setSlots)
       .catch(() => setSlots([]));
   }, []);
 
   useEffect(() => {
     const handler = () =>
-      getScheduledSlots()
+      getScheduledSlots({ days: loadedDaysRef.current })
         .then(setSlots)
         .catch(() => {});
     window.addEventListener("slots-updated", handler);
@@ -461,10 +466,43 @@ export function LeftSidebar({
   }, []);
 
   function refreshSlots() {
-    getScheduledSlots()
+    getScheduledSlots({ days: loadedDaysRef.current })
       .then(setSlots)
       .catch(() => {});
   }
+
+  async function loadMore() {
+    if (isLoadingMoreRef.current) return;
+    isLoadingMoreRef.current = true;
+    setIsLoadingMore(true);
+    const newDays = loadedDaysRef.current + 14;
+    try {
+      const data = await getScheduledSlots({ days: newDays });
+      setSlots(data);
+      loadedDaysRef.current = newDays;
+    } catch {
+      // ignore
+    } finally {
+      isLoadingMoreRef.current = false;
+      setIsLoadingMore(false);
+    }
+  }
+
+  useEffect(() => {
+    const container = scheduleScrollAreaRef.current;
+    const sentinel = scheduleSentinelRef.current;
+    if (!container || !sentinel) return;
+    const viewport = container.querySelector("[data-radix-scroll-area-viewport]");
+    if (!viewport) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMore();
+      },
+      { root: viewport, threshold: 0 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, []);
 
   async function handleToggleSlotPosted(id: string) {
     try {
@@ -724,26 +762,32 @@ export function LeftSidebar({
         </TabsContent>
 
         <TabsContent value="scheduled" className="flex-1 overflow-hidden">
-          <ScrollArea className="h-full pl-2 pt-3 pr-2">
-            <div className="flex flex-col gap-4">
-              {groupedSlots.map(([dateLabel, slotList]) => (
-                <div key={dateLabel} className="flex flex-col gap-2">
-                  <span className="px-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    {dateLabel}
-                  </span>
-                  {slotList.map((slot) => (
-                    <SlotItem
-                      key={slot.id}
-                      slot={slot}
-                      onTogglePosted={handleToggleSlotPosted}
-                      onDelete={handleSlotDelete}
-                      onUnschedule={handleUnschedule}
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
+          <div ref={scheduleScrollAreaRef} className="h-full">
+            <ScrollArea className="h-full pl-2 pt-3 pr-2">
+              <div className="flex flex-col gap-4">
+                {groupedSlots.map(([dateLabel, slotList]) => (
+                  <div key={dateLabel} className="flex flex-col gap-2">
+                    <span className="px-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      {dateLabel}
+                    </span>
+                    {slotList.map((slot) => (
+                      <SlotItem
+                        key={slot.id}
+                        slot={slot}
+                        onTogglePosted={handleToggleSlotPosted}
+                        onDelete={handleSlotDelete}
+                        onUnschedule={handleUnschedule}
+                      />
+                    ))}
+                  </div>
+                ))}
+                <div ref={scheduleSentinelRef} className="h-1" />
+                {isLoadingMore && (
+                  <p className="pb-3 text-center text-xs text-muted-foreground">Loading…</p>
+                )}
+              </div>
+            </ScrollArea>
+          </div>
         </TabsContent>
       </Tabs>
 
