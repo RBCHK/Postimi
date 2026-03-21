@@ -439,7 +439,7 @@ export function LeftSidebar({
     const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const lastRun = localStorage.getItem("xreba_slots_generated");
     if (lastRun !== localDateStr) {
-      ensureSlotsForWeek(localDateStr)
+      ensureSlotsForWeek()
         .then(() => {
           localStorage.setItem("xreba_slots_generated", localDateStr);
           return getScheduledSlots(localDateStr);

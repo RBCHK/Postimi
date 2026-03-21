@@ -113,12 +113,17 @@ export async function getScheduledSlots(localDateStr?: string) {
 /**
  * Ensures scheduled slots exist for the upcoming week based on ScheduleConfig.
  */
-export async function ensureSlotsForWeek(localDateStr?: string) {
-  const userId = await requireUserId();
+export async function ensureSlotsForWeek() {
+  const { id: userId, timezone } = await requireUser();
+  await ensureSlotsForWeekInternal(userId, timezone);
+}
+
+export async function ensureSlotsForWeekInternal(userId: string, timezone: string) {
   const scheduleConfig = await getScheduleConfigInternal(userId);
-  if (scheduleConfig) {
-    await regenerateSlotsFromConfig(scheduleConfig, userId, localDateStr);
-  }
+  if (!scheduleConfig) return;
+  const now = new Date();
+  const localDateStr = now.toLocaleDateString("en-CA", { timeZone: timezone });
+  await regenerateSlotsFromConfig(scheduleConfig, userId, localDateStr);
 }
 
 // Add selected text to the next available slot of matching type.

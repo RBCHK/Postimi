@@ -26,7 +26,7 @@ export function ScheduleView() {
     const localDateStr = getLocalDateStr();
     const lastRun = localStorage.getItem("xreba_slots_generated");
     if (lastRun !== localDateStr) {
-      ensureSlotsForWeek(localDateStr)
+      ensureSlotsForWeek()
         .then(() => {
           localStorage.setItem("xreba_slots_generated", localDateStr);
           return getScheduledSlots(localDateStr);
