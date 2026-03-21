@@ -20,7 +20,13 @@ import {
   updateNote as updateNoteAction,
   clearNotes as clearNotesAction,
 } from "@/app/actions/notes";
-import { addMessage, fetchTweetFullTextAction } from "@/app/actions/conversations";
+import {
+  addMessage,
+  fetchTweetFullTextAction,
+  updateConversation,
+  resolveConversationTitle,
+} from "@/app/actions/conversations";
+import { extractTweetUrl } from "@/lib/parse-tweet";
 import { getStoredModel } from "@/lib/model";
 import { getStoredLanguageSettings } from "@/lib/language";
 
@@ -36,6 +42,7 @@ interface ConversationContextValue {
 
   setInput: (value: string) => void;
   sendMessage: () => void;
+  changeContentType: (type: ContentType) => void;
   addNote: (content: string) => void;
   removeNote: (id: string) => void;
   updateNote: (id: string, content: string) => void;
@@ -80,6 +87,7 @@ export function ConversationProvider({
     notes: Note[];
     contentType: ContentType;
     title?: string;
+    originalPostUrl?: string;
   };
   children: ReactNode;
 }) {
@@ -93,6 +101,12 @@ export function ConversationProvider({
   const notesRef = useRef(notes);
   const contentTypeRef = useRef(contentType);
   const tweetContextRef = useRef("");
+  const originalPostUrlRef = useRef(initialData?.originalPostUrl ?? null);
+  // True once title has been resolved from first message (URL or plain text)
+  const hasResolvedTitleRef = useRef(
+    initialData?.originalPostUrl != null ||
+      (initialData?.title != null && initialData.title !== "Untitled")
+  );
 
   // Keep refs in sync with latest state values.
   // useLayoutEffect (synchronous) ensures refs are current before any user
@@ -211,6 +225,26 @@ export function ConversationProvider({
     const tweetText = await fetchTweetFullTextAction(text);
     tweetContextRef.current = tweetText ?? "";
     setIsFetchingTweet(false);
+    // Save tweet URL and resolve title on first occurrence if not already stored
+    if (tweetText && !originalPostUrlRef.current) {
+      const url = extractTweetUrl(text);
+      if (url) {
+        originalPostUrlRef.current = url;
+        hasResolvedTitleRef.current = true;
+        const resolvedTitle = tweetText.length > 80 ? tweetText.slice(0, 80) + "…" : tweetText;
+        await Promise.all([
+          updateConversation(conversationId, { originalPostUrl: url }),
+          resolveConversationTitle(conversationId, resolvedTitle),
+        ]);
+        window.dispatchEvent(new Event("drafts-updated"));
+      }
+    }
+    // For plain text first message, resolve title from the message text
+    if (!hasResolvedTitleRef.current) {
+      hasResolvedTitleRef.current = true;
+      const resolvedTitle = text.length > 80 ? text.slice(0, 80) + "…" : text;
+      await resolveConversationTitle(conversationId, resolvedTitle);
+    }
     // Save user message to DB
     await addMessage(conversationId, "user", text);
     window.dispatchEvent(new Event("drafts-updated"));
@@ -266,6 +300,14 @@ export function ConversationProvider({
     router.refresh();
   }, [conversationId, router]);
 
+  const changeContentType = useCallback(
+    (type: ContentType) => {
+      setContentType(type);
+      updateConversation(conversationId, { contentType: type });
+    },
+    [conversationId]
+  );
+
   return (
     <ConversationContext.Provider
       value={{
@@ -279,6 +321,7 @@ export function ConversationProvider({
         error,
         setInput,
         sendMessage,
+        changeContentType,
         addNote,
         removeNote,
         updateNote,

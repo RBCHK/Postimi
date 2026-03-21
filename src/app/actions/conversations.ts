@@ -49,6 +49,7 @@ export async function getConversations() {
     status: statusFromPrisma(r.status),
     pinned: r.pinned,
     updatedAt: r.updatedAt,
+    originalPostUrl: r.originalPostUrl ?? undefined,
   }));
 }
 
@@ -88,6 +89,7 @@ export async function createConversation(data: {
   title: string;
   contentType?: ContentType;
   initialContent?: string;
+  originalPostUrl?: string;
 }) {
   const userId = await requireUserId();
   const contentType = data.contentType ?? "Reply";
@@ -97,6 +99,7 @@ export async function createConversation(data: {
       title: data.title,
       contentType: contentTypeToPrisma[contentType],
       status: "DRAFT",
+      ...(data.originalPostUrl ? { originalPostUrl: data.originalPostUrl } : {}),
     },
   });
   if (data.initialContent) {
@@ -113,7 +116,13 @@ export async function createConversation(data: {
 
 export async function updateConversation(
   id: string,
-  data: { title?: string; contentType?: ContentType; status?: DraftStatus; pinned?: boolean }
+  data: {
+    title?: string;
+    contentType?: ContentType;
+    status?: DraftStatus;
+    pinned?: boolean;
+    originalPostUrl?: string;
+  }
 ) {
   const userId = await requireUserId();
   const update: Record<string, unknown> = {};
@@ -121,6 +130,7 @@ export async function updateConversation(
   if (data.contentType != null) update.contentType = contentTypeToPrisma[data.contentType];
   if (data.status != null) update.status = statusToPrisma[data.status];
   if (data.pinned != null) update.pinned = data.pinned;
+  if (data.originalPostUrl != null) update.originalPostUrl = data.originalPostUrl;
   await prisma.conversation.updateMany({ where: { id, userId }, data: update });
 }
 
@@ -171,6 +181,18 @@ export async function getRecentUsedModes(excludeId?: string, limit = 5): Promise
     if (match) modes.push(match[1].toUpperCase());
   }
   return modes;
+}
+
+/**
+ * Updates the conversation title only if it is still the default "Untitled".
+ * Safe to call without checking client-side title state.
+ */
+export async function resolveConversationTitle(id: string, title: string) {
+  const userId = await requireUserId();
+  await prisma.conversation.updateMany({
+    where: { id, userId, title: "Untitled" },
+    data: { title },
+  });
 }
 
 export async function markAsPosted(conversationId: string) {

@@ -26,6 +26,7 @@ export default async function ConversationPage({ params }: Props) {
         notes: data.notes,
         contentType: data.contentType,
         title: data.title,
+        originalPostUrl: data.originalPostUrl ?? undefined,
       }}
     >
       <div className="flex flex-1 overflow-hidden">

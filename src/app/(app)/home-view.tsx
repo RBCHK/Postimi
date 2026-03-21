@@ -7,6 +7,7 @@ import { DailyInsightCard } from "@/components/daily-insight-card";
 import { GoalTrackingCard } from "@/components/goal-tracking-card";
 import { PlanProposalBanner } from "@/components/plan-proposal-banner";
 import { createConversation, resolveTitleFromInput, addMessage } from "@/app/actions/conversations";
+import { extractTweetUrl } from "@/lib/parse-tweet";
 import type { ContentType, GoalTrackingData, PlanProposalItem } from "@/lib/types";
 import { PageContainer } from "@/components/page-container";
 
@@ -36,7 +37,8 @@ export function HomeView({
     setIsLoading(true);
     try {
       const title = await resolveTitleFromInput(text);
-      const id = await createConversation({ title, contentType });
+      const originalPostUrl = extractTweetUrl(text) ?? undefined;
+      const id = await createConversation({ title, contentType, originalPostUrl });
       await addMessage(id, "user", text);
       router.push(`/c/${id}`);
     } catch {

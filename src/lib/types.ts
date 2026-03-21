@@ -17,6 +17,7 @@ export interface Draft {
   status: DraftStatus;
   pinned: boolean;
   updatedAt: Date;
+  originalPostUrl?: string;
 }
 
 export interface ScheduledSlot {

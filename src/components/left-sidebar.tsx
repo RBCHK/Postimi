@@ -237,6 +237,17 @@ export function DraftItem({
             {draft.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
             {draft.pinned ? "Unpin" : "Pin"}
           </DropdownMenuItem>
+          {draft.originalPostUrl && (
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(draft.originalPostUrl, "_blank", "noopener,noreferrer");
+              }}
+            >
+              <ExternalLink className="h-4 w-4" />
+              Open original
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             onClick={(e) => {
               e.stopPropagation();
