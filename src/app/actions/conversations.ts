@@ -140,6 +140,16 @@ export async function addMessage(
   content: string
 ) {
   const userId = await requireUserId();
+
+  // Verify conversation exists and belongs to this user.
+  // Guards against FK violations when conversation was deleted while AI was streaming,
+  // and prevents writing to another user's conversation.
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, userId },
+    select: { id: true },
+  });
+  if (!conversation) return;
+
   await prisma.message.create({
     data: { conversationId, role, content },
   });
