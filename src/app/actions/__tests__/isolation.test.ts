@@ -36,13 +36,11 @@ const prismaMock = {
   scheduledSlot: {
     findMany: vi.fn().mockResolvedValue([]),
     findFirst: vi.fn().mockResolvedValue(null),
-    create: vi
-      .fn()
-      .mockResolvedValue({
-        id: "new-slot-1",
-        date: new Date("2026-01-06T00:00:00.000Z"),
-        timeSlot: "9:00 AM",
-      }),
+    create: vi.fn().mockResolvedValue({
+      id: "new-slot-1",
+      date: new Date("2026-01-06T00:00:00.000Z"),
+      timeSlot: "9:00 AM",
+    }),
     deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     updateMany: vi.fn().mockResolvedValue({ count: 0 }),
   },
