@@ -15,7 +15,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="flex flex-1 overflow-hidden md:px-[15px]">
         <LeftSidebarContainer showAdmin={showAdmin} />
 
-        <main className="flex flex-1 flex-col overflow-y-auto md:rounded-[12px] md:bg-sidebar pb-[calc(54px+env(safe-area-inset-bottom))] md:pb-0">
+        <main className="flex flex-1 flex-col overflow-y-auto pb-[calc(54px+env(safe-area-inset-bottom))] md:pb-0">
           {children}
         </main>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { StickyNote, X, ChevronLeft, Plus } from "lucide-react";
+import { X, ChevronLeft, Plus } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -42,7 +42,7 @@ export function NotesSidebar({ onClose }: NotesSidebarProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 px-6 py-4 pr-12">
+      <div className="flex w-[102px] items-center justify-between gap-2 px-2 py-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {onClose && (
             <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose}>
@@ -56,7 +56,7 @@ export function NotesSidebar({ onClose }: NotesSidebarProps) {
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 shrink-0 rounded-lg bg-white/6 hover:bg-white/10"
+          className="h-8 w-8 shrink-0 rounded-lg hover:bg-transparent!"
           onClick={() => setModalOpen(true)}
         >
           <Plus className="h-4 w-4" />
@@ -64,23 +64,18 @@ export function NotesSidebar({ onClose }: NotesSidebarProps) {
       </div>
 
       {notes.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-6 px-8 text-center">
-          <StickyNote className="h-10 w-10 text-muted-foreground/30" />
-          <p className="text-sm leading-relaxed text-muted-foreground/80">
-            Select text in chat to add notes
-          </p>
-        </div>
+        <div className="flex-1" />
       ) : (
-        <ScrollArea className="flex-1 min-h-0 pl-0 pr-12 pb-12 pt-0">
-          <div className="grid grid-cols-2 gap-3">
+        <ScrollArea className="flex-1 min-h-0 p-0">
+          <div className="flex flex-col gap-3 w-[102px]">
             {notes.map((note) => (
               <div
                 key={note.id}
                 className="group relative cursor-pointer rounded-xl bg-white/3 px-2.5 pb-2 pt-2 transition-colors duration-150 overflow-hidden hover:bg-white/6"
-                style={{ height: "125px" }}
+                style={{ height: "102px", width: "102px" }}
                 onClick={() => openEditModal(note)}
               >
-                <p className="h-full text-xs leading-relaxed line-clamp-4">{note.content}</p>
+                <p className="h-full text-xs leading-relaxed line-clamp-5">{note.content}</p>
                 <Button
                   variant="ghost"
                   size="icon"

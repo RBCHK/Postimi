@@ -57,12 +57,12 @@ export function NotesSidebarContainer() {
       )}
       <aside
         className={cn(
-          "flex w-80 shrink-0 flex-col bg-sidebar",
+          "flex w-[118px] shrink-0 flex-col bg-sidebar",
           "max-lg:fixed max-lg:right-0 max-lg:top-0 max-lg:z-50 max-lg:h-full max-lg:w-full",
           isMobile && !isOpen && "max-lg:hidden"
         )}
       >
-        <div className="flex h-full w-80 flex-col max-lg:w-full">
+        <div className="flex h-full w-[118px] flex-col max-lg:w-full">
           <NotesSidebar onClose={isMobile ? () => setIsOpen(false) : undefined} />
         </div>
       </aside>
