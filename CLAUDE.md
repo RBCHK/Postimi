@@ -63,6 +63,7 @@ IMPORTANT: PWA on iPhone — apply when touching layout or UI.
 - **Touch targets**: min 44×44px
 - **Input zoom**: font ≥ 16px on inputs/textareas (iOS auto-zoom)
 - **Hover**: `[@media(hover:hover)]:hover:` — never bare `hover:` (sticks on touch)
+- **Overriding shadcn variant styles**: `cn()` (Tailwind Merge) resolves conflicts only when modifier format matches exactly (e.g. `hover:bg-X` vs `hover:bg-Y`). Non-standard modifiers like `[@media(hover:hover)]:hover:` won't override the variant's `hover:` — use `!` (important) suffix in such cases.
 - **Test**: Safari → iPhone 15 Pro (Dynamic Island)
 
 ## Quality
