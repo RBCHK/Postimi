@@ -9,7 +9,7 @@ import type { Platform } from "@/lib/types";
 
 export const COMPOSER_PANEL_OPEN = "composer-panel-open";
 
-const EXPANDED_WIDTH = 480;
+const EXPANDED_WIDTH = 650;
 const COLLAPSED_WIDTH = 55;
 const MOBILE_BREAKPOINT = "(max-width: 1023px)";
 

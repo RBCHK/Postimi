@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils";
 import type { ComposerContent, ContentType, Platform } from "@/lib/types";
 import { PLATFORMS, PLATFORM_CONFIG } from "@/lib/types";
+import { XPostPreview } from "@/components/x-post-preview";
 import { addToQueue, checkExistingSchedule } from "@/app/actions/schedule";
 import type { SlotType as PrismaSlotType } from "@/generated/prisma";
 
@@ -209,18 +210,31 @@ export function ComposerSidebar({
         </TooltipProvider>
       </div>
 
-      {/* Textarea */}
-      <div className="flex-1 px-4 pb-2">
-        <Textarea
-          className="h-full min-h-[120px] resize-none border-white/10 bg-white/3 text-sm"
-          placeholder={CONTENT_TYPE_PLACEHOLDERS[contentType] ?? "Write your content…"}
-          value={getCurrentText()}
-          onChange={(e) => handleTextChange(e.target.value)}
-        />
+      {/* Editor area */}
+      <div className="flex min-h-0 flex-1 px-4 pb-2">
+        {activePlatform === "X" ? (
+          <XPostPreview
+            text={getCurrentText()}
+            onChange={handleTextChange}
+            placeholder={CONTENT_TYPE_PLACEHOLDERS[contentType] ?? "Write your content…"}
+          />
+        ) : (
+          <Textarea
+            className="h-full min-h-[120px] resize-none border-white/10 bg-white/3 text-sm"
+            placeholder={CONTENT_TYPE_PLACEHOLDERS[contentType] ?? "Write your content…"}
+            value={getCurrentText()}
+            onChange={(e) => handleTextChange(e.target.value)}
+          />
+        )}
       </div>
 
       {/* Footer: save status + schedule */}
-      <div className="flex items-center justify-between px-4 py-3 border-t border-white/5">
+      <div
+        className={cn(
+          "flex items-center justify-between px-4 py-3",
+          activePlatform !== "X" && "border-t border-white/5"
+        )}
+      >
         <span className="text-xs text-muted-foreground">
           {composerSaveStatus === "saving" && "Saving…"}
           {composerSaveStatus === "saved" && "Saved"}
