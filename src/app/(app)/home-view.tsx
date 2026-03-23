@@ -9,7 +9,7 @@ import { PlanProposalBanner } from "@/components/plan-proposal-banner";
 import { createConversation, resolveTitleFromInput, addMessage } from "@/app/actions/conversations";
 import { extractTweetUrl } from "@/lib/parse-tweet";
 import type { ContentType, GoalTrackingData, PlanProposalItem } from "@/lib/types";
-import { PageContainer } from "@/components/page-container";
+import { HomeComposerPanel } from "@/components/home-composer-panel";
 
 interface HomeViewProps {
   insights: string[] | null;
@@ -47,21 +47,24 @@ export function HomeView({
   }
 
   return (
-    <PageContainer className="flex flex-1 flex-col items-center justify-center gap-4">
-      {pendingProposal && <PlanProposalBanner proposal={pendingProposal} />}
-      <GoalTrackingCard goalData={goalData} hasGoalConfig={hasGoalConfig} />
-      <DailyInsightCard insights={insights} date={insightDate} />
-      <div className="w-full">
-        <ChatInput
-          value={input}
-          onChange={setInput}
-          contentType={contentType}
-          onContentTypeChange={setContentType}
-          onSend={handleSend}
-          disabled={isLoading}
-          autoFocus
-        />
+    <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 p-4 md:rounded-[12px] md:bg-sidebar">
+        {pendingProposal && <PlanProposalBanner proposal={pendingProposal} />}
+        <GoalTrackingCard goalData={goalData} hasGoalConfig={hasGoalConfig} />
+        <DailyInsightCard insights={insights} date={insightDate} />
+        <div className="w-full">
+          <ChatInput
+            value={input}
+            onChange={setInput}
+            contentType={contentType}
+            onContentTypeChange={setContentType}
+            onSend={handleSend}
+            disabled={isLoading}
+            autoFocus
+          />
+        </div>
       </div>
-    </PageContainer>
+      <HomeComposerPanel />
+    </div>
   );
 }

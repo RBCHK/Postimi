@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { ComposerContent, ContentType, Platform } from "@/lib/types";
-import { PLATFORMS } from "@/lib/types";
+import { PLATFORMS, PLATFORM_CONFIG } from "@/lib/types";
 import { addToQueue, checkExistingSchedule } from "@/app/actions/schedule";
 import type { SlotType as PrismaSlotType } from "@/generated/prisma";
 
@@ -18,13 +18,6 @@ const contentTypeToPrismaSlot: Record<ContentType, PrismaSlotType> = {
   Thread: "THREAD",
   Article: "ARTICLE",
   Quote: "QUOTE",
-};
-
-// Platform display config
-const PLATFORM_CONFIG: Record<Platform, { label: string; icon: string }> = {
-  X: { label: "X", icon: "𝕏" },
-  LINKEDIN: { label: "LinkedIn", icon: "in" },
-  THREADS: { label: "Threads", icon: "⊕" },
 };
 
 const CONTENT_TYPE_PLACEHOLDERS: Record<string, string> = {

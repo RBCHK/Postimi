@@ -20,7 +20,6 @@ export function ComposerSidebarContainer() {
 
   useEffect(() => {
     const mq = window.matchMedia(MOBILE_BREAKPOINT);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- browser API access requires effect for SSR safety
     setIsMobile(mq.matches);
     const handler = () => setIsMobile(mq.matches);
     mq.addEventListener("change", handler);
@@ -31,6 +30,18 @@ export function ComposerSidebarContainer() {
     const handler = () => setIsOpen(true);
     window.addEventListener(COMPOSER_PANEL_OPEN, handler);
     return () => window.removeEventListener(COMPOSER_PANEL_OPEN, handler);
+  }, []);
+
+  // Auto-open from home page compose action (sessionStorage flag)
+  useEffect(() => {
+    const autoOpenPlatform = sessionStorage.getItem("composer-auto-open");
+    if (autoOpenPlatform) {
+      sessionStorage.removeItem("composer-auto-open");
+      updateComposer(composerContent, autoOpenPlatform as Platform);
+      setIsOpen(true);
+    }
+    // Run once on mount only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSelectPlatform = (platform: Platform) => {

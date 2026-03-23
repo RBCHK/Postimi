@@ -59,6 +59,12 @@ export interface ComposerContent {
 export const PLATFORMS = ["X", "LINKEDIN", "THREADS"] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
+export const PLATFORM_CONFIG: Record<Platform, { label: string; icon: string }> = {
+  X: { label: "X", icon: "𝕏" },
+  LINKEDIN: { label: "LinkedIn", icon: "in" },
+  THREADS: { label: "Threads", icon: "⊕" },
+};
+
 export const PLATFORM_CHAR_LIMITS: Record<Platform, number> = {
   X: 280,
   LINKEDIN: 3000,
