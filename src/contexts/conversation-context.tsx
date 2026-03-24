@@ -12,7 +12,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type UIMessage, type TextUIPart } from "ai";
+import { DefaultChatTransport, generateId, type UIMessage, type TextUIPart } from "ai";
 import type { ContentType, Message, Note, ComposerContent, Platform } from "@/lib/types";
 import {
   addNote as addNoteAction,
@@ -22,6 +22,7 @@ import {
 } from "@/app/actions/notes";
 import {
   addMessage,
+  clearPendingInput,
   fetchTweetFullTextAction,
   updateConversation,
   updateComposerContent,
@@ -79,8 +80,8 @@ function getTextFromUIMessage(message: UIMessage): string {
  * CONTRACT:
  * - Pass loaded data via `initialData.messages` — there is no `initialMessage` prop.
  * - Do NOT pass initial content via URL params; save to DB before redirecting here.
- * - Auto-starts AI if initialData.messages has exactly 1 user message (new conversation).
- *   Does NOT auto-start on page refresh of an ongoing conversation (2+ messages).
+ * - If `initialData.pendingInput` is set (from highlights), it pre-fills the input field
+ *   without auto-sending, so the user can choose contentType before sending.
  * - To send a message use `sendMessage` from `useConversation()`, not `aiSendMessage` directly.
  */
 export function ConversationProvider({
@@ -97,12 +98,13 @@ export function ConversationProvider({
     composerPlatform?: Platform | null;
     title?: string;
     originalPostUrl?: string;
+    pendingInput?: string;
   };
   children: ReactNode;
 }) {
   const [notes, setNotes] = useState<Note[]>(initialData?.notes ?? []);
   const [contentType, setContentType] = useState<ContentType>(initialData?.contentType ?? "Reply");
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(initialData?.pendingInput ?? "");
   const [isFetchingTweet, setIsFetchingTweet] = useState(false);
   const router = useRouter();
 
@@ -120,6 +122,8 @@ export function ConversationProvider({
   const contentTypeRef = useRef(contentType);
   const tweetContextRef = useRef("");
   const originalPostUrlRef = useRef(initialData?.originalPostUrl ?? null);
+  const pendingInputClearedRef = useRef(false);
+  const nextMessageIdRef = useRef<string | null>(null);
   // True once title has been resolved from first message (URL or plain text)
   const hasResolvedTitleRef = useRef(
     initialData?.originalPostUrl != null ||
@@ -158,19 +162,12 @@ export function ConversationProvider({
   );
   /* eslint-enable react-hooks/refs */
 
-  // For auto-start (1 user message, no reply yet), pass empty initialMessages so
-  // aiSendMessage can add it once. Otherwise useChat would show it twice.
-  const isAutoStart =
-    (initialData?.messages ?? []).length === 1 && initialData?.messages?.[0]?.role === "user";
-
-  const initialMessages: UIMessage[] = isAutoStart
-    ? []
-    : (initialData?.messages ?? []).map((m) => ({
-        id: m.id,
-        role: m.role as "user" | "assistant",
-        parts: [{ type: "text" as const, text: m.content }],
-        metadata: undefined,
-      }));
+  const initialMessages: UIMessage[] = (initialData?.messages ?? []).map((m) => ({
+    id: m.id,
+    role: m.role as "user" | "assistant",
+    parts: [{ type: "text" as const, text: m.content }],
+    metadata: undefined,
+  }));
 
   const {
     messages: aiMessages,
@@ -180,11 +177,23 @@ export function ConversationProvider({
   } = useChat({
     transport,
     messages: initialMessages,
+    generateId: () => {
+      if (nextMessageIdRef.current) {
+        const id = nextMessageIdRef.current;
+        nextMessageIdRef.current = null;
+        return id;
+      }
+      return generateId();
+    },
     onFinish: async ({ message }: { message: UIMessage }) => {
       const text = getTextFromUIMessage(message);
       if (text) {
-        await addMessage(conversationId, "assistant", text);
-        window.dispatchEvent(new Event("drafts-updated"));
+        try {
+          await addMessage(conversationId, "assistant", text, message.id);
+          window.dispatchEvent(new Event("drafts-updated"));
+        } catch (e) {
+          console.error("Failed to save assistant message:", e);
+        }
       }
     },
   });
@@ -205,7 +214,7 @@ export function ConversationProvider({
   }, [conversationId, initialData]);
 
   // Map AI SDK UIMessage[] to our Message type.
-  // During auto-start, aiMessages is empty until aiSendMessage fires — fall back to initialData.
+  // Fall back to initialData when aiMessages is empty (first render before useChat hydrates).
   const messages: Message[] =
     aiMessages.length > 0
       ? aiMessages.map((m) => ({
@@ -219,60 +228,61 @@ export function ConversationProvider({
           createdAt: m.createdAt instanceof Date ? m.createdAt : new Date(m.createdAt as string),
         }));
 
-  // Auto-start AI for new conversations (exactly 1 user message, no assistant reply yet).
-  // hasSentInitial guards against StrictMode double-invoke and future re-renders.
-  // Empty deps array is intentional: runs once on mount using initialData captured at creation.
-  const hasSentInitial = useRef(false);
-  useEffect(() => {
-    if (hasSentInitial.current) return;
-    const msgs = initialData?.messages ?? [];
-    if (msgs.length === 1 && msgs[0].role === "user") {
-      hasSentInitial.current = true;
-      const text = msgs[0].content;
-      (async () => {
-        const tweetText = await fetchTweetFullTextAction(text);
-        tweetContextRef.current = tweetText ?? "";
-        aiSendMessage({ text });
-        tweetContextRef.current = "";
-      })();
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   const sendMessage = useCallback(async () => {
     const text = input.trim();
     if (!text || isLoading) return;
     setInput("");
-    setIsFetchingTweet(true);
-    const tweetText = await fetchTweetFullTextAction(text);
-    tweetContextRef.current = tweetText ?? "";
-    setIsFetchingTweet(false);
-    // Save tweet URL and resolve title on first occurrence if not already stored
-    if (tweetText && !originalPostUrlRef.current) {
-      const url = extractTweetUrl(text);
-      if (url) {
-        originalPostUrlRef.current = url;
-        hasResolvedTitleRef.current = true;
-        const resolvedTitle = tweetText.length > 80 ? tweetText.slice(0, 80) + "…" : tweetText;
-        await Promise.all([
-          updateConversation(conversationId, { originalPostUrl: url }),
-          resolveConversationTitle(conversationId, resolvedTitle),
-        ]);
-        window.dispatchEvent(new Event("drafts-updated"));
+
+    try {
+      setIsFetchingTweet(true);
+      const tweetText = await fetchTweetFullTextAction(text);
+      tweetContextRef.current = tweetText ?? "";
+      setIsFetchingTweet(false);
+      // Save tweet URL and resolve title on first occurrence if not already stored
+      if (tweetText && !originalPostUrlRef.current) {
+        const url = extractTweetUrl(text);
+        if (url) {
+          originalPostUrlRef.current = url;
+          hasResolvedTitleRef.current = true;
+          const resolvedTitle = tweetText.length > 80 ? tweetText.slice(0, 80) + "…" : tweetText;
+          await Promise.all([
+            updateConversation(conversationId, { originalPostUrl: url }),
+            resolveConversationTitle(conversationId, resolvedTitle),
+          ]);
+          window.dispatchEvent(new Event("drafts-updated"));
+        }
       }
+      // For plain text first message, resolve title from the message text
+      if (!hasResolvedTitleRef.current) {
+        hasResolvedTitleRef.current = true;
+        const resolvedTitle = text.length > 80 ? text.slice(0, 80) + "…" : text;
+        await resolveConversationTitle(conversationId, resolvedTitle);
+      }
+      // Save user message to DB first to get the canonical ID.
+      const dbMessageId = await addMessage(conversationId, "user", text);
+      if (!dbMessageId) {
+        // Conversation was deleted or ownership changed — abort
+        setInput(text);
+        return;
+      }
+      // Clear pendingInput (non-critical — don't let it abort the send)
+      if (initialData?.pendingInput && !pendingInputClearedRef.current) {
+        pendingInputClearedRef.current = true;
+        clearPendingInput(conversationId).catch(() => {});
+      }
+      window.dispatchEvent(new Event("drafts-updated"));
+      // Set the DB ID so generateId() returns it for the user message in useChat,
+      // keeping IDs in sync between DB and rendered messages.
+      nextMessageIdRef.current = dbMessageId;
+      aiSendMessage({ text });
+      tweetContextRef.current = "";
+    } catch {
+      // Restore input so the user can retry
+      setInput(text);
+      setIsFetchingTweet(false);
+      tweetContextRef.current = "";
     }
-    // For plain text first message, resolve title from the message text
-    if (!hasResolvedTitleRef.current) {
-      hasResolvedTitleRef.current = true;
-      const resolvedTitle = text.length > 80 ? text.slice(0, 80) + "…" : text;
-      await resolveConversationTitle(conversationId, resolvedTitle);
-    }
-    // Save user message to DB
-    await addMessage(conversationId, "user", text);
-    window.dispatchEvent(new Event("drafts-updated"));
-    // Send to AI (transport body closure provides notes + contentType + tweetContext)
-    aiSendMessage({ text });
-    tweetContextRef.current = "";
-  }, [input, isLoading, conversationId, aiSendMessage]);
+  }, [input, isLoading, conversationId, aiSendMessage, initialData?.pendingInput]);
 
   const addNote = useCallback(
     async (content: string, messageId: string): Promise<boolean> => {

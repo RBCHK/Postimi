@@ -70,7 +70,8 @@ IMPORTANT: PWA on iPhone — apply when touching layout or UI.
 
 - **No hacks or workarounds**: always implement the architecturally correct solution. Separate concerns properly (e.g. build vs deploy, CI vs production). If a quick fix "works", ask whether it's the right fix.
 - **TypeScript**: no `any`, no suppressed errors
-- **Error handling**: try/catch on all external boundaries (HTTP, Prisma, fs, JSON.parse, cron jobs)
+- **Error handling**: try/catch on all external boundaries (HTTP, Prisma, fs, JSON.parse, cron jobs). If user input is cleared optimistically before async operations, wrap in try/catch and restore the input on failure.
+- **Non-critical side effects** (cleanup, analytics, cache invalidation) must never abort the critical path — use `.catch(() => {})` or `Promise.allSettled`, not `Promise.all`.
 - **Accessibility**: semantic HTML, ARIA labels, keyboard navigable
 - **External API integration**: before writing types or mapping logic, always inspect the real raw response first. API docs lie — fields appear/disappear, names differ, extra fields exist. Use a debug route or log the raw response before defining TypeScript interfaces.
 

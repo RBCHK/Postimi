@@ -20,6 +20,7 @@ export default async function ConversationPage({ params }: Props) {
 
   return (
     <ConversationProvider
+      key={id}
       conversationId={id}
       initialData={{
         messages: data.messages,
@@ -29,6 +30,7 @@ export default async function ConversationPage({ params }: Props) {
         composerPlatform: data.composerPlatform,
         title: data.title,
         originalPostUrl: data.originalPostUrl ?? undefined,
+        pendingInput: data.pendingInput ?? undefined,
       }}
     >
       <div className="flex flex-1 overflow-hidden">

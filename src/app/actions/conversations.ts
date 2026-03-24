@@ -72,6 +72,7 @@ export async function getConversation(id: string) {
     originalPostUrl: c.originalPostUrl,
     composerContent: (c.composerContent as unknown as ComposerContent) ?? null,
     composerPlatform: (c.composerPlatform as Platform) ?? null,
+    pendingInput: c.pendingInput,
     updatedAt: c.updatedAt,
     messages: c.messages.map((m) => ({
       id: m.id,
@@ -103,17 +104,9 @@ export async function createConversation(data: {
       contentType: contentTypeToPrisma[contentType],
       status: "DRAFT",
       ...(data.originalPostUrl ? { originalPostUrl: data.originalPostUrl } : {}),
+      ...(data.initialContent ? { pendingInput: data.initialContent } : {}),
     },
   });
-  if (data.initialContent) {
-    await prisma.message.create({
-      data: {
-        conversationId: conv.id,
-        role: "user",
-        content: data.initialContent,
-      },
-    });
-  }
   return conv.id;
 }
 
@@ -137,10 +130,19 @@ export async function updateConversation(
   await prisma.conversation.updateMany({ where: { id, userId }, data: update });
 }
 
+export async function clearPendingInput(id: string) {
+  const userId = await requireUserId();
+  await prisma.conversation.updateMany({
+    where: { id, userId },
+    data: { pendingInput: null },
+  });
+}
+
 export async function addMessage(
   conversationId: string,
   role: "user" | "assistant",
-  content: string
+  content: string,
+  id?: string
 ) {
   const userId = await requireUserId();
 
@@ -151,16 +153,17 @@ export async function addMessage(
     where: { id: conversationId, userId },
     select: { id: true },
   });
-  if (!conversation) return;
+  if (!conversation) return null;
 
-  await prisma.message.create({
-    data: { conversationId, role, content },
+  const message = await prisma.message.create({
+    data: { ...(id ? { id } : {}), conversationId, role, content },
   });
   await prisma.conversation.updateMany({
     where: { id: conversationId, userId },
     data: { lastActivityAt: new Date() },
   });
   revalidatePath(`/c/${conversationId}`);
+  return message.id;
 }
 
 export async function deleteConversation(id: string) {

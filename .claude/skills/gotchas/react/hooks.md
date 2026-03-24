@@ -20,3 +20,10 @@
 **Broke:** If server action throws, state is already cleared with no rollback. Toast shows success even on failure.
 **Fix:** Every optimistic update must follow the pattern: (1) save previous state, (2) optimistically update, (3) try server call, (4) catch → rollback state. Toast must only fire after server confirms success. Return `boolean` from context method so callers know the outcome.
 **Watch out:** Easy to miss when copying existing patterns — `removeNote` and `updateNote` had try/catch, but `clearNotes` (same file, same author) did not. Check all sibling methods when adding a new one.
+
+### useConversation() in shared component crashes outside provider
+
+**Tried:** Added `useConversation()` to `ChatInput` to show highlights badge
+**Broke:** `ChatInput` is also used on the home page (`home-view.tsx`) which has no `ConversationProvider` — runtime crash: "useConversation must be used within ConversationProvider"
+**Fix:** Don't call context hooks in shared components. Pass the data via props (`highlightsCount`). The drawer component (which does need context) only renders when count > 0, so it's never mounted outside the provider.
+**Watch out:** Before adding a context hook to any component, grep for all its usage sites. If it's used outside the provider boundary, pass data via props instead.
