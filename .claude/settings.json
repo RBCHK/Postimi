@@ -6,7 +6,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"Перед поиском — проверь .claude/skills/gotchas/ (react/, nextjs/, eslint/, prisma/, ai-sdk/). Если найдёшь релевантный кейс — применяй сразу, не иди в интернет.\"}}'"
+            "command": "printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"Перед поиском — проверь .claude/skills/gotchas/. Если найдёшь релевантный кейс — применяй сразу, не иди в интернет.\"}}'"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); file=$(echo \"$input\" | jq -r '.tool_input.file_path // \"\"'); if echo \"$file\" | grep -q 'src/app/actions/'; then existing=$(grep -rh '^export async function' src/app/actions/*.ts 2>/dev/null | head -15); printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"Создаёшь/редактируешь файл в actions/. Проверь — возможно, нужная функция уже есть. Существующие Server Actions:\\n%s\"}}' \"$existing\"; fi"
           }
         ]
       }
@@ -17,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd /Users/rbchk/IT/xREBA && npx tsc --noEmit 2>&1 | head -20"
+            "command": "npx tsc --noEmit 2>&1 | head -20"
           }
         ]
       },

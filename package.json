@@ -16,6 +16,8 @@
     "db:seed": "prisma db seed",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -59,6 +61,8 @@
     "vaul": "^1.1.2"
   },
   "devDependencies": {
+    "@clerk/testing": "^2.0.6",
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pg": "^8.16.0",

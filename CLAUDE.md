@@ -77,10 +77,11 @@ IMPORTANT: PWA on iPhone — apply when touching layout or UI.
 
 ## Testing
 
-- **Framework**: Vitest (`npm test` / `npm run test:watch`)
-- **Test files location**: `src/**/*.test.ts` — currently `src/lib/__tests__/` and `src/app/actions/__tests__/`
+- **Unit tests**: Vitest (`npm test` / `npm run test:watch`), files in `src/**/*.test.ts`
+- **E2E tests**: Playwright (`npx playwright test`), files in `tests/`
 - IMPORTANT: Always check `package.json` and `src/**/*.test.ts` before concluding "no tests exist"
 - When fixing a bug in a utility function, check if a test file exists for it and add a regression test
+- **Clerk E2E auth requires three layers** — `setupClerkTestingToken()` alone does NOT authenticate (it only intercepts Clerk API requests for bot/captcha bypass). All three are needed: (1) `clerkSetup()` in `globalSetup`, (2) UI sign-in in setup project → `storageState`, (3) `setupClerkTestingToken({ page })` in every test's `beforeEach`. See `tests/global-setup.ts` and gotcha `playwright/clerk-testing.md`.
 
 ## Git Workflow
 
