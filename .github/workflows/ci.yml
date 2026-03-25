@@ -83,7 +83,7 @@ jobs:
         run: npx prisma migrate deploy
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium webkit
+        run: npx playwright install --with-deps chromium
 
       - name: Run E2E tests
         run: npx playwright test

@@ -54,7 +54,10 @@ export default defineConfig({
       testMatch: /mobile\//,
       use: {
         ...devices["iPhone 15 Pro"],
-        browserName: "webkit",
+        // WebKit on Linux CI (WebKitGTK) has Clerk auth compatibility issues —
+        // use Chromium there for reliable mobile viewport testing.
+        // Local macOS uses real WebKit for Safari-accurate testing.
+        browserName: process.env.CI ? "chromium" : "webkit",
         storageState: "tests/.auth/user.json",
       },
       dependencies: ["setup"],
