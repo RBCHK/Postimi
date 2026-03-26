@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Link2, Link2Off, PenSquare, Calendar } from "lucide-react";
 import { useConversation } from "@/contexts/conversation-context";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { XPostPreview } from "@/components/x-post-preview";
 import { LinkedInPostPreview } from "@/components/linkedin-post-preview";
 import { ThreadsPostPreview } from "@/components/threads-post-preview";
 import { addToQueue, checkExistingSchedule } from "@/app/actions/schedule";
+import { getXProfileForComposer } from "@/app/actions/x-token";
 import type { SlotType as PrismaSlotType } from "@/generated/prisma";
 
 const contentTypeToPrismaSlot: Record<ContentType, PrismaSlotType> = {
@@ -53,6 +54,26 @@ export function ComposerSidebar({
   } = useConversation();
 
   const activePlatform = composerPlatform;
+
+  // Load X profile for composer preview
+  const [xProfile, setXProfile] = useState<{
+    displayName: string;
+    handle: string;
+    avatarUrl: string | null;
+    verified: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getXProfileForComposer()
+      .then((profile) => {
+        if (!cancelled) setXProfile(profile);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Get the current text for the active platform
   const getCurrentText = useCallback((): string => {
@@ -218,6 +239,10 @@ export function ComposerSidebar({
             text={getCurrentText()}
             onChange={handleTextChange}
             placeholder={CONTENT_TYPE_PLACEHOLDERS[contentType] ?? "Write your content…"}
+            displayName={xProfile?.displayName}
+            handle={xProfile?.handle}
+            avatarUrl={xProfile?.avatarUrl ?? undefined}
+            verified={xProfile?.verified}
           />
         )}
         {activePlatform === "LINKEDIN" && (

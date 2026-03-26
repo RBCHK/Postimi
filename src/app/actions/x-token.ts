@@ -20,6 +20,14 @@ interface OAuthTokenResponse {
 interface XUserProfile {
   id: string;
   username: string;
+  name?: string;
+  description?: string;
+  profile_image_url?: string;
+  location?: string;
+  url?: string;
+  verified?: boolean;
+  verified_type?: string;
+  created_at?: string;
 }
 
 // ─── Internal helpers (no auth check — for cron routes) ─────
@@ -152,20 +160,31 @@ export async function saveXApiToken(
 ): Promise<void> {
   const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
 
+  const profileData = {
+    xUserId: profile.id,
+    xUsername: profile.username,
+    xDisplayName: profile.name ?? null,
+    xProfileImageUrl: profile.profile_image_url ?? null,
+    xDescription: profile.description ?? null,
+    xLocation: profile.location ?? null,
+    xUrl: profile.url ?? null,
+    xVerified: profile.verified ?? false,
+    xVerifiedType: profile.verified_type ?? null,
+    xAccountCreatedAt: profile.created_at ? new Date(profile.created_at) : null,
+  };
+
   await prisma.xApiToken.upsert({
     where: { userId },
     create: {
       userId,
-      xUserId: profile.id,
-      xUsername: profile.username,
+      ...profileData,
       accessToken: encryptToken(tokenData.access_token),
       refreshToken: encryptToken(tokenData.refresh_token),
       expiresAt,
       scopes: tokenData.scope,
     },
     update: {
-      xUserId: profile.id,
-      xUsername: profile.username,
+      ...profileData,
       accessToken: encryptToken(tokenData.access_token),
       refreshToken: encryptToken(tokenData.refresh_token),
       expiresAt,
@@ -188,6 +207,33 @@ export async function getXConnectionStatus(): Promise<{
 
   if (!token) return { connected: false };
   return { connected: true, xUsername: token.xUsername, connectedAt: token.createdAt };
+}
+
+/** Get X profile data for composer preview */
+export async function getXProfileForComposer(): Promise<{
+  displayName: string;
+  handle: string;
+  avatarUrl: string | null;
+  verified: boolean;
+} | null> {
+  const userId = await requireUserId();
+  const token = await prisma.xApiToken.findUnique({
+    where: { userId },
+    select: {
+      xUsername: true,
+      xDisplayName: true,
+      xProfileImageUrl: true,
+      xVerified: true,
+    },
+  });
+
+  if (!token) return null;
+  return {
+    displayName: token.xDisplayName ?? token.xUsername,
+    handle: `@${token.xUsername}`,
+    avatarUrl: token.xProfileImageUrl,
+    verified: token.xVerified,
+  };
 }
 
 /** Disconnect X account for current user */
