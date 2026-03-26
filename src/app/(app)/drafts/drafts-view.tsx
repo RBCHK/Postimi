@@ -6,6 +6,9 @@ import { FilePlus, FileEdit, Pin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/page-container";
+import { PageHeader } from "@/components/page-header";
+import { SectionLabel } from "@/components/section-label";
+import { EmptyState } from "@/components/empty-state";
 import { DraftItem } from "@/components/left-sidebar";
 import {
   getConversations,
@@ -88,21 +91,19 @@ export function DraftsView() {
 
   return (
     <PageContainer className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Drafts</h1>
+      <PageHeader title="Drafts">
         <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={handleNewDraft}>
           <FilePlus className="h-4 w-4" />
           New Draft
         </Button>
-      </div>
+      </PageHeader>
 
       <div className="flex flex-col gap-2">
         {pinnedDrafts.length > 0 && (
           <>
-            <span className="flex items-center gap-1.5 px-2 pt-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <Pin className="h-3 w-3 shrink-0" />
+            <SectionLabel icon={Pin} className="px-2 pt-2">
               Pinned
-            </span>
+            </SectionLabel>
             {pinnedDrafts.map((draft) => (
               <DraftItem
                 key={draft.id}
@@ -122,10 +123,9 @@ export function DraftsView() {
         )}
 
         {unpinnedDrafts.length > 0 && (
-          <span className="flex items-center gap-1.5 px-2 pt-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            <FileEdit className="h-3 w-3 shrink-0" />
+          <SectionLabel icon={FileEdit} className="px-2 pt-2">
             Drafts
-          </span>
+          </SectionLabel>
         )}
 
         {unpinnedDrafts.map((draft) => (
@@ -144,9 +144,7 @@ export function DraftsView() {
           />
         ))}
 
-        {drafts.length === 0 && (
-          <p className="py-12 text-center text-sm text-muted-foreground">No drafts yet</p>
-        )}
+        {drafts.length === 0 && <EmptyState message="No drafts yet" />}
       </div>
     </PageContainer>
   );
