@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/page-container";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
+import { SectionLabel } from "@/components/section-label";
 import { toast } from "sonner";
 import {
   toggleCronJob,
@@ -341,9 +342,7 @@ export function AdminView({ initialConfigs, initialRuns }: AdminViewProps) {
                 },
               ].map(({ title, items }) => (
                 <div key={title} className="space-y-2">
-                  <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                    {title}
-                  </h3>
+                  <SectionLabel>{title}</SectionLabel>
                   {items.map((config) => {
                     const modelKey = JOB_MODEL_KEY[config.jobName];
                     const canRun = !!CRON_PATHS[config.jobName];
@@ -507,7 +506,7 @@ export function AdminView({ initialConfigs, initialRuns }: AdminViewProps) {
                     </div>
                     <div className="mt-1 flex items-baseline gap-2">
                       <DollarSign className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-2xl font-bold">{formatCents(s.totalCostCents)}</span>
+                      <span className="text-xl font-semibold">{formatCents(s.totalCostCents)}</span>
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
                       {s.totalCalls} calls · {s.totalResources} resources

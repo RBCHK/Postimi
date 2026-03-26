@@ -17,7 +17,7 @@ export function PeriodPicker() {
           key={preset}
           variant={activePreset === preset ? "secondary" : "ghost"}
           size="sm"
-          className="h-7 px-2.5 text-xs"
+          className="h-8 px-2.5 text-xs"
           onClick={() => setPreset(preset)}
         >
           {preset}

@@ -103,7 +103,7 @@ export function ChatInput({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+                    className="h-8 gap-1.5 px-2 text-xs text-muted-foreground"
                   >
                     <Highlighter className="h-3.5 w-3.5" />
                     {highlightsCount}
