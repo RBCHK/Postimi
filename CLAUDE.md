@@ -55,6 +55,29 @@ IMPORTANT: xREBA is multi-user on Vercel (UTC). Never assume server TZ = user TZ
 
 **Server pages must be dynamic**: any `page.tsx` that calls Server Actions or Prisma at the top level must have `export const dynamic = "force-dynamic"`. Without it, Next.js tries to statically prerender at build time and fails without a real DB.
 
+## Design System
+
+**Typography scale** (строго — не изобретай новые размеры):
+
+- Page title: `text-xl font-semibold` → используй `<PageHeader>` из `@/components/page-header`
+- Section label: `text-xs font-medium uppercase tracking-wider text-muted-foreground` → используй `<SectionLabel>` из `@/components/section-label`
+- Card title: `text-sm font-medium`
+- Body: `text-sm`
+- Caption: `text-xs`
+
+**Shared UI components** (используй вместо inline-стилей):
+
+- `<PageHeader title icon? subtitle?>` — заголовок любой страницы, с children для action buttons
+- `<SectionLabel icon?>` — заголовок секции/группы
+- `<EmptyState message description? icon? size?>` — пустое состояние (compact/default/large)
+- `<ChartTooltip>` — tooltip для Recharts графиков (UTC date parsing)
+
+**Spacing**: кратно 4px. Предпочитай: `4 8 12 16 24 32 48 64` (Tailwind: 1 2 3 4 6 8 12 16).
+
+**Border-radius**: `rounded-lg` для карточек/контейнеров, `rounded-md` для кнопок/инпутов, `rounded-xl` только для shadcn `<Card>`.
+
+**Карточки**: не дублируй стили — используй shadcn `<Card>` или `rounded-lg border p-4`.
+
 ## Mobile / PWA Rules
 
 IMPORTANT: PWA on iPhone — apply when touching layout or UI.

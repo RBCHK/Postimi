@@ -33,6 +33,8 @@ import { SUPPORTED_LANGUAGES, type SupportedLanguage, type LanguageSettings } fr
 import { getStoredLanguageSettings } from "@/lib/language";
 import { type ThemePreference, applyTheme, saveTheme, getStoredTheme } from "@/lib/theme";
 import { PageContainer } from "@/components/page-container";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
 
 interface VoiceBankEntry {
   id: string;
@@ -119,9 +121,7 @@ function VoiceBankTab() {
 
       <div className="flex flex-col gap-2">
         {filtered.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            No {activeTab.toLowerCase()} examples yet
-          </p>
+          <EmptyState message={`No ${activeTab.toLowerCase()} examples yet`} />
         ) : (
           filtered.map((entry) => (
             <div
@@ -989,7 +989,7 @@ export function SettingsView() {
 
   return (
     <PageContainer className="flex flex-col h-full overflow-hidden">
-      <h1 className="text-xl font-semibold tracking-[-0.02em] mb-6">Settings</h1>
+      <PageHeader title="Settings" />
 
       {/* Mobile: horizontal scrollable tabs */}
       <div className="md:hidden flex gap-1 overflow-x-auto pb-2 shrink-0 scrollbar-hide">
@@ -1009,32 +1009,34 @@ export function SettingsView() {
       </div>
 
       {/* Desktop: sidebar + content */}
-      <div className="flex flex-1 min-h-0 gap-8">
-        {/* Sidebar */}
-        <nav className="hidden md:flex flex-col gap-0.5 w-44 shrink-0">
-          {SETTINGS_NAV.map((item) => (
-            <button
-              key={item.value}
-              onClick={() => setActive(item.value)}
-              className={`text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                active === item.value
-                  ? "bg-muted font-medium text-foreground"
-                  : "text-muted-foreground [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-muted/60"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
+      <div className="flex flex-1 min-h-0 justify-center">
+        <div className="flex flex-1 min-h-0 gap-8 max-w-3xl w-full">
+          {/* Sidebar */}
+          <nav className="hidden md:flex flex-col gap-0.5 w-44 shrink-0">
+            {SETTINGS_NAV.map((item) => (
+              <button
+                key={item.value}
+                onClick={() => setActive(item.value)}
+                className={`text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                  active === item.value
+                    ? "bg-muted font-medium text-foreground"
+                    : "text-muted-foreground [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-muted/60"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
 
-        {/* Content */}
-        <div className="flex-1 min-w-0 overflow-y-auto">
-          <div className="max-w-2xl pb-8">
-            {active === "voice-bank" && <VoiceBankTab />}
-            {active === "strategy" && <StrategyConfigTab />}
-            {active === "connections" && <ConnectionsTab />}
-            {active === "language" && <LanguageTab />}
-            {active === "appearance" && <AppearanceTab />}
+          {/* Content */}
+          <div className="flex-1 min-w-0 overflow-y-auto">
+            <div className="max-w-2xl pb-8">
+              {active === "voice-bank" && <VoiceBankTab />}
+              {active === "strategy" && <StrategyConfigTab />}
+              {active === "connections" && <ConnectionsTab />}
+              {active === "language" && <LanguageTab />}
+              {active === "appearance" && <AppearanceTab />}
+            </div>
           </div>
         </div>
       </div>

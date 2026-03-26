@@ -40,16 +40,24 @@ model User {
 }
 
 model XApiToken {
-  id           String   @id @default(cuid())
-  userId       String   @unique
-  xUserId      String
-  xUsername     String
-  accessToken  String
-  refreshToken String
-  expiresAt    DateTime
-  scopes       String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  xUserId         String
+  xUsername        String
+  xDisplayName    String?
+  xProfileImageUrl String?
+  xDescription    String?
+  xLocation       String?
+  xUrl            String?
+  xVerified       Boolean  @default(false)
+  xVerifiedType   String?
+  xAccountCreatedAt DateTime?
+  accessToken     String
+  refreshToken    String
+  expiresAt       DateTime
+  scopes          String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

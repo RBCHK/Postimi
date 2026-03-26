@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/page-container";
+import { PageHeader } from "@/components/page-header";
+import { SectionLabel } from "@/components/section-label";
+import { EmptyState } from "@/components/empty-state";
 import { SlotItem, groupSlotsByDate } from "@/components/left-sidebar";
 import {
   getScheduledSlots,
@@ -114,22 +117,15 @@ export function ScheduleView() {
 
   return (
     <PageContainer className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Calendar className="h-5 w-5 text-muted-foreground" />
-        <h1 className="text-lg font-semibold">Schedule</h1>
-      </div>
+      <PageHeader title="Schedule" icon={Calendar} />
 
       {groupedSlots.length === 0 ? (
-        <p className="py-12 text-center text-sm text-muted-foreground">
-          No scheduled slots for this week
-        </p>
+        <EmptyState message="No scheduled slots for this week" />
       ) : (
         <div className="flex flex-col gap-5">
           {groupedSlots.map(([dateLabel, slotList]) => (
             <div key={dateLabel} className="flex flex-col gap-2">
-              <span className="px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {dateLabel}
-              </span>
+              <SectionLabel>{dateLabel}</SectionLabel>
               {slotList.map((slot) => (
                 <SlotItem
                   key={slot.id}

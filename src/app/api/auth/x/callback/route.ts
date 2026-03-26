@@ -5,6 +5,25 @@ import { saveXApiToken } from "@/app/actions/x-token";
 
 const COOKIE_NAME = "x_oauth_state";
 
+interface XUserProfileResponse {
+  id: string;
+  username: string;
+  name?: string;
+  description?: string;
+  profile_image_url?: string;
+  location?: string;
+  url?: string;
+  verified?: boolean;
+  verified_type?: string;
+  public_metrics?: {
+    followers_count: number;
+    following_count: number;
+    tweet_count: number;
+    listed_count: number;
+  };
+  created_at?: string;
+}
+
 interface XTokenResponse {
   access_token: string;
   refresh_token: string;
@@ -98,10 +117,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${appUrl}/settings?x_error=Token+exchange+error`);
   }
 
-  // Fetch user profile with the new access token
-  let profile: { id: string; username: string };
+  // Fetch user profile with the new access token (free endpoint — fetch all useful fields)
+  let profile: XUserProfileResponse;
   try {
-    const profileRes = await fetch("https://api.twitter.com/2/users/me?user.fields=username", {
+    const fields =
+      "username,name,description,profile_image_url,location,url,verified,verified_type,public_metrics,created_at";
+    const profileRes = await fetch(`https://api.twitter.com/2/users/me?user.fields=${fields}`, {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
 
@@ -111,7 +132,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${appUrl}/settings?x_error=Failed+to+fetch+X+profile`);
     }
 
-    const profileData = (await profileRes.json()) as { data: { id: string; username: string } };
+    const profileData = (await profileRes.json()) as { data: XUserProfileResponse };
     profile = profileData.data;
   } catch (err) {
     console.error("[x-oauth-callback] Profile fetch error:", err);

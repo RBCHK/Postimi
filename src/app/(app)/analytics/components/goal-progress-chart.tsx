@@ -15,6 +15,7 @@ import {
   Legend,
 } from "recharts";
 import type { GoalChartData } from "@/lib/types";
+import { ChartTooltip } from "@/components/chart-tooltip";
 
 interface Props {
   data: GoalChartData;
@@ -25,46 +26,6 @@ interface ChartPoint {
   actual?: number;
   required?: number;
   expected?: number;
-}
-
-interface CustomTooltipProps {
-  active?: boolean;
-  payload?: Array<{ name: string; value: number; color: string }>;
-  label?: string;
-}
-
-function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
-  if (!active || !payload?.length || !label) return null;
-
-  // Parse as UTC midnight — dates are stored as UTC calendar days
-  const date = new Date(`${label}T00:00:00.000Z`);
-  const dateStr = date.toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-
-  return (
-    <div className="rounded-lg border border-border/50 bg-background/70 p-3 shadow-lg backdrop-blur-sm">
-      <p className="mb-2 text-xs font-medium text-foreground">{dateStr}</p>
-      <div className="space-y-1">
-        {payload.map((entry, idx) => (
-          <div key={idx} className="flex items-center gap-2">
-            <span
-              className="inline-block h-2.5 w-2.5 rounded-full"
-              style={{ background: entry.color }}
-            />
-            <span className="text-xs text-muted-foreground">{entry.name}</span>
-            <span className="ml-auto text-xs font-semibold text-foreground">
-              {Number(entry.value).toLocaleString()}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 function formatXTick(value: string): string {
@@ -257,7 +218,7 @@ export function GoalProgressChart({ data }: Props) {
               tickFormatter={formatYTick}
               domain={[yMin, yMax]}
             />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<ChartTooltip />} />
             <Legend iconType="line" wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
             <ReferenceLine
               y={targetFollowers}
