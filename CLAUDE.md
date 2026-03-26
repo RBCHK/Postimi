@@ -78,6 +78,8 @@ IMPORTANT: xREBA is multi-user on Vercel (UTC). Never assume server TZ = user TZ
 
 **Карточки**: не дублируй стили — используй shadcn `<Card>` или `rounded-lg border p-4`.
 
+**Кнопки**: только shadcn `<Button>` с существующими size variants. Не используй кастомные `h-7`, `h-10` или raw `<button>`.
+
 ## Mobile / PWA Rules
 
 IMPORTANT: PWA on iPhone — apply when touching layout or UI.

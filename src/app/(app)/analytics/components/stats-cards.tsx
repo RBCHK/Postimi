@@ -18,7 +18,7 @@ function StatCard({ label, value, sub }: StatCardProps) {
     <Card>
       <CardContent className="p-4">
         <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="text-2xl font-bold">{value}</p>
+        <p className="text-xl font-semibold">{value}</p>
         {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
       </CardContent>
     </Card>
