@@ -609,9 +609,7 @@ async function _getGoalTrackingData(userId: string): Promise<GoalTrackingData | 
  * Check if there's an existing SCHEDULED ScheduledSlot linked to this conversation.
  * Returns the slot if found, null otherwise.
  */
-export async function checkExistingSchedule(
-  conversationId: string
-): Promise<{
+export async function checkExistingSchedule(conversationId: string): Promise<{
   id: string;
   date: Date;
   timeSlot: string;
