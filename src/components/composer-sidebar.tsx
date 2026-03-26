@@ -1,17 +1,29 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Link2, Link2Off, PenSquare, Calendar } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Link2,
+  Link2Off,
+  PenSquare,
+  Calendar,
+  Send,
+  Loader2,
+} from "lucide-react";
 import { useConversation } from "@/contexts/conversation-context";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { ComposerContent, ContentType, Platform } from "@/lib/types";
-import { PLATFORMS, PLATFORM_CONFIG } from "@/lib/types";
+import { PLATFORM_CONFIG } from "@/lib/types";
+import { PlatformIcon } from "@/components/platform-icons";
 import { XPostPreview } from "@/components/x-post-preview";
 import { LinkedInPostPreview } from "@/components/linkedin-post-preview";
 import { ThreadsPostPreview } from "@/components/threads-post-preview";
-import { addToQueue, checkExistingSchedule } from "@/app/actions/schedule";
+import { addToQueue, checkExistingSchedule, publishPost } from "@/app/actions/schedule";
+import { slotToLocalDate } from "@/lib/date-utils";
+import { toast } from "sonner";
 import { getXProfileForComposer } from "@/app/actions/x-token";
 import type { SlotType as PrismaSlotType } from "@/generated/prisma";
 
@@ -125,27 +137,108 @@ export function ComposerSidebar({
     updateComposer(updated, activePlatform);
   }, [composerContent, activePlatform, updateComposer]);
 
+  // Connected platforms — currently only X
+  const connectedPlatforms: Platform[] = xProfile ? ["X"] : [];
+
+  const [publishing, setPublishing] = useState(false);
+  const [scheduledFor, setScheduledFor] = useState<Date | null>(null);
+  const [countdown, setCountdown] = useState("");
+
+  // Check if already scheduled on mount
+  useEffect(() => {
+    let cancelled = false;
+    checkExistingSchedule(conversationId)
+      .then((slot) => {
+        if (cancelled || !slot) return;
+        setScheduledFor(slotToLocalDate(slot.date, slot.timeSlot));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId]);
+
+  // Countdown timer
+  useEffect(() => {
+    if (!scheduledFor) return;
+    const update = () => {
+      const diff = scheduledFor.getTime() - Date.now();
+      if (diff <= 0) {
+        setCountdown("now");
+        return;
+      }
+      const hours = Math.floor(diff / 3600000);
+      const mins = Math.floor((diff % 3600000) / 60000);
+      if (hours > 24) {
+        const days = Math.floor(hours / 24);
+        setCountdown(`in ${days}d ${hours % 24}h`);
+      } else if (hours > 0) {
+        setCountdown(`in ${hours}h ${mins}m`);
+      } else {
+        setCountdown(`in ${mins}m`);
+      }
+    };
+    update();
+    const interval = setInterval(update, 60000);
+    return () => clearInterval(interval);
+  }, [scheduledFor]);
+
   const handleSchedule = useCallback(async () => {
     const text = getCurrentText();
     if (!text.trim()) return;
 
-    const existing = await checkExistingSchedule(conversationId);
-    if (existing) {
-      // TODO: show dialog "Post already scheduled. Update or create new?"
-      // For now, just create a new slot
-    }
-
     const slotType = contentTypeToPrismaSlot[contentType];
-    await addToQueue(text, conversationId, slotType);
+    const result = await addToQueue(text, conversationId, slotType);
     window.dispatchEvent(new Event("slots-updated"));
     window.dispatchEvent(new Event("drafts-updated"));
+
+    if (result) {
+      setScheduledFor(slotToLocalDate(result.date, result.timeSlot));
+    }
   }, [getCurrentText, conversationId, contentType]);
+
+  const handlePublish = useCallback(async () => {
+    const text = getCurrentText();
+    if (!text.trim() || connectedPlatforms.length === 0) return;
+
+    setPublishing(true);
+    try {
+      const slotType = contentTypeToPrismaSlot[contentType];
+      const result = await publishPost(conversationId, text, slotType);
+
+      if (result.postedPlatforms.length > 0) {
+        toast.success("Published to", {
+          description: result.postedPlatforms.join(", "),
+          icon: (
+            <div className="flex gap-1">
+              {result.postedPlatforms.map((p) => (
+                <PlatformIcon key={p} platform={p as Platform} className="h-4 w-4" />
+              ))}
+            </div>
+          ),
+          action: result.tweetUrl
+            ? { label: "View", onClick: () => window.open(result.tweetUrl, "_blank") }
+            : undefined,
+        });
+        window.dispatchEvent(new Event("slots-updated"));
+        window.dispatchEvent(new Event("drafts-updated"));
+      }
+
+      for (const [platform, error] of Object.entries(result.errors)) {
+        toast.error(`${platform}: ${error}`);
+      }
+    } catch {
+      toast.error("Failed to publish");
+    } finally {
+      setPublishing(false);
+    }
+  }, [getCurrentText, connectedPlatforms.length, contentType, conversationId]);
 
   // --- Collapsed view ---
   if (collapsed) {
     return (
       <div className="flex h-full flex-col items-center gap-1 py-3">
-        {PLATFORMS.map((p) => (
+        {connectedPlatforms.map((p) => (
           <TooltipProvider key={p} delayDuration={0}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -155,7 +248,7 @@ export function ComposerSidebar({
                   className="h-9 w-9 text-xs font-bold"
                   onClick={() => onSelectPlatform?.(p)}
                 >
-                  {PLATFORM_CONFIG[p].icon}
+                  <PlatformIcon platform={p} className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="left">
@@ -194,7 +287,7 @@ export function ComposerSidebar({
 
       {/* Platform tabs */}
       <div className="flex items-center gap-1 px-4 pb-3">
-        {PLATFORMS.map((p) => (
+        {connectedPlatforms.map((p) => (
           <Button
             key={p}
             variant={activePlatform === p ? "secondary" : "ghost"}
@@ -205,7 +298,7 @@ export function ComposerSidebar({
             )}
             onClick={() => handlePlatformChange(p)}
           >
-            <span className="mr-1">{PLATFORM_CONFIG[p].icon}</span>
+            <PlatformIcon platform={p} className="mr-1 h-3.5 w-3.5" />
             {PLATFORM_CONFIG[p].label}
           </Button>
         ))}
@@ -261,22 +354,47 @@ export function ComposerSidebar({
         )}
       </div>
 
-      {/* Footer: save status + schedule */}
+      {/* Footer: save status + publish + schedule */}
       <div className="flex items-center justify-between px-4 py-3">
         <span className="text-xs text-muted-foreground">
           {composerSaveStatus === "saving" && "Saving…"}
           {composerSaveStatus === "saved" && "Saved"}
         </span>
-        <Button
-          variant="secondary"
-          size="sm"
-          className="gap-1.5"
-          onClick={handleSchedule}
-          disabled={!getCurrentText().trim()}
-        >
-          <Calendar className="h-3.5 w-3.5" />
-          Schedule
-        </Button>
+        <div className="flex items-center gap-2">
+          {scheduledFor ? (
+            <Button variant="secondary" size="sm" className="gap-1.5" disabled>
+              <Calendar className="h-3.5 w-3.5" />
+              {countdown}
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="default"
+                size="sm"
+                className="gap-1.5"
+                onClick={handlePublish}
+                disabled={!getCurrentText().trim() || publishing || connectedPlatforms.length === 0}
+              >
+                {publishing ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Send className="h-3.5 w-3.5" />
+                )}
+                Publish
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="gap-1.5"
+                onClick={handleSchedule}
+                disabled={!getCurrentText().trim()}
+              >
+                <Calendar className="h-3.5 w-3.5" />
+                Schedule
+              </Button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

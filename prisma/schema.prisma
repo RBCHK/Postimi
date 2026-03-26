@@ -117,6 +117,7 @@ enum ProposalStatus {
 
 enum XApiResourceType {
   POST_READ
+  POST_WRITE
   USER_READ
   TREND_READ
 }

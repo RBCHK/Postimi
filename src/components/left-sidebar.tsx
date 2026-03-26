@@ -50,6 +50,7 @@ import {
   unscheduleSlot,
 } from "@/app/actions/schedule";
 import type { Draft, ScheduledSlot, SlotStatus, SlotType } from "@/lib/types";
+import { XIcon, LinkedInIcon, ThreadsIcon } from "@/components/platform-icons";
 
 export const slotTypeIcon: Record<SlotType, React.ReactNode> = {
   Reply: <MessageSquare className="h-3.5 w-3.5 shrink-0" />,
@@ -315,14 +316,20 @@ export function SlotItem({
           "p-0.5 text-xs font-normal shrink-0 cursor-pointer hover:bg-muted/50 rounded",
           config.badgeClassName
         )}
-        title={slot.status === "posted" ? "Posted — click to undo" : "Click to mark as posted"}
+        title={
+          isEmpty
+            ? undefined
+            : slot.status === "posted"
+              ? "Posted — click to undo"
+              : "Click to mark as posted"
+        }
         data-slot-type-badge
-        onClick={() => onTogglePosted?.(slot.id)}
+        onClick={isEmpty ? undefined : () => onTogglePosted?.(slot.id)}
       >
         {slotTypeIcon[slot.slotType]}
       </Badge>
       <div className="flex flex-1 flex-col gap-1 overflow-hidden">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <span className="text-xs font-medium">{slot.timeSlot}</span>
           {slot.status === "posted" && slot.postedAt && (
             <span className="text-xs text-muted-foreground">
@@ -334,61 +341,70 @@ export function SlotItem({
               })}
             </span>
           )}
+          {!isEmpty && slot.platforms && slot.platforms.length > 0 && (
+            <div className="ml-1 flex items-center gap-1.5">
+              {slot.platforms.includes("X") && <XIcon className="h-3 w-3 text-muted-foreground" />}
+              {slot.platforms.includes("LINKEDIN") && (
+                <LinkedInIcon className="h-3 w-3 text-muted-foreground" />
+              )}
+              {slot.platforms.includes("THREADS") && (
+                <ThreadsIcon className="h-3 w-3 text-muted-foreground" />
+              )}
+            </div>
+          )}
+          <div
+            className={cn(
+              "ml-auto flex items-center gap-0.5 shrink-0 transition-opacity",
+              menuOpen
+                ? "opacity-100"
+                : "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
+            )}
+          >
+            <DropdownMenu onOpenChange={setMenuOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5"
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                side="right"
+                align="start"
+                className="w-40"
+                onCloseAutoFocus={(e) => e.preventDefault()}
+              >
+                {slot.draftId && (
+                  <DropdownMenuItem onClick={() => onUnschedule?.(slot.id)}>
+                    <CalendarX className="h-3.5 w-3.5" />
+                    Unschedule
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => onDelete?.(slot.id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
         {!isEmpty && slot.draftTitle && (
-          <span className="line-clamp-1 text-xs text-muted-foreground">{slot.draftTitle}</span>
-        )}
-      </div>
-      <div
-        className={cn(
-          "flex items-center gap-0.5 shrink-0 transition-opacity",
-          menuOpen
-            ? "opacity-100"
-            : "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
-        )}
-      >
-        <DropdownMenu onOpenChange={setMenuOpen}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            side="right"
-            align="start"
-            className="w-40"
-            onCloseAutoFocus={(e) => e.preventDefault()}
-          >
-            {slot.draftId && (
-              <DropdownMenuItem onClick={() => onUnschedule?.(slot.id)}>
-                <CalendarX className="h-4 w-4" />
-                Unschedule
-              </DropdownMenuItem>
+          <span
+            className={cn(
+              "line-clamp-2 text-xs text-muted-foreground",
+              slot.draftId &&
+                "cursor-pointer [@media(hover:hover)]:hover:text-foreground transition-colors"
             )}
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onClick={() => onDelete?.(slot.id)}
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        {slot.draftId && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            title="Go to draft"
-            onClick={() => router.push(`/c/${slot.draftId}`)}
+            onClick={slot.draftId ? () => router.push(`/c/${slot.draftId}`) : undefined}
           >
-            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-          </Button>
+            {slot.draftTitle}
+          </span>
         )}
       </div>
     </div>

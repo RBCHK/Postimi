@@ -28,6 +28,7 @@ export interface ScheduledSlot {
   status: SlotStatus;
   draftId?: string;
   draftTitle?: string;
+  platforms?: Platform[];
   postedAt?: Date;
 }
 

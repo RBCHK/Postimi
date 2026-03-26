@@ -111,6 +111,58 @@ async function xFetch<T>(
   return res.json() as Promise<T>;
 }
 
+async function xPost<T>(
+  accessToken: string,
+  endpoint: string,
+  body: Record<string, unknown>
+): Promise<T> {
+  const res = await fetch(`${BASE_URL}${endpoint}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    if (res.status === 401 || res.status === 403) {
+      throw new XApiAuthError(res.status, `X API ${res.status}: ${text}`);
+    }
+    throw new Error(`X API ${res.status} ${res.statusText}: ${text}`);
+  }
+
+  return res.json() as Promise<T>;
+}
+
+// ─── Post a tweet ───────────────────────────────────────
+
+export async function postTweet(
+  credentials: XApiCredentials,
+  text: string,
+  opts?: XApiLogOpts
+): Promise<{ tweetId: string; tweetUrl: string }> {
+  const result = await xPost<{ data: { id: string; text: string } }>(
+    credentials.accessToken,
+    "/tweets",
+    { text }
+  );
+
+  logXApiCall({
+    endpoint: "/tweets",
+    resourceType: "POST_WRITE",
+    resourceCount: 1,
+    httpStatus: 201,
+    ...opts,
+  });
+
+  return {
+    tweetId: result.data.id,
+    tweetUrl: `https://x.com/${credentials.xUsername}/status/${result.data.id}`,
+  };
+}
+
 // ─── Tweet parsing helper ───────────────────────────────
 
 interface RawTweet {

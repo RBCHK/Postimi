@@ -3,7 +3,10 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   images: {
-    remotePatterns: [{ hostname: "pbs.twimg.com" }, { hostname: "img.clerk.com" }],
+    remotePatterns: [
+      { protocol: "https", hostname: "pbs.twimg.com" },
+      { protocol: "https", hostname: "img.clerk.com" },
+    ],
   },
 };
 

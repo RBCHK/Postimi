@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { createConversation } from "@/app/actions/conversations";
 import { PLATFORMS, PLATFORM_CONFIG } from "@/lib/types";
 import type { Platform } from "@/lib/types";
+import { PlatformIcon } from "@/components/platform-icons";
 
 const COLLAPSED_WIDTH = 55;
 
@@ -56,7 +57,7 @@ export function HomeComposerPanel() {
                       className="h-9 w-9 text-xs font-bold"
                       onClick={() => handleCompose(p)}
                     >
-                      {PLATFORM_CONFIG[p].icon}
+                      <PlatformIcon platform={p} className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="left">

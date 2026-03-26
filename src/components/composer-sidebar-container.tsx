@@ -33,11 +33,20 @@ export function ComposerSidebarContainer() {
   }, []);
 
   // Auto-open from home page compose action (sessionStorage flag)
+  // or when conversation already has composer content
   useEffect(() => {
     const autoOpenPlatform = sessionStorage.getItem("composer-auto-open");
     if (autoOpenPlatform) {
       sessionStorage.removeItem("composer-auto-open");
       updateComposer(composerContent, autoOpenPlatform as Platform);
+      setIsOpen(true);
+    } else if (
+      composerContent &&
+      (composerContent.shared?.trim() ||
+        composerContent.x?.trim() ||
+        composerContent.linkedin?.trim() ||
+        composerContent.threads?.trim())
+    ) {
       setIsOpen(true);
     }
     // Run once on mount only

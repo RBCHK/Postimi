@@ -7,6 +7,7 @@ import type { XApiResourceType } from "@/generated/prisma";
  */
 const COST_PER_RESOURCE: Record<XApiResourceType, number> = {
   POST_READ: 0.5, // $0.005
+  POST_WRITE: 50.0, // $0.50
   USER_READ: 1.0, // $0.010
   TREND_READ: 1.0, // $0.010
 };
