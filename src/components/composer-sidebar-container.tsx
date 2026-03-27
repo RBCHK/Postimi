@@ -16,6 +16,7 @@ const MOBILE_BREAKPOINT = "(max-width: 1023px)";
 export function ComposerSidebarContainer() {
   const [isOpen, setIsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [transitionEnabled, setTransitionEnabled] = useState(false);
   const { composerContent, updateComposer } = useConversation();
 
   useEffect(() => {
@@ -33,7 +34,9 @@ export function ComposerSidebarContainer() {
   }, []);
 
   // Auto-open from home page compose action (sessionStorage flag)
-  // or when conversation already has composer content
+  // or when conversation already has composer content.
+  // Transition is disabled until after initial state settles to prevent
+  // the slide-in animation on every mount (draft switch).
   useEffect(() => {
     const autoOpenPlatform = sessionStorage.getItem("composer-auto-open");
     if (autoOpenPlatform) {
@@ -49,6 +52,9 @@ export function ComposerSidebarContainer() {
     ) {
       setIsOpen(true);
     }
+    // Enable transitions only after initial state is applied,
+    // so the sidebar appears instantly at the correct width.
+    requestAnimationFrame(() => setTransitionEnabled(true));
     // Run once on mount only
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -97,7 +103,8 @@ export function ComposerSidebarContainer() {
 
       <div
         className={cn(
-          "flex h-full flex-col bg-sidebar overflow-hidden rounded-[12px] transition-[width] duration-300 ease-in-out"
+          "flex h-full flex-col bg-sidebar overflow-hidden rounded-[12px]",
+          transitionEnabled && "transition-[width] duration-300 ease-in-out"
         )}
         style={{ width: isOpen ? EXPANDED_WIDTH : COLLAPSED_WIDTH }}
       >

@@ -44,6 +44,16 @@ const CONTENT_TYPE_PLACEHOLDERS: Record<string, string> = {
   Quote: "Write your quote…",
 };
 
+// Module-level cache: xProfile is user-level data that doesn't change
+// between conversations. Fetched once per session, survives remounts.
+type XProfile = {
+  displayName: string;
+  handle: string;
+  avatarUrl: string | null;
+  verified: boolean;
+};
+let xProfileCache: XProfile | null | undefined; // undefined = not fetched
+
 interface ComposerSidebarProps {
   collapsed: boolean;
   onToggle: () => void;
@@ -68,18 +78,16 @@ export function ComposerSidebar({
 
   const activePlatform = composerPlatform;
 
-  // Load X profile for composer preview
-  const [xProfile, setXProfile] = useState<{
-    displayName: string;
-    handle: string;
-    avatarUrl: string | null;
-    verified: boolean;
-  } | null>(null);
+  // Load X profile for composer preview — cached at module level
+  // so it survives component remounts on draft switching.
+  const [xProfile, setXProfile] = useState<XProfile | null>(xProfileCache ?? null);
 
   useEffect(() => {
+    if (xProfileCache !== undefined) return;
     let cancelled = false;
     getXProfileForComposer()
       .then((profile) => {
+        xProfileCache = profile;
         if (!cancelled) setXProfile(profile);
       })
       .catch(() => {});
