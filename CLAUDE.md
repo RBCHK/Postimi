@@ -106,6 +106,7 @@ IMPORTANT: PWA on iPhone — apply when touching layout or UI.
 - **E2E tests**: Playwright (`npx playwright test`), files in `tests/`
 - IMPORTANT: Always check `package.json` and `src/**/*.test.ts` before concluding "no tests exist"
 - When fixing a bug in a utility function, check if a test file exists for it and add a regression test
+- **After implementing a feature**: write unit tests for all non-UI logic before committing — server actions, cron routes, utilities. Cron routes and anything calling external APIs always require tests: failures are silent and run without user present. Tests go in `__tests__/` next to the source file.
 - **Clerk E2E auth requires three layers** — `setupClerkTestingToken()` alone does NOT authenticate (it only intercepts Clerk API requests for bot/captcha bypass). All three are needed: (1) `clerkSetup()` in `globalSetup`, (2) UI sign-in in setup project → `storageState`, (3) `setupClerkTestingToken({ page })` in every test's `beforeEach`. See `tests/global-setup.ts` and gotcha `playwright/clerk-testing.md`.
 
 ## Git Workflow
