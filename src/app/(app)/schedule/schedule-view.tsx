@@ -107,6 +107,8 @@ export function ScheduleView() {
     try {
       await unscheduleSlot(id);
       refreshSlots();
+      window.dispatchEvent(new Event("slots-updated"));
+      window.dispatchEvent(new Event("drafts-updated"));
       toast.success("Draft returned to drafts");
     } catch {
       toast.error("Failed to unschedule");

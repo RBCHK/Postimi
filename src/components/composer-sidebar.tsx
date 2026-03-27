@@ -146,15 +146,20 @@ export function ComposerSidebar({
   const [scheduledFor, setScheduledFor] = useState<Date | null>(null);
   const [countdown, setCountdown] = useState("");
 
-  // Check if already scheduled on mount
-  useEffect(() => {
+  // Check if already scheduled on mount + when slots change
+  const recheckSchedule = useCallback(() => {
     let cancelled = false;
     checkExistingSchedule(conversationId)
       .then((slot) => {
-        if (cancelled || !slot) return;
-        if (slot.status === "POSTED") {
+        if (cancelled) return;
+        if (!slot) {
+          setScheduledFor(null);
+          setPublished(false);
+        } else if (slot.status === "POSTED") {
+          setScheduledFor(null);
           setPublished(true);
         } else {
+          setPublished(false);
           setScheduledFor(slotToLocalDate(slot.date, slot.timeSlot));
         }
       })
@@ -163,6 +168,16 @@ export function ComposerSidebar({
       cancelled = true;
     };
   }, [conversationId]);
+
+  useEffect(() => {
+    return recheckSchedule();
+  }, [recheckSchedule]);
+
+  useEffect(() => {
+    const handler = () => recheckSchedule();
+    window.addEventListener("slots-updated", handler);
+    return () => window.removeEventListener("slots-updated", handler);
+  }, [recheckSchedule]);
 
   // Countdown timer
   useEffect(() => {

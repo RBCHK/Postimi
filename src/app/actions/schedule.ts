@@ -487,10 +487,7 @@ export async function addToQueue(
       if (conversationId) {
         await prisma.conversation.update({
           where: { id: conversationId },
-          data: {
-            status: "SCHEDULED",
-            title: content.slice(0, 100),
-          },
+          data: { status: "SCHEDULED" },
         });
       }
 

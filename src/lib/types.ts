@@ -26,6 +26,7 @@ export interface ScheduledSlot {
   timeSlot: string;
   slotType: SlotType;
   status: SlotStatus;
+  content?: string;
   draftId?: string;
   draftTitle?: string;
   platforms?: Platform[];
