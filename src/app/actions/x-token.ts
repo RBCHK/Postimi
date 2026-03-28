@@ -249,3 +249,13 @@ export async function getXApiTokenForUser(): Promise<XApiCredentials | null> {
   const userId = await requireUserId();
   return getXApiTokenForUserInternal(userId);
 }
+
+export async function hasMediaWriteScope(): Promise<boolean> {
+  const userId = await requireUserId();
+  const token = await prisma.xApiToken.findUnique({
+    where: { userId },
+    select: { scopes: true },
+  });
+  if (!token) return false;
+  return token.scopes.includes("media.write");
+}

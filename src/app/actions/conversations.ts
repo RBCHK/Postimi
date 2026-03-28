@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth";
 import type { ContentType, DraftStatus, ComposerContent, Platform } from "@/lib/types";
 import { fetchTweetFromText, extractTweetUrl } from "@/lib/parse-tweet";
+import { deleteMediaStorageForConversation } from "@/app/actions/media";
 import { fetchTweetById } from "@/lib/x-api";
 import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
 import {
@@ -168,6 +169,8 @@ export async function addMessage(
 
 export async function deleteConversation(id: string) {
   const userId = await requireUserId();
+  // Delete media files from Storage before cascade removes DB records
+  await deleteMediaStorageForConversation(id, userId);
   await prisma.conversation.deleteMany({ where: { id, userId } });
   revalidatePath("/");
 }

@@ -77,7 +77,7 @@ export interface XTweetRawResponse {
 }
 
 /** Options for tracking X API calls */
-interface XApiLogOpts {
+export interface XApiLogOpts {
   callerJob?: string;
   userId?: string;
 }
@@ -136,17 +136,107 @@ async function xPost<T>(
   return res.json() as Promise<T>;
 }
 
+// ─── Media upload ────────────────────────────────────────
+
+const UPLOAD_BASE_URL = "https://api.x.com/2/media/upload";
+const CHUNK_SIZE = 1024 * 1024; // 1MB per chunk
+
+/**
+ * Upload an image to X API using chunked upload (INIT → APPEND → FINALIZE).
+ * Returns the media_id string to attach to a tweet.
+ */
+export async function uploadMediaToX(
+  credentials: XApiCredentials,
+  imageBuffer: Buffer,
+  mimeType: string,
+  opts?: XApiLogOpts
+): Promise<string> {
+  const { accessToken } = credentials;
+
+  // INIT
+  const initRes = await fetch(UPLOAD_BASE_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      command: "INIT",
+      total_bytes: imageBuffer.length,
+      media_type: mimeType,
+    }),
+  });
+  if (!initRes.ok) {
+    const body = await initRes.text();
+    throw new Error(`X media INIT failed (${initRes.status}): ${body}`);
+  }
+  const initData = (await initRes.json()) as { media_id_string: string };
+  const mediaId = initData.media_id_string;
+
+  // APPEND (chunked)
+  const totalChunks = Math.ceil(imageBuffer.length / CHUNK_SIZE);
+  for (let i = 0; i < totalChunks; i++) {
+    const chunk = imageBuffer.subarray(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+    const formData = new FormData();
+    formData.append("command", "APPEND");
+    formData.append("media_id", mediaId);
+    formData.append("segment_index", i.toString());
+    formData.append("media_data", new Blob([new Uint8Array(chunk)]));
+
+    const appendRes = await fetch(UPLOAD_BASE_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: formData,
+    });
+    if (!appendRes.ok) {
+      const body = await appendRes.text();
+      throw new Error(
+        `X media APPEND failed (${appendRes.status}, chunk ${i}/${totalChunks}): ${body}`
+      );
+    }
+  }
+
+  // FINALIZE
+  const finalizeRes = await fetch(UPLOAD_BASE_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ command: "FINALIZE", media_id: mediaId }),
+  });
+  if (!finalizeRes.ok) {
+    const body = await finalizeRes.text();
+    throw new Error(`X media FINALIZE failed (${finalizeRes.status}): ${body}`);
+  }
+
+  logXApiCall({
+    endpoint: "/media/upload",
+    resourceType: "MEDIA_WRITE",
+    resourceCount: 1,
+    httpStatus: 200,
+    ...opts,
+  });
+
+  return mediaId;
+}
+
 // ─── Post a tweet ───────────────────────────────────────
 
 export async function postTweet(
   credentials: XApiCredentials,
   text: string,
-  opts?: XApiLogOpts
+  opts?: XApiLogOpts & { mediaIds?: string[] }
 ): Promise<{ tweetId: string; tweetUrl: string }> {
+  const body: Record<string, unknown> = { text };
+  if (opts?.mediaIds?.length) {
+    body.media = { media_ids: opts.mediaIds };
+  }
+
   const result = await xPost<{ data: { id: string; text: string } }>(
     credentials.accessToken,
     "/tweets",
-    { text }
+    body
   );
 
   logXApiCall({
@@ -154,7 +244,8 @@ export async function postTweet(
     resourceType: "POST_WRITE",
     resourceCount: 1,
     httpStatus: 201,
-    ...opts,
+    callerJob: opts?.callerJob,
+    userId: opts?.userId,
   });
 
   return {

@@ -394,7 +394,7 @@ export function SlotItem({
             </DropdownMenu>
           </div>
         </div>
-        {!isEmpty && slot.draftTitle && (
+        {!isEmpty && (slot.content || slot.draftTitle) && (
           <span
             className={cn(
               "line-clamp-2 text-xs text-muted-foreground",
@@ -403,7 +403,7 @@ export function SlotItem({
             )}
             onClick={slot.draftId ? () => router.push(`/c/${slot.draftId}`) : undefined}
           >
-            {slot.draftTitle}
+            {slot.content || slot.draftTitle}
           </span>
         )}
       </div>
@@ -554,6 +554,8 @@ export function LeftSidebar({
     try {
       await unscheduleSlot(id);
       refreshSlots(); // row deleted — re-fetch so virtual EMPTY reappears
+      window.dispatchEvent(new Event("slots-updated"));
+      window.dispatchEvent(new Event("drafts-updated"));
       toast.success("Draft returned to drafts");
     } catch {
       toast.error("Failed to unschedule");

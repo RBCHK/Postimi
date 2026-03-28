@@ -25,7 +25,10 @@ import { ThreadsPostPreview } from "@/components/threads-post-preview";
 import { addToQueue, checkExistingSchedule, publishPost } from "@/app/actions/schedule";
 import { slotToLocalDate } from "@/lib/date-utils";
 import { toast } from "sonner";
-import { getXProfileForComposer } from "@/app/actions/x-token";
+import { getXProfileForComposer, hasMediaWriteScope } from "@/app/actions/x-token";
+import { getMediaForConversation } from "@/app/actions/media";
+import { MediaUpload } from "@/components/media-upload";
+import type { MediaItem } from "@/lib/types";
 import type { SlotType as PrismaSlotType } from "@/generated/prisma";
 
 const contentTypeToPrismaSlot: Record<ContentType, PrismaSlotType> = {
@@ -43,6 +46,16 @@ const CONTENT_TYPE_PLACEHOLDERS: Record<string, string> = {
   Article: "Write your article…",
   Quote: "Write your quote…",
 };
+
+// Module-level cache: xProfile is user-level data that doesn't change
+// between conversations. Fetched once per session, survives remounts.
+type XProfile = {
+  displayName: string;
+  handle: string;
+  avatarUrl: string | null;
+  verified: boolean;
+};
+let xProfileCache: XProfile | null | undefined; // undefined = not fetched
 
 interface ComposerSidebarProps {
   collapsed: boolean;
@@ -68,18 +81,16 @@ export function ComposerSidebar({
 
   const activePlatform = composerPlatform;
 
-  // Load X profile for composer preview
-  const [xProfile, setXProfile] = useState<{
-    displayName: string;
-    handle: string;
-    avatarUrl: string | null;
-    verified: boolean;
-  } | null>(null);
+  // Load X profile for composer preview — cached at module level
+  // so it survives component remounts on draft switching.
+  const [xProfile, setXProfile] = useState<XProfile | null>(xProfileCache ?? null);
 
   useEffect(() => {
+    if (xProfileCache !== undefined) return;
     let cancelled = false;
     getXProfileForComposer()
       .then((profile) => {
+        xProfileCache = profile;
         if (!cancelled) setXProfile(profile);
       })
       .catch(() => {});
@@ -145,16 +156,55 @@ export function ComposerSidebar({
   const [published, setPublished] = useState(false);
   const [scheduledFor, setScheduledFor] = useState<Date | null>(null);
   const [countdown, setCountdown] = useState("");
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
+  const [mediaWriteScope, setMediaWriteScope] = useState(true);
 
-  // Check if already scheduled on mount
+  // Load media and scope status
   useEffect(() => {
+    let cancelled = false;
+    getMediaForConversation(conversationId)
+      .then((items) => {
+        if (!cancelled) setMediaItems(items);
+      })
+      .catch(() => {});
+    hasMediaWriteScope()
+      .then((has) => {
+        if (!cancelled) setMediaWriteScope(has);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId]);
+
+  const handleMediaChange = useCallback((items: MediaItem[]) => {
+    setMediaItems(items);
+  }, []);
+
+  const handleDeleteMedia = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/media/${id}`, { method: "DELETE" });
+      if (!res.ok) return;
+      setMediaItems((prev) => prev.filter((m) => m.id !== id));
+    } catch (err) {
+      console.error("[ComposerSidebar] Delete media error:", err);
+    }
+  }, []);
+
+  // Check if already scheduled on mount + when slots change
+  const recheckSchedule = useCallback(() => {
     let cancelled = false;
     checkExistingSchedule(conversationId)
       .then((slot) => {
-        if (cancelled || !slot) return;
-        if (slot.status === "POSTED") {
+        if (cancelled) return;
+        if (!slot) {
+          setScheduledFor(null);
+          setPublished(false);
+        } else if (slot.status === "POSTED") {
+          setScheduledFor(null);
           setPublished(true);
         } else {
+          setPublished(false);
           setScheduledFor(slotToLocalDate(slot.date, slot.timeSlot));
         }
       })
@@ -163,6 +213,16 @@ export function ComposerSidebar({
       cancelled = true;
     };
   }, [conversationId]);
+
+  useEffect(() => {
+    return recheckSchedule();
+  }, [recheckSchedule]);
+
+  useEffect(() => {
+    const handler = () => recheckSchedule();
+    window.addEventListener("slots-updated", handler);
+    return () => window.removeEventListener("slots-updated", handler);
+  }, [recheckSchedule]);
 
   // Countdown timer
   useEffect(() => {
@@ -343,6 +403,8 @@ export function ComposerSidebar({
             handle={xProfile?.handle}
             avatarUrl={xProfile?.avatarUrl ?? undefined}
             verified={xProfile?.verified}
+            images={mediaItems}
+            onDeleteImage={handleDeleteMedia}
           />
         )}
         {activePlatform === "LINKEDIN" && (
@@ -350,6 +412,8 @@ export function ComposerSidebar({
             text={getCurrentText()}
             onChange={handleTextChange}
             placeholder={CONTENT_TYPE_PLACEHOLDERS[contentType] ?? "Write your content…"}
+            images={mediaItems}
+            onDeleteImage={handleDeleteMedia}
           />
         )}
         {activePlatform === "THREADS" && (
@@ -357,8 +421,21 @@ export function ComposerSidebar({
             text={getCurrentText()}
             onChange={handleTextChange}
             placeholder={CONTENT_TYPE_PLACEHOLDERS[contentType] ?? "Write your content…"}
+            images={mediaItems}
+            onDeleteImage={handleDeleteMedia}
           />
         )}
+      </div>
+
+      {/* Media upload */}
+      <div className="px-4 pb-2">
+        <MediaUpload
+          conversationId={conversationId}
+          platform={activePlatform}
+          media={mediaItems}
+          onMediaChange={handleMediaChange}
+          hasMediaWriteScope={mediaWriteScope}
+        />
       </div>
 
       {/* Footer: save status + publish + schedule */}
@@ -390,7 +467,12 @@ export function ComposerSidebar({
                 size="sm"
                 className="gap-1.5"
                 onClick={handlePublish}
-                disabled={!getCurrentText().trim() || publishing || connectedPlatforms.length === 0}
+                disabled={
+                  !getCurrentText().trim() ||
+                  publishing ||
+                  connectedPlatforms.length === 0 ||
+                  (mediaItems.length > 0 && !mediaWriteScope)
+                }
               >
                 {publishing ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />

@@ -26,6 +26,7 @@ export interface ScheduledSlot {
   timeSlot: string;
   slotType: SlotType;
   status: SlotStatus;
+  content?: string;
   draftId?: string;
   draftTitle?: string;
   platforms?: Platform[];
@@ -58,6 +59,20 @@ export interface ComposerContent {
   threads?: string;
 }
 
+// --- Media ---
+
+export interface MediaItem {
+  id: string;
+  url: string;
+  thumbnailUrl: string | null;
+  filename: string;
+  mimeType: string;
+  width: number;
+  height: number;
+  position: number;
+  alt: string;
+}
+
 export const PLATFORMS = ["X", "LINKEDIN", "THREADS"] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
@@ -71,6 +86,12 @@ export const PLATFORM_CHAR_LIMITS: Record<Platform, number> = {
   X: 280,
   LINKEDIN: 3000,
   THREADS: 500,
+};
+
+export const PLATFORM_IMAGE_LIMITS: Record<Platform, number> = {
+  X: 4,
+  LINKEDIN: 9,
+  THREADS: 10,
 };
 
 export const SUPPORTED_LANGUAGES = [

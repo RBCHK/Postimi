@@ -3,7 +3,8 @@ import * as Sentry from "@sentry/nextjs";
 import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
-import { postTweet } from "@/lib/x-api";
+import { postTweet, uploadMediaToX } from "@/lib/x-api";
+import { getMediaForConversationInternal } from "@/app/actions/media";
 import { slotToUtcDate } from "@/lib/date-utils";
 import type { CronJobStatus, Prisma } from "@/generated/prisma";
 
@@ -56,9 +57,28 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
+      // Upload media if conversation has images
+      let mediaIds: string[] | undefined;
+      if (slot.conversationId) {
+        const media = await getMediaForConversationInternal(slot.conversationId, user.id);
+        if (media.length > 0) {
+          mediaIds = [];
+          for (const item of media) {
+            const imageRes = await fetch(item.url);
+            const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
+            const xMediaId = await uploadMediaToX(credentials, imageBuffer, item.mimeType, {
+              callerJob: "auto-publish",
+              userId: user.id,
+            });
+            mediaIds.push(xMediaId);
+          }
+        }
+      }
+
       await postTweet(credentials, slot.content, {
         callerJob: "auto-publish",
         userId: user.id,
+        mediaIds,
       });
 
       // Mark as POSTED
