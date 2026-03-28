@@ -308,7 +308,7 @@ export function ConversationProvider({
       try {
         await removeNoteAction(id, conversationId);
       } catch {
-        router.refresh();
+        // refresh will restore notes from server
       }
       router.refresh();
     },
@@ -321,7 +321,7 @@ export function ConversationProvider({
       try {
         await updateNoteAction(id, content, conversationId);
       } catch {
-        router.refresh();
+        // refresh will restore notes from server
       }
       router.refresh();
     },
