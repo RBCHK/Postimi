@@ -1,7 +1,10 @@
 "use client";
 
+import { useCallback } from "react";
 import Image from "next/image";
 import { MessageCircle, Repeat2, Heart, BarChart3, Bookmark, Share } from "lucide-react";
+import { ImageGrid } from "@/components/image-grid";
+import type { MediaItem } from "@/lib/types";
 
 interface XPostPreviewProps {
   text: string;
@@ -11,6 +14,8 @@ interface XPostPreviewProps {
   handle?: string;
   avatarUrl?: string;
   verified?: boolean;
+  images?: MediaItem[];
+  onDeleteImage?: (id: string) => void;
 }
 
 export function XPostPreview({
@@ -21,7 +26,31 @@ export function XPostPreview({
   handle = "@handle",
   avatarUrl,
   verified = false,
+  images = [],
+  onDeleteImage,
 }: XPostPreviewProps) {
+  const handleTextChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      onChange(e.target.value);
+      const el = e.target;
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    },
+    [onChange]
+  );
+
+  // Auto-resize on mount / text prop change
+  const setRef = useCallback(
+    (el: HTMLTextAreaElement | null) => {
+      if (el) {
+        el.style.height = "auto";
+        el.style.height = `${el.scrollHeight}px`;
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [text]
+  );
+
   return (
     <div className="flex h-full w-full gap-3 rounded-2xl border border-white/10 bg-black p-4">
       {/* Avatar — fixed top-left */}
@@ -41,8 +70,8 @@ export function XPostPreview({
         )}
       </div>
 
-      {/* Right column: name, text, engagement */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {/* Right column: name, text, engagement — single scroll */}
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         {/* Name row + dots */}
         <div className="flex shrink-0 items-center gap-1">
           <span className="truncate text-[15px] font-bold text-white">{displayName}</span>
@@ -72,14 +101,20 @@ export function XPostPreview({
         </div>
 
         {/* Editable post text */}
-        <div className="flex min-h-0 flex-1">
-          <textarea
-            className="w-full resize-none border-none bg-transparent p-0 pt-1 text-[15px] leading-[20px] text-white outline-none placeholder:text-[#71767b] focus:ring-0"
-            placeholder={placeholder}
-            value={text}
-            onChange={(e) => onChange(e.target.value)}
-          />
-        </div>
+        <textarea
+          ref={setRef}
+          className="w-full resize-none overflow-hidden border-none bg-transparent p-0 pt-1 text-[15px] leading-[20px] text-white outline-none placeholder:text-[#71767b] focus:ring-0"
+          placeholder={placeholder}
+          value={text}
+          onChange={handleTextChange}
+        />
+
+        {/* Image grid */}
+        {images.length > 0 && (
+          <div className="pt-3">
+            <ImageGrid images={images} onDelete={onDeleteImage} />
+          </div>
+        )}
 
         {/* Engagement bar */}
         <div className="flex shrink-0 items-center justify-between max-w-[425px] pt-3">

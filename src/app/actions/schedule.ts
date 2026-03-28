@@ -360,7 +360,8 @@ export async function publishPost(
 }> {
   const { id: userId, timezone } = await requireUser();
   const { getXApiTokenForUserInternal } = await import("@/app/actions/x-token");
-  const { postTweet } = await import("@/lib/x-api");
+  const { postTweet, uploadMediaToX } = await import("@/lib/x-api");
+  const { getMediaForConversationInternal } = await import("@/app/actions/media");
 
   const postedPlatforms: string[] = [];
   const errors: Record<string, string> = {};
@@ -378,12 +379,36 @@ export async function publishPost(
       if (!credentials) {
         errors.X = "Failed to get X token. Try reconnecting in Settings.";
       } else {
-        const result = await postTweet(credentials, text, {
-          callerJob: "publish",
-          userId,
-        });
-        tweetUrl = result.tweetUrl;
-        postedPlatforms.push("X");
+        // Upload media to X if any
+        const media = await getMediaForConversationInternal(conversationId, userId);
+        let mediaIds: string[] | undefined;
+
+        if (media.length > 0) {
+          if (!tokenRow.scopes.includes("media.write")) {
+            errors.X = "Missing media permission. Reconnect X in Settings.";
+          } else {
+            mediaIds = [];
+            for (const item of media) {
+              const imageRes = await fetch(item.url);
+              const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
+              const xMediaId = await uploadMediaToX(credentials, imageBuffer, item.mimeType, {
+                callerJob: "publish",
+                userId,
+              });
+              mediaIds.push(xMediaId);
+            }
+          }
+        }
+
+        if (!errors.X) {
+          const result = await postTweet(credentials, text, {
+            callerJob: "publish",
+            userId,
+            mediaIds,
+          });
+          tweetUrl = result.tweetUrl;
+          postedPlatforms.push("X");
+        }
       }
     }
   } catch (err) {

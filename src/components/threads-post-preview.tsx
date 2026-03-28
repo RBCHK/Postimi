@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import { Heart, MessageCircle, Repeat2, Send } from "lucide-react";
+import { ImageGrid } from "@/components/image-grid";
+import type { MediaItem } from "@/lib/types";
 
 interface ThreadsPostPreviewProps {
   text: string;
@@ -9,6 +11,8 @@ interface ThreadsPostPreviewProps {
   placeholder?: string;
   displayName?: string;
   avatarUrl?: string;
+  images?: MediaItem[];
+  onDeleteImage?: (id: string) => void;
 }
 
 export function ThreadsPostPreview({
@@ -17,6 +21,8 @@ export function ThreadsPostPreview({
   placeholder = "What's new?",
   displayName = "username",
   avatarUrl,
+  images = [],
+  onDeleteImage,
 }: ThreadsPostPreviewProps) {
   return (
     <div className="flex h-full w-full gap-3 rounded-2xl border border-white/10 bg-black p-4">
@@ -62,6 +68,13 @@ export function ThreadsPostPreview({
             onChange={(e) => onChange(e.target.value)}
           />
         </div>
+
+        {/* Image grid */}
+        {images.length > 0 && (
+          <div className="shrink-0 pt-2">
+            <ImageGrid images={images} onDelete={onDeleteImage} />
+          </div>
+        )}
 
         {/* Engagement bar */}
         <div className="flex shrink-0 items-center gap-4 pt-3">

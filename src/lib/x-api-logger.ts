@@ -10,6 +10,7 @@ const COST_PER_RESOURCE: Record<XApiResourceType, number> = {
   POST_WRITE: 50.0, // $0.50
   USER_READ: 1.0, // $0.010
   TREND_READ: 1.0, // $0.010
+  MEDIA_WRITE: 0.0, // included in POST_WRITE cost
 };
 
 interface LogXApiCallParams {

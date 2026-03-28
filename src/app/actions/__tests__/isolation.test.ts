@@ -73,9 +73,22 @@ const prismaMock = {
   strategyConfig: {
     findFirst: vi.fn().mockResolvedValue(null),
   },
+  media: {
+    findMany: vi.fn().mockResolvedValue([]),
+  },
 };
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
+vi.mock("@/lib/supabase", () => ({
+  getSupabase: vi.fn().mockReturnValue({
+    storage: {
+      from: vi.fn().mockReturnValue({
+        remove: vi.fn().mockResolvedValue({ data: null, error: null }),
+      }),
+    },
+  }),
+  MEDIA_BUCKET: "media",
+}));
 vi.mock("@/lib/parse-tweet", () => ({
   fetchTweetFromText: vi.fn().mockResolvedValue(null),
 }));

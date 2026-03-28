@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import { ThumbsUp, MessageSquare, Repeat2, Send } from "lucide-react";
+import { ImageGrid } from "@/components/image-grid";
+import type { MediaItem } from "@/lib/types";
 
 interface LinkedInPostPreviewProps {
   text: string;
@@ -10,6 +12,8 @@ interface LinkedInPostPreviewProps {
   displayName?: string;
   headline?: string;
   avatarUrl?: string;
+  images?: MediaItem[];
+  onDeleteImage?: (id: string) => void;
 }
 
 export function LinkedInPostPreview({
@@ -19,6 +23,8 @@ export function LinkedInPostPreview({
   displayName = "Your Name",
   headline = "Your headline",
   avatarUrl,
+  images = [],
+  onDeleteImage,
 }: LinkedInPostPreviewProps) {
   return (
     <div className="flex h-full w-full flex-col rounded-xl border border-white/10 bg-[#1b1f23] p-4">
@@ -77,6 +83,13 @@ export function LinkedInPostPreview({
           onChange={(e) => onChange(e.target.value)}
         />
       </div>
+
+      {/* Image grid */}
+      {images.length > 0 && (
+        <div className="shrink-0 pt-2">
+          <ImageGrid images={images} onDelete={onDeleteImage} />
+        </div>
+      )}
 
       {/* Divider */}
       <div className="shrink-0 border-t border-white/10 pt-2">
