@@ -5,17 +5,14 @@ import { GripVertical } from "lucide-react";
 import { ComposerSidebar } from "@/components/composer-sidebar";
 import { useConversation } from "@/contexts/conversation-context";
 import { cn } from "@/lib/utils";
+import { getPrevComposerOpen, setPrevComposerOpen } from "@/lib/composer-sidebar-state";
 import type { Platform } from "@/lib/types";
 
 export const COMPOSER_PANEL_OPEN = "composer-panel-open";
 
-const EXPANDED_WIDTH = 650;
-const COLLAPSED_WIDTH = 55;
+export const EXPANDED_WIDTH = 650;
+export const COLLAPSED_WIDTH = 55;
 const MOBILE_BREAKPOINT = "(max-width: 1023px)";
-
-// Remembers isOpen across remounts (key={id} destroys the component on draft switch).
-// undefined = first mount ever (no animation), boolean = previous state (animate if changed).
-let prevComposerOpen: boolean | undefined;
 
 function hasComposerContent(
   c: { shared?: string; x?: string; linkedin?: string; threads?: string } | null
@@ -28,18 +25,19 @@ export function ComposerSidebarContainer() {
   const { composerContent, updateComposer } = useConversation();
 
   const shouldBeOpen = hasComposerContent(composerContent);
-  const isFirstMount = prevComposerOpen === undefined;
+  const prevOpen = getPrevComposerOpen();
+  const isFirstMount = prevOpen === undefined;
 
   // On first mount: start at correct state instantly (no animation).
   // On navigation: start at previous state, animate to new state if different.
-  const [isOpen, setIsOpen] = useState(() => (isFirstMount ? shouldBeOpen : prevComposerOpen));
+  const [isOpen, setIsOpen] = useState(() => (isFirstMount ? shouldBeOpen : prevOpen));
   const [transitionEnabled, setTransitionEnabled] = useState(() =>
-    isFirstMount ? false : prevComposerOpen !== shouldBeOpen
+    isFirstMount ? false : prevOpen !== shouldBeOpen
   );
 
-  // Keep module-level cache in sync with current state.
+  // Keep shared state in sync with current state.
   useEffect(() => {
-    prevComposerOpen = isOpen;
+    setPrevComposerOpen(isOpen);
   }, [isOpen]);
 
   useEffect(() => {
