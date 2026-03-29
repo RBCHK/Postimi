@@ -6,8 +6,7 @@ import { ChatInput } from "@/components/chat-input";
 import { DailyInsightCard } from "@/components/daily-insight-card";
 import { GoalTrackingCard } from "@/components/goal-tracking-card";
 import { PlanProposalBanner } from "@/components/plan-proposal-banner";
-import { createConversation, resolveTitleFromInput, addMessage } from "@/app/actions/conversations";
-import { extractTweetUrl } from "@/lib/parse-tweet";
+import { createConversationWithMessage } from "@/app/actions/conversations";
 import type { ContentType, GoalTrackingData, PlanProposalItem } from "@/lib/types";
 import { HomeComposerPanel } from "@/components/home-composer-panel";
 
@@ -36,10 +35,7 @@ export function HomeView({
     if (!text || isLoading) return;
     setIsLoading(true);
     try {
-      const title = await resolveTitleFromInput(text);
-      const originalPostUrl = extractTweetUrl(text) ?? undefined;
-      const id = await createConversation({ title, contentType, originalPostUrl });
-      await addMessage(id, "user", text);
+      const id = await createConversationWithMessage(text, contentType);
       router.push(`/c/${id}`);
     } catch {
       setIsLoading(false);

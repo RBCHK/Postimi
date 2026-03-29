@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GripVertical } from "lucide-react";
 import { ComposerSidebar } from "@/components/composer-sidebar";
 import { useConversation } from "@/contexts/conversation-context";
@@ -54,17 +54,25 @@ export function ComposerSidebarContainer() {
     return () => window.removeEventListener(COMPOSER_PANEL_OPEN, handler);
   }, []);
 
+  // Guard against React Strict Mode double-firing: sessionStorage is consumed
+  // on the first run, so the second run must not fall through to the else branch.
+  const autoOpenProcessedRef = useRef(false);
+
   // Auto-open/close based on composer content.
   // On first mount: state is already correct from useState initializer.
   // On navigation: useEffect fires after paint (browser has rendered prev state
   // with transition class), then sets new state → CSS transition animates.
   useEffect(() => {
     const autoOpenPlatform = sessionStorage.getItem("composer-auto-open");
-    if (autoOpenPlatform) {
+    if (autoOpenPlatform && !autoOpenProcessedRef.current) {
+      autoOpenProcessedRef.current = true;
       sessionStorage.removeItem("composer-auto-open");
       updateComposer(composerContent, autoOpenPlatform as Platform);
-      setIsOpen(true);
-    } else if (!isFirstMount) {
+      // Enable transition first, then open on next frame so the browser
+      // paints the collapsed state with the transition class before animating.
+      setTransitionEnabled(true);
+      requestAnimationFrame(() => setIsOpen(true));
+    } else if (!isFirstMount && !autoOpenProcessedRef.current) {
       // Navigation: animate to the new content-based state
       setIsOpen(shouldBeOpen);
     }

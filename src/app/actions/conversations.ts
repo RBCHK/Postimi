@@ -111,6 +111,43 @@ export async function createConversation(data: {
   return conv.id;
 }
 
+/**
+ * Single server action for the home page: resolves title, creates conversation,
+ * and saves the first user message — all in one round-trip (instead of 3).
+ * No revalidatePath needed because we navigate to the new conversation page.
+ */
+export async function createConversationWithMessage(
+  text: string,
+  contentType: ContentType
+): Promise<string> {
+  const userId = await requireUserId();
+
+  // Resolve title: use tweet text if it's a URL, otherwise the message itself
+  const tweetUrl = extractTweetUrl(text);
+  let title = text;
+  if (tweetUrl) {
+    const tweet = await fetchTweetFromText(text);
+    if (tweet) title = tweet.text;
+  }
+  if (title.length > 80) title = title.slice(0, 80) + "…";
+
+  const conv = await prisma.conversation.create({
+    data: {
+      userId,
+      title,
+      contentType: contentTypeToPrisma[contentType],
+      status: "DRAFT",
+      ...(tweetUrl ? { originalPostUrl: tweetUrl } : {}),
+    },
+  });
+
+  await prisma.message.create({
+    data: { conversationId: conv.id, role: "user", content: text },
+  });
+
+  return conv.id;
+}
+
 export async function updateConversation(
   id: string,
   data: {

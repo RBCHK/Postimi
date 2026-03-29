@@ -213,6 +213,20 @@ export function ConversationProvider({
     setComposerSaveStatus("idle");
   }, [conversationId, initialData]);
 
+  // Auto-start AI for new conversations created from the home page:
+  // exactly 1 user message saved to DB, no pendingInput (highlights pre-fill input instead).
+  // Uses aiSendMessage() without args to submit existing initialMessages — no duplicate user message,
+  // DB message IDs stay in sync. Tweet context is handled server-side in /api/chat fallback.
+  const hasSentInitial = useRef(false);
+  useEffect(() => {
+    if (hasSentInitial.current) return;
+    const msgs = initialData?.messages ?? [];
+    if (msgs.length === 1 && msgs[0].role === "user" && !initialData?.pendingInput) {
+      hasSentInitial.current = true;
+      aiSendMessage();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Map AI SDK UIMessage[] to our Message type.
   // Fall back to initialData when aiMessages is empty (first render before useChat hydrates).
   const messages: Message[] =
