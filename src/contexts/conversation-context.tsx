@@ -13,6 +13,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, generateId, type UIMessage, type TextUIPart } from "ai";
+import { DRAFT_DEFAULT_TITLE } from "@/lib/types";
 import type { ContentType, Message, Note, ComposerContent, Platform } from "@/lib/types";
 import {
   addNote as addNoteAction,
@@ -124,10 +125,10 @@ export function ConversationProvider({
   const originalPostUrlRef = useRef(initialData?.originalPostUrl ?? null);
   const pendingInputClearedRef = useRef(false);
   const nextMessageIdRef = useRef<string | null>(null);
-  // True once title has been resolved from first message (URL or plain text)
-  const hasResolvedTitleRef = useRef(
-    initialData?.originalPostUrl != null ||
-      (initialData?.title != null && initialData.title !== "Untitled")
+  // True once title is locked (chat message sent or tweet URL resolved).
+  // While false, composer text continuously syncs to the draft title.
+  const titleLockedRef = useRef(
+    (initialData?.messages ?? []).length > 0 || initialData?.originalPostUrl != null
   );
 
   // Keep refs in sync with latest state values.
@@ -257,7 +258,7 @@ export function ConversationProvider({
         const url = extractTweetUrl(text);
         if (url) {
           originalPostUrlRef.current = url;
-          hasResolvedTitleRef.current = true;
+          titleLockedRef.current = true;
           const resolvedTitle = tweetText.length > 80 ? tweetText.slice(0, 80) + "…" : tweetText;
           await Promise.all([
             updateConversation(conversationId, { originalPostUrl: url }),
@@ -267,10 +268,11 @@ export function ConversationProvider({
         }
       }
       // For plain text first message, resolve title from the message text
-      if (!hasResolvedTitleRef.current) {
-        hasResolvedTitleRef.current = true;
+      if (!titleLockedRef.current) {
+        titleLockedRef.current = true;
         const resolvedTitle = text.length > 80 ? text.slice(0, 80) + "…" : text;
         await resolveConversationTitle(conversationId, resolvedTitle);
+        window.dispatchEvent(new Event("drafts-updated"));
       }
       // Save user message to DB first to get the canonical ID.
       const dbMessageId = await addMessage(conversationId, "user", text);
@@ -360,7 +362,22 @@ export function ConversationProvider({
       setComposerSaveStatus("saving");
       if (composerSaveTimerRef.current) clearTimeout(composerSaveTimerRef.current);
       composerSaveTimerRef.current = setTimeout(async () => {
-        await updateComposerContent(conversationId, content, platform);
+        // Derive title from composer text when no chat messages yet
+        let derivedTitle: string | undefined;
+        if (!titleLockedRef.current) {
+          const platformKey = platform.toLowerCase() as "x" | "linkedin" | "threads";
+          const text = (content.linked ? content.shared : content[platformKey])?.trim();
+          if (text) {
+            const firstLine = text.split("\n")[0];
+            derivedTitle = firstLine.length > 80 ? firstLine.slice(0, 80) + "…" : firstLine;
+          } else {
+            derivedTitle = DRAFT_DEFAULT_TITLE;
+          }
+        }
+        await updateComposerContent(conversationId, content, platform, derivedTitle);
+        if (derivedTitle !== undefined) {
+          window.dispatchEvent(new Event("drafts-updated"));
+        }
         setComposerSaveStatus("saved");
         setTimeout(() => setComposerSaveStatus("idle"), 2000);
       }, 1500);

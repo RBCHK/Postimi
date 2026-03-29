@@ -6,7 +6,7 @@ import { GripVertical, PenSquare, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { createConversation } from "@/app/actions/conversations";
-import { PLATFORMS, PLATFORM_CONFIG } from "@/lib/types";
+import { PLATFORMS, PLATFORM_CONFIG, DRAFT_DEFAULT_TITLE } from "@/lib/types";
 import type { Platform } from "@/lib/types";
 import { PlatformIcon } from "@/components/platform-icons";
 import { getPrevComposerOpen, setPrevComposerOpen } from "@/lib/composer-sidebar-state";
@@ -38,7 +38,7 @@ export function HomeComposerPanel() {
     if (isCreating) return;
     setIsCreating(true);
     try {
-      const id = await createConversation({ title: "Untitled" });
+      const id = await createConversation({ title: DRAFT_DEFAULT_TITLE });
       sessionStorage.setItem("composer-auto-open", platform ?? "X");
       router.push(`/c/${id}`);
     } catch {

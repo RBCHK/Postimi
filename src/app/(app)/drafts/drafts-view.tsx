@@ -16,6 +16,7 @@ import {
   updateConversation,
   createConversation,
 } from "@/app/actions/conversations";
+import { DRAFT_DEFAULT_TITLE } from "@/lib/types";
 import type { Draft } from "@/lib/types";
 
 export function DraftsView() {
@@ -49,7 +50,7 @@ export function DraftsView() {
   }, []);
 
   async function handleNewDraft() {
-    const id = await createConversation({ title: "Untitled" });
+    const id = await createConversation({ title: DRAFT_DEFAULT_TITLE });
     setEditingDraftId(id);
     router.push(`/c/${id}`);
   }

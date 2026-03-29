@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth";
+import { DRAFT_DEFAULT_TITLE } from "@/lib/types";
 import type { ContentType, DraftStatus, ComposerContent, Platform } from "@/lib/types";
 import { fetchTweetFromText, extractTweetUrl } from "@/lib/parse-tweet";
 import { deleteMediaStorageForConversation } from "@/app/actions/media";
@@ -246,7 +247,7 @@ export async function getRecentUsedModes(excludeId?: string, limit = 5): Promise
 export async function resolveConversationTitle(id: string, title: string) {
   const userId = await requireUserId();
   await prisma.conversation.updateMany({
-    where: { id, userId, title: "Untitled" },
+    where: { id, userId, title: { in: ["Untitled", DRAFT_DEFAULT_TITLE] } },
     data: { title },
   });
 }
@@ -293,15 +294,20 @@ export async function fetchTweetFullTextAction(text: string): Promise<string | n
 export async function updateComposerContent(
   conversationId: string,
   composerContent: ComposerContent,
-  composerPlatform: Platform
+  composerPlatform: Platform,
+  title?: string
 ) {
   const userId = await requireUserId();
+  const data: Record<string, unknown> = {
+    composerContent: JSON.parse(JSON.stringify(composerContent)),
+    composerPlatform,
+  };
+  if (title !== undefined) {
+    data.title = title;
+  }
   await prisma.conversation.updateMany({
     where: { id: conversationId, userId },
-    data: {
-      composerContent: JSON.parse(JSON.stringify(composerContent)),
-      composerPlatform,
-    },
+    data,
   });
 }
 

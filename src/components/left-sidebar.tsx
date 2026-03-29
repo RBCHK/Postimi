@@ -49,6 +49,7 @@ import {
   deleteSlot,
   unscheduleSlot,
 } from "@/app/actions/schedule";
+import { DRAFT_DEFAULT_TITLE } from "@/lib/types";
 import type { Draft, ScheduledSlot, SlotStatus, SlotType } from "@/lib/types";
 import { XIcon, LinkedInIcon, ThreadsIcon } from "@/components/platform-icons";
 
@@ -144,7 +145,7 @@ export function DraftItem({
   }
 
   function handleTitleSave() {
-    const trimmed = editTitle.trim() || "Untitled";
+    const trimmed = editTitle.trim() || DRAFT_DEFAULT_TITLE;
     onTitleSave?.(draft.id, trimmed);
   }
 
@@ -175,7 +176,7 @@ export function DraftItem({
             ref={titleInputRef}
             className="text-sm font-medium leading-snug bg-transparent border-none outline-none w-full placeholder:text-muted-foreground/50"
             value={editTitle}
-            placeholder="Untitled"
+            placeholder={DRAFT_DEFAULT_TITLE}
             onChange={(e) => setEditTitle(e.target.value)}
             onBlur={handleTitleSave}
             onKeyDown={(e) => {
@@ -563,7 +564,7 @@ export function LeftSidebar({
   }
 
   async function handleNewDraft() {
-    const id = await createConversation({ title: "Untitled" });
+    const id = await createConversation({ title: DRAFT_DEFAULT_TITLE });
     setEditingDraftId(id);
     router.push(`/c/${id}`);
   }
