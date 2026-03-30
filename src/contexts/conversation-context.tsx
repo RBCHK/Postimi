@@ -359,25 +359,29 @@ export function ConversationProvider({
     (content: ComposerContent, platform: Platform) => {
       setComposerContent(content);
       setComposerPlatform(platform);
+
+      // Derive title from composer text immediately (optimistic UI update)
+      let derivedTitle: string | undefined;
+      if (!titleLockedRef.current) {
+        const platformKey = platform.toLowerCase() as "x" | "linkedin" | "threads";
+        const text = (content.linked ? content.shared : content[platformKey])?.trim();
+        if (text) {
+          const firstLine = text.split("\n")[0];
+          derivedTitle = firstLine.length > 80 ? firstLine.slice(0, 80) + "…" : firstLine;
+        } else {
+          derivedTitle = DRAFT_DEFAULT_TITLE;
+        }
+        window.dispatchEvent(
+          new CustomEvent("draft-title-updated", {
+            detail: { id: conversationId, title: derivedTitle },
+          })
+        );
+      }
+
       setComposerSaveStatus("saving");
       if (composerSaveTimerRef.current) clearTimeout(composerSaveTimerRef.current);
       composerSaveTimerRef.current = setTimeout(async () => {
-        // Derive title from composer text when no chat messages yet
-        let derivedTitle: string | undefined;
-        if (!titleLockedRef.current) {
-          const platformKey = platform.toLowerCase() as "x" | "linkedin" | "threads";
-          const text = (content.linked ? content.shared : content[platformKey])?.trim();
-          if (text) {
-            const firstLine = text.split("\n")[0];
-            derivedTitle = firstLine.length > 80 ? firstLine.slice(0, 80) + "…" : firstLine;
-          } else {
-            derivedTitle = DRAFT_DEFAULT_TITLE;
-          }
-        }
         await updateComposerContent(conversationId, content, platform, derivedTitle);
-        if (derivedTitle !== undefined) {
-          window.dispatchEvent(new Event("drafts-updated"));
-        }
         setComposerSaveStatus("saved");
         setTimeout(() => setComposerSaveStatus("idle"), 2000);
       }, 1500);

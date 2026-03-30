@@ -49,6 +49,15 @@ export function DraftsView() {
     return () => window.removeEventListener("drafts-updated", handler);
   }, []);
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { id, title } = (e as CustomEvent<{ id: string; title: string }>).detail;
+      setDrafts((prev) => prev.map((d) => (d.id === id ? { ...d, title } : d)));
+    };
+    window.addEventListener("draft-title-updated", handler);
+    return () => window.removeEventListener("draft-title-updated", handler);
+  }, []);
+
   async function handleNewDraft() {
     const id = await createConversation({ title: DRAFT_DEFAULT_TITLE });
     setEditingDraftId(id);

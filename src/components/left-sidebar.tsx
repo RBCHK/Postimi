@@ -477,6 +477,15 @@ export function LeftSidebar({
   }, []);
 
   useEffect(() => {
+    const handler = (e: Event) => {
+      const { id, title } = (e as CustomEvent<{ id: string; title: string }>).detail;
+      setDrafts((prev) => prev.map((d) => (d.id === id ? { ...d, title } : d)));
+    };
+    window.addEventListener("draft-title-updated", handler);
+    return () => window.removeEventListener("draft-title-updated", handler);
+  }, []);
+
+  useEffect(() => {
     const handler = () => setActiveTab("scheduled");
     window.addEventListener("switch-to-scheduled", handler);
     return () => window.removeEventListener("switch-to-scheduled", handler);
