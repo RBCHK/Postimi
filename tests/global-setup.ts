@@ -4,9 +4,11 @@
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { test as setup, expect } from "@playwright/test";
 
-const authFile = "tests/.auth/user.json";
-
-setup("authenticate via clerk", async ({ page }) => {
+setup("authenticate via clerk", async ({ page }, testInfo) => {
+  const authFile =
+    testInfo.project.name === "setup-mobile"
+      ? "tests/.auth/mobile-user.json"
+      : "tests/.auth/user.json";
   // Set up testing token route interception (bypasses captcha/bot protection)
   await setupClerkTestingToken({ page });
 
