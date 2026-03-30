@@ -133,3 +133,4 @@ IMPORTANT: After completing a task that touched 3+ files with the same pattern �
 IMPORTANT: Use Plan Mode (Shift+Tab) for any change touching 3+ files.
 IMPORTANT: Start a fresh session (`/clear`) for each new task.
 IMPORTANT: After implementing, verify with **both** `npx tsc --noEmit` AND `npm run lint` before committing. Running only tsc is not enough — ESLint catches a different class of errors (unused vars, setState in effects, component-in-render, etc.) that accumulate silently across PRs.
+IMPORTANT: If your changes touch **behavior** (conversation flow, AI auto-start, auth, server actions used by e2e tests) — also run `npx playwright test` before pushing. Type-checking and lint cannot detect behavioral regressions like "AI now responds to a message it didn't before". Skipping this wastes 30+ min debugging CI failures on the PR.

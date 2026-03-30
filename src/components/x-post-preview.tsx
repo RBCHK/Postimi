@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import Image from "next/image";
 import { MessageCircle, Repeat2, Heart, BarChart3, Bookmark, Share } from "lucide-react";
 import { ImageGrid } from "@/components/image-grid";
@@ -29,12 +29,17 @@ export function XPostPreview({
   images = [],
   onDeleteImage,
 }: XPostPreviewProps) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  function resizeTextarea(el: HTMLTextAreaElement) {
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }
+
   const handleTextChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       onChange(e.target.value);
-      const el = e.target;
-      el.style.height = "auto";
-      el.style.height = `${el.scrollHeight}px`;
+      resizeTextarea(e.target);
     },
     [onChange]
   );
@@ -42,14 +47,31 @@ export function XPostPreview({
   // Auto-resize on mount / text prop change
   const setRef = useCallback(
     (el: HTMLTextAreaElement | null) => {
-      if (el) {
-        el.style.height = "auto";
-        el.style.height = `${el.scrollHeight}px`;
-      }
+      textareaRef.current = el;
+      if (el) resizeTextarea(el);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [text]
   );
+
+  // Recalculate height when container width changes (e.g. composer width transition 55px → 650px).
+  // Without this, textarea keeps the huge scrollHeight calculated while the container was narrow.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+
+    let prevWidth = el.offsetWidth;
+    const observer = new ResizeObserver(() => {
+      const newWidth = el.offsetWidth;
+      if (newWidth !== prevWidth) {
+        prevWidth = newWidth;
+        resizeTextarea(el);
+      }
+    });
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <div className="flex h-full w-full gap-3 rounded-2xl border border-white/10 bg-black p-4">
