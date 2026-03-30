@@ -22,8 +22,8 @@ export function XPostPreview({
   text,
   onChange,
   placeholder = "What is happening?!",
-  displayName = "Your Name",
-  handle = "@handle",
+  displayName,
+  handle,
   avatarUrl,
   verified = false,
   images = [],
@@ -65,7 +65,7 @@ export function XPostPreview({
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-sm font-bold text-white/40">
-            {displayName.charAt(0).toUpperCase()}
+            {displayName ? displayName.charAt(0).toUpperCase() : ""}
           </div>
         )}
       </div>
@@ -74,7 +74,11 @@ export function XPostPreview({
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         {/* Name row + dots */}
         <div className="flex shrink-0 items-center gap-1">
-          <span className="truncate text-[15px] font-bold text-white">{displayName}</span>
+          {displayName ? (
+            <span className="truncate text-[15px] font-bold text-white">{displayName}</span>
+          ) : (
+            <span className="inline-block h-4 w-24 animate-pulse rounded bg-white/10" />
+          )}
           {verified && (
             <svg
               viewBox="0 0 22 22"
@@ -87,7 +91,11 @@ export function XPostPreview({
               />
             </svg>
           )}
-          <span className="truncate text-[15px] text-[#71767b]">{handle}</span>
+          {handle ? (
+            <span className="truncate text-[15px] text-[#71767b]">{handle}</span>
+          ) : (
+            <span className="inline-block h-4 w-16 animate-pulse rounded bg-white/10" />
+          )}
           <span className="text-[15px] text-[#71767b]">·</span>
           <span className="shrink-0 text-[15px] text-[#71767b]">now</span>
           <div className="flex-1" />

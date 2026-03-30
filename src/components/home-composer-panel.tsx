@@ -1,26 +1,44 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GripVertical, PenSquare, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { createConversation } from "@/app/actions/conversations";
-import { PLATFORMS, PLATFORM_CONFIG } from "@/lib/types";
+import { PLATFORMS, PLATFORM_CONFIG, DRAFT_DEFAULT_TITLE } from "@/lib/types";
 import type { Platform } from "@/lib/types";
 import { PlatformIcon } from "@/components/platform-icons";
-
-const COLLAPSED_WIDTH = 55;
+import { getPrevComposerOpen, setPrevComposerOpen } from "@/lib/composer-sidebar-state";
+import { EXPANDED_WIDTH, COLLAPSED_WIDTH } from "@/components/composer-sidebar-container";
 
 export function HomeComposerPanel() {
   const router = useRouter();
   const [isCreating, setIsCreating] = useState(false);
 
+  // If we came from a draft with open sidebar, animate from expanded → collapsed.
+  const prevOpen = getPrevComposerOpen();
+  const startExpanded = prevOpen === true;
+  const [width, setWidth] = useState(startExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH);
+  const [transitionEnabled, setTransitionEnabled] = useState(startExpanded);
+
+  useEffect(() => {
+    if (startExpanded) {
+      // After first paint at expanded width, animate to collapsed
+      setWidth(COLLAPSED_WIDTH);
+    }
+    setPrevComposerOpen(false);
+    if (!transitionEnabled) {
+      requestAnimationFrame(() => setTransitionEnabled(true));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function handleCompose(platform?: Platform) {
     if (isCreating) return;
     setIsCreating(true);
     try {
-      const id = await createConversation({ title: "Untitled" });
+      const id = await createConversation({ title: DRAFT_DEFAULT_TITLE });
       sessionStorage.setItem("composer-auto-open", platform ?? "X");
       router.push(`/c/${id}`);
     } catch {
@@ -38,8 +56,12 @@ export function HomeComposerPanel() {
       </div>
 
       <div
-        className="flex h-full flex-col bg-sidebar overflow-hidden rounded-[12px]"
-        style={{ width: COLLAPSED_WIDTH }}
+        className={
+          transitionEnabled
+            ? "flex h-full flex-col bg-sidebar overflow-hidden rounded-[12px] transition-[width] duration-300 ease-in-out"
+            : "flex h-full flex-col bg-sidebar overflow-hidden rounded-[12px]"
+        }
+        style={{ width }}
       >
         {isCreating ? (
           <div className="flex h-full items-center justify-center">

@@ -1,21 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GripVertical } from "lucide-react";
 import { ComposerSidebar } from "@/components/composer-sidebar";
 import { useConversation } from "@/contexts/conversation-context";
 import { cn } from "@/lib/utils";
+import { getPrevComposerOpen, setPrevComposerOpen } from "@/lib/composer-sidebar-state";
 import type { Platform } from "@/lib/types";
 
 export const COMPOSER_PANEL_OPEN = "composer-panel-open";
 
-const EXPANDED_WIDTH = 650;
-const COLLAPSED_WIDTH = 55;
+export const EXPANDED_WIDTH = 650;
+export const COLLAPSED_WIDTH = 55;
 const MOBILE_BREAKPOINT = "(max-width: 1023px)";
-
-// Remembers isOpen across remounts (key={id} destroys the component on draft switch).
-// undefined = first mount ever (no animation), boolean = previous state (animate if changed).
-let prevComposerOpen: boolean | undefined;
 
 function hasComposerContent(
   c: { shared?: string; x?: string; linkedin?: string; threads?: string } | null
@@ -28,18 +25,19 @@ export function ComposerSidebarContainer() {
   const { composerContent, updateComposer } = useConversation();
 
   const shouldBeOpen = hasComposerContent(composerContent);
-  const isFirstMount = prevComposerOpen === undefined;
+  const prevOpen = getPrevComposerOpen();
+  const isFirstMount = prevOpen === undefined;
 
   // On first mount: start at correct state instantly (no animation).
   // On navigation: start at previous state, animate to new state if different.
-  const [isOpen, setIsOpen] = useState(() => (isFirstMount ? shouldBeOpen : prevComposerOpen));
+  const [isOpen, setIsOpen] = useState(() => (isFirstMount ? shouldBeOpen : prevOpen));
   const [transitionEnabled, setTransitionEnabled] = useState(() =>
-    isFirstMount ? false : prevComposerOpen !== shouldBeOpen
+    isFirstMount ? false : prevOpen !== shouldBeOpen
   );
 
-  // Keep module-level cache in sync with current state.
+  // Keep shared state in sync with current state.
   useEffect(() => {
-    prevComposerOpen = isOpen;
+    setPrevComposerOpen(isOpen);
   }, [isOpen]);
 
   useEffect(() => {
@@ -56,17 +54,25 @@ export function ComposerSidebarContainer() {
     return () => window.removeEventListener(COMPOSER_PANEL_OPEN, handler);
   }, []);
 
+  // Guard against React Strict Mode double-firing: sessionStorage is consumed
+  // on the first run, so the second run must not fall through to the else branch.
+  const autoOpenProcessedRef = useRef(false);
+
   // Auto-open/close based on composer content.
   // On first mount: state is already correct from useState initializer.
   // On navigation: useEffect fires after paint (browser has rendered prev state
   // with transition class), then sets new state → CSS transition animates.
   useEffect(() => {
     const autoOpenPlatform = sessionStorage.getItem("composer-auto-open");
-    if (autoOpenPlatform) {
+    if (autoOpenPlatform && !autoOpenProcessedRef.current) {
+      autoOpenProcessedRef.current = true;
       sessionStorage.removeItem("composer-auto-open");
       updateComposer(composerContent, autoOpenPlatform as Platform);
-      setIsOpen(true);
-    } else if (!isFirstMount) {
+      // Enable transition first, then open on next frame so the browser
+      // paints the collapsed state with the transition class before animating.
+      setTransitionEnabled(true);
+      requestAnimationFrame(() => setIsOpen(true));
+    } else if (!isFirstMount && !autoOpenProcessedRef.current) {
       // Navigation: animate to the new content-based state
       setIsOpen(shouldBeOpen);
     }

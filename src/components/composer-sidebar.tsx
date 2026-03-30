@@ -49,12 +49,30 @@ const CONTENT_TYPE_PLACEHOLDERS: Record<string, string> = {
 
 // Module-level cache: xProfile is user-level data that doesn't change
 // between conversations. Fetched once per session, survives remounts.
+// Also persisted to localStorage to avoid placeholder flash on page reload.
 type XProfile = {
   displayName: string;
   handle: string;
   avatarUrl: string | null;
   verified: boolean;
 };
+
+const X_PROFILE_STORAGE_KEY = "x-profile-cache";
+
+function loadCachedXProfile(): XProfile | null {
+  try {
+    const raw = localStorage.getItem(X_PROFILE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.displayName === "string" && typeof parsed.handle === "string") {
+      return parsed as XProfile;
+    }
+  } catch {
+    // corrupt data — ignore
+  }
+  return null;
+}
+
 let xProfileCache: XProfile | null | undefined; // undefined = not fetched
 
 interface ComposerSidebarProps {
@@ -83,15 +101,32 @@ export function ComposerSidebar({
 
   // Load X profile for composer preview — cached at module level
   // so it survives component remounts on draft switching.
+  // Also persisted to localStorage to avoid "Your Name" flash on page reload.
+  // Note: initial state must be module cache only (not localStorage) to avoid hydration mismatch.
   const [xProfile, setXProfile] = useState<XProfile | null>(xProfileCache ?? null);
 
   useEffect(() => {
     if (xProfileCache !== undefined) return;
+    // Seed from localStorage immediately to avoid placeholder flash
+    const stored = loadCachedXProfile();
+    if (stored) {
+      xProfileCache = stored;
+      setXProfile(stored);
+    }
     let cancelled = false;
     getXProfileForComposer()
       .then((profile) => {
         xProfileCache = profile;
         if (!cancelled) setXProfile(profile);
+        try {
+          if (profile) {
+            localStorage.setItem(X_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+          } else {
+            localStorage.removeItem(X_PROFILE_STORAGE_KEY);
+          }
+        } catch {
+          // storage full — ignore
+        }
       })
       .catch(() => {});
     return () => {

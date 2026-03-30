@@ -1,6 +1,8 @@
 export const CONTENT_TYPES = ["Reply", "Post", "Thread", "Article", "Quote"] as const;
 export type ContentType = (typeof CONTENT_TYPES)[number];
 
+export const DRAFT_DEFAULT_TITLE = "Empty draft";
+
 export const DRAFT_STATUSES = ["draft", "packaged", "scheduled", "posted"] as const;
 export type DraftStatus = (typeof DRAFT_STATUSES)[number];
 

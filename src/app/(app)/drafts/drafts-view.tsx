@@ -16,6 +16,7 @@ import {
   updateConversation,
   createConversation,
 } from "@/app/actions/conversations";
+import { DRAFT_DEFAULT_TITLE } from "@/lib/types";
 import type { Draft } from "@/lib/types";
 
 export function DraftsView() {
@@ -48,8 +49,17 @@ export function DraftsView() {
     return () => window.removeEventListener("drafts-updated", handler);
   }, []);
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { id, title } = (e as CustomEvent<{ id: string; title: string }>).detail;
+      setDrafts((prev) => prev.map((d) => (d.id === id ? { ...d, title } : d)));
+    };
+    window.addEventListener("draft-title-updated", handler);
+    return () => window.removeEventListener("draft-title-updated", handler);
+  }, []);
+
   async function handleNewDraft() {
-    const id = await createConversation({ title: "Untitled" });
+    const id = await createConversation({ title: DRAFT_DEFAULT_TITLE });
     setEditingDraftId(id);
     router.push(`/c/${id}`);
   }
