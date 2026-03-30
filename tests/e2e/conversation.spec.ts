@@ -46,21 +46,23 @@ test.describe("Conversation flow", () => {
     await page.locator('button[aria-label="Send message"]').click();
     await page.waitForURL(/\/c\/[a-zA-Z0-9-]+/, { timeout: 15_000 });
 
-    // Send first follow-up to trigger AI
+    // AI auto-starts on the first message — wait for it before sending follow-ups
+    const firstAssistant = page.locator('[data-role="assistant"]').first();
+    await firstAssistant.waitFor({ timeout: 30_000 });
+
+    // Send first follow-up
     const input = page.locator('textarea[placeholder*="Paste a tweet"]');
     await input.fill("Draft a punchy opening line");
     await page.locator('button[aria-label="Send message"]').click();
 
-    // Wait for AI response
-    const firstAssistant = page.locator('[data-role="assistant"]').first();
-    await firstAssistant.waitFor({ timeout: 30_000 });
+    await expect(page.locator('[data-role="assistant"]')).toHaveCount(2, { timeout: 30_000 });
 
     // Send second follow-up
     await input.fill("Make it more concise");
     await page.locator('button[aria-label="Send message"]').click();
 
-    // Should have 3 user messages and 2 assistant messages
+    // 3 user messages, 3 assistant messages (AI responds to every message)
     await expect(page.locator('[data-role="user"]')).toHaveCount(3, { timeout: 15_000 });
-    await expect(page.locator('[data-role="assistant"]')).toHaveCount(2, { timeout: 30_000 });
+    await expect(page.locator('[data-role="assistant"]')).toHaveCount(3, { timeout: 30_000 });
   });
 });

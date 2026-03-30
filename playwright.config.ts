@@ -41,6 +41,14 @@ export default defineConfig({
       testMatch: /global-setup\.ts/,
     },
     {
+      name: "setup-mobile",
+      testMatch: /global-setup\.ts/,
+      use: {
+        ...devices["iPhone 15 Pro"],
+        browserName: process.env.CI ? "chromium" : "webkit",
+      },
+    },
+    {
       name: "desktop",
       testIgnore: /mobile\//,
       use: {
@@ -58,9 +66,9 @@ export default defineConfig({
         // use Chromium there for reliable mobile viewport testing.
         // Local macOS uses real WebKit for Safari-accurate testing.
         browserName: process.env.CI ? "chromium" : "webkit",
-        storageState: "tests/.auth/user.json",
+        storageState: "tests/.auth/mobile-user.json",
       },
-      dependencies: ["setup"],
+      dependencies: ["setup-mobile"],
     },
   ],
 });
