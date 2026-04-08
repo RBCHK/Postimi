@@ -26,6 +26,8 @@ import { addToQueue, checkExistingSchedule, publishPost } from "@/app/actions/sc
 import { slotToLocalDate } from "@/lib/date-utils";
 import { toast } from "sonner";
 import { getXProfileForComposer, hasMediaWriteScope } from "@/app/actions/x-token";
+import { getThreadsProfileForComposer } from "@/app/actions/threads-token";
+import { getLinkedInProfileForComposer } from "@/app/actions/linkedin-token";
 import { getMediaForConversation } from "@/app/actions/media";
 import { MediaUpload } from "@/components/media-upload";
 import type { MediaItem } from "@/lib/types";
@@ -75,6 +77,53 @@ function loadCachedXProfile(): XProfile | null {
 
 let xProfileCache: XProfile | null | undefined; // undefined = not fetched
 
+type ThreadsProfile = {
+  displayName: string;
+  avatarUrl: string | null;
+};
+
+const THREADS_PROFILE_STORAGE_KEY = "threads-profile-cache";
+
+function loadCachedThreadsProfile(): ThreadsProfile | null {
+  try {
+    const raw = localStorage.getItem(THREADS_PROFILE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.displayName === "string") {
+      return parsed as ThreadsProfile;
+    }
+  } catch {
+    // corrupt data — ignore
+  }
+  return null;
+}
+
+let threadsProfileCache: ThreadsProfile | null | undefined;
+
+type LinkedInProfile = {
+  displayName: string;
+  headline: string | null;
+  avatarUrl: string | null;
+};
+
+const LINKEDIN_PROFILE_STORAGE_KEY = "linkedin-profile-cache";
+
+function loadCachedLinkedInProfile(): LinkedInProfile | null {
+  try {
+    const raw = localStorage.getItem(LINKEDIN_PROFILE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.displayName === "string") {
+      return parsed as LinkedInProfile;
+    }
+  } catch {
+    // corrupt data — ignore
+  }
+  return null;
+}
+
+let linkedInProfileCache: LinkedInProfile | null | undefined;
+
 interface ComposerSidebarProps {
   collapsed: boolean;
   onToggle: () => void;
@@ -104,31 +153,84 @@ export function ComposerSidebar({
   // Also persisted to localStorage to avoid "Your Name" flash on page reload.
   // Note: initial state must be module cache only (not localStorage) to avoid hydration mismatch.
   const [xProfile, setXProfile] = useState<XProfile | null>(xProfileCache ?? null);
+  const [threadsProfile, setThreadsProfile] = useState<ThreadsProfile | null>(
+    threadsProfileCache ?? null
+  );
+  const [linkedInProfile, setLinkedInProfile] = useState<LinkedInProfile | null>(
+    linkedInProfileCache ?? null
+  );
 
   useEffect(() => {
-    if (xProfileCache !== undefined) return;
-    // Seed from localStorage immediately to avoid placeholder flash
-    const stored = loadCachedXProfile();
-    if (stored) {
-      xProfileCache = stored;
-      setXProfile(stored);
-    }
     let cancelled = false;
-    getXProfileForComposer()
-      .then((profile) => {
-        xProfileCache = profile;
-        if (!cancelled) setXProfile(profile);
-        try {
-          if (profile) {
-            localStorage.setItem(X_PROFILE_STORAGE_KEY, JSON.stringify(profile));
-          } else {
-            localStorage.removeItem(X_PROFILE_STORAGE_KEY);
+
+    // Load X profile
+    if (xProfileCache === undefined) {
+      const stored = loadCachedXProfile();
+      if (stored) {
+        xProfileCache = stored;
+        setXProfile(stored);
+      }
+      getXProfileForComposer()
+        .then((profile) => {
+          xProfileCache = profile;
+          if (!cancelled) setXProfile(profile);
+          try {
+            if (profile) {
+              localStorage.setItem(X_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+            } else {
+              localStorage.removeItem(X_PROFILE_STORAGE_KEY);
+            }
+          } catch {
+            // storage full — ignore
           }
-        } catch {
-          // storage full — ignore
-        }
-      })
-      .catch(() => {});
+        })
+        .catch(() => {});
+    }
+
+    // Load Threads profile
+    if (threadsProfileCache === undefined) {
+      const stored = loadCachedThreadsProfile();
+      if (stored) {
+        threadsProfileCache = stored;
+        setThreadsProfile(stored);
+      }
+      getThreadsProfileForComposer()
+        .then((profile) => {
+          threadsProfileCache = profile;
+          if (!cancelled) setThreadsProfile(profile);
+          try {
+            if (profile) {
+              localStorage.setItem(THREADS_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+            } else {
+              localStorage.removeItem(THREADS_PROFILE_STORAGE_KEY);
+            }
+          } catch {}
+        })
+        .catch(() => {});
+    }
+
+    // Load LinkedIn profile
+    if (linkedInProfileCache === undefined) {
+      const stored = loadCachedLinkedInProfile();
+      if (stored) {
+        linkedInProfileCache = stored;
+        setLinkedInProfile(stored);
+      }
+      getLinkedInProfileForComposer()
+        .then((profile) => {
+          linkedInProfileCache = profile;
+          if (!cancelled) setLinkedInProfile(profile);
+          try {
+            if (profile) {
+              localStorage.setItem(LINKEDIN_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+            } else {
+              localStorage.removeItem(LINKEDIN_PROFILE_STORAGE_KEY);
+            }
+          } catch {}
+        })
+        .catch(() => {});
+    }
+
     return () => {
       cancelled = true;
     };
@@ -184,8 +286,12 @@ export function ComposerSidebar({
     updateComposer(updated, activePlatform);
   }, [composerContent, activePlatform, updateComposer]);
 
-  // Connected platforms — currently only X
-  const connectedPlatforms: Platform[] = xProfile ? ["X"] : [];
+  // Connected platforms — derived from which profiles are loaded
+  const connectedPlatforms: Platform[] = [
+    ...(xProfile ? ["X" as Platform] : []),
+    ...(threadsProfile ? ["THREADS" as Platform] : []),
+    ...(linkedInProfile ? ["LINKEDIN" as Platform] : []),
+  ];
 
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
@@ -295,6 +401,10 @@ export function ComposerSidebar({
 
     if (result) {
       setScheduledFor(slotToLocalDate(result.date, result.timeSlot));
+    } else {
+      toast.error(`No available ${contentType} slots`, {
+        description: "Add slots for this content type in Schedule settings.",
+      });
     }
   }, [getCurrentText, conversationId, contentType]);
 
@@ -305,7 +415,16 @@ export function ComposerSidebar({
     setPublishing(true);
     try {
       const slotType = contentTypeToPrismaSlot[contentType];
-      const result = await publishPost(conversationId, text, slotType);
+      // Pass per-platform text so each platform gets its own content
+      const platformText = composerContent.linked
+        ? composerContent.shared
+        : {
+            shared: composerContent.shared,
+            x: composerContent.x,
+            linkedin: composerContent.linkedin,
+            threads: composerContent.threads,
+          };
+      const result = await publishPost(conversationId, platformText, slotType);
 
       if (result.postedPlatforms.length > 0) {
         toast.success("Published to", {
@@ -334,7 +453,7 @@ export function ComposerSidebar({
     } finally {
       setPublishing(false);
     }
-  }, [getCurrentText, connectedPlatforms.length, contentType, conversationId]);
+  }, [getCurrentText, connectedPlatforms.length, contentType, conversationId, composerContent]);
 
   // --- Collapsed view ---
   if (collapsed) {
@@ -447,6 +566,9 @@ export function ComposerSidebar({
             text={getCurrentText()}
             onChange={handleTextChange}
             placeholder={CONTENT_TYPE_PLACEHOLDERS[contentType] ?? "Write your content…"}
+            displayName={linkedInProfile?.displayName}
+            headline={linkedInProfile?.headline ?? undefined}
+            avatarUrl={linkedInProfile?.avatarUrl ?? undefined}
             images={mediaItems}
             onDeleteImage={handleDeleteMedia}
           />
@@ -456,6 +578,8 @@ export function ComposerSidebar({
             text={getCurrentText()}
             onChange={handleTextChange}
             placeholder={CONTENT_TYPE_PLACEHOLDERS[contentType] ?? "Write your content…"}
+            displayName={threadsProfile?.displayName}
+            avatarUrl={threadsProfile?.avatarUrl ?? undefined}
             images={mediaItems}
             onDeleteImage={handleDeleteMedia}
           />

@@ -885,27 +885,53 @@ function AppearanceTab() {
   );
 }
 
+type PlatformStatus = {
+  connected: boolean;
+  username?: string;
+  connectedAt?: string;
+};
+
 function ConnectionsTab() {
-  const [status, setStatus] = useState<{
-    connected: boolean;
-    xUsername?: string;
-    connectedAt?: string;
-  } | null>(null);
-  const [disconnecting, setDisconnecting] = useState(false);
+  const [xStatus, setXStatus] = useState<PlatformStatus | null>(null);
+  const [threadsStatus, setThreadsStatus] = useState<PlatformStatus | null>(null);
+  const [linkedInStatus, setLinkedInStatus] = useState<PlatformStatus | null>(null);
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
 
   useEffect(() => {
+    // Fetch connection status for all platforms
     import("@/app/actions/x-token").then(({ getXConnectionStatus }) =>
       getXConnectionStatus().then((s) =>
-        setStatus({
+        setXStatus({
           connected: s.connected,
-          xUsername: s.xUsername,
+          username: s.xUsername ? `@${s.xUsername}` : undefined,
           connectedAt: s.connectedAt?.toISOString(),
         })
       )
     );
 
-    // Check for OAuth callback result
+    import("@/app/actions/threads-token").then(({ getThreadsConnectionStatus }) =>
+      getThreadsConnectionStatus().then((s) =>
+        setThreadsStatus({
+          connected: s.connected,
+          username: s.threadsUsername ? `@${s.threadsUsername}` : undefined,
+          connectedAt: s.connectedAt?.toISOString(),
+        })
+      )
+    );
+
+    import("@/app/actions/linkedin-token").then(({ getLinkedInConnectionStatus }) =>
+      getLinkedInConnectionStatus().then((s) =>
+        setLinkedInStatus({
+          connected: s.connected,
+          username: s.linkedinName ?? undefined,
+          connectedAt: s.connectedAt?.toISOString(),
+        })
+      )
+    );
+
+    // Check for OAuth callback results
     const params = new URLSearchParams(window.location.search);
+
     if (params.get("x_connected") === "true") {
       toast.success("X account connected!");
       window.history.replaceState({}, "", "/settings");
@@ -915,60 +941,127 @@ function ConnectionsTab() {
       toast.error(`X connection failed: ${decodeURIComponent(xError)}`);
       window.history.replaceState({}, "", "/settings");
     }
+
+    if (params.get("threads_connected") === "true") {
+      toast.success("Threads account connected!");
+      window.history.replaceState({}, "", "/settings");
+    }
+    const threadsError = params.get("threads_error");
+    if (threadsError) {
+      toast.error(`Threads connection failed: ${decodeURIComponent(threadsError)}`);
+      window.history.replaceState({}, "", "/settings");
+    }
+
+    if (params.get("linkedin_connected") === "true") {
+      toast.success("LinkedIn account connected!");
+      window.history.replaceState({}, "", "/settings");
+    }
+    const linkedInError = params.get("linkedin_error");
+    if (linkedInError) {
+      toast.error(`LinkedIn connection failed: ${decodeURIComponent(linkedInError)}`);
+      window.history.replaceState({}, "", "/settings");
+    }
   }, []);
 
-  async function handleDisconnect() {
-    setDisconnecting(true);
+  async function handleDisconnect(platform: "x" | "threads" | "linkedin") {
+    setDisconnecting(platform);
     try {
-      const { disconnectXAccount } = await import("@/app/actions/x-token");
-      await disconnectXAccount();
-      setStatus({ connected: false });
-      toast.success("X account disconnected");
+      if (platform === "x") {
+        const { disconnectXAccount } = await import("@/app/actions/x-token");
+        await disconnectXAccount();
+        setXStatus({ connected: false });
+        toast.success("X account disconnected");
+      } else if (platform === "threads") {
+        const { disconnectThreadsAccount } = await import("@/app/actions/threads-token");
+        await disconnectThreadsAccount();
+        setThreadsStatus({ connected: false });
+        toast.success("Threads account disconnected");
+      } else {
+        const { disconnectLinkedInAccount } = await import("@/app/actions/linkedin-token");
+        await disconnectLinkedInAccount();
+        setLinkedInStatus({ connected: false });
+        toast.success("LinkedIn account disconnected");
+      }
     } catch {
       toast.error("Failed to disconnect");
     } finally {
-      setDisconnecting(false);
+      setDisconnecting(null);
     }
   }
 
-  if (status === null) return null;
+  function renderPlatform(
+    label: string,
+    description: string,
+    status: PlatformStatus | null,
+    platform: "x" | "threads" | "linkedin",
+    connectUrl: string
+  ) {
+    return (
+      <div className="flex flex-col gap-3">
+        <div>
+          <p className="text-sm font-medium">{label}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+        </div>
+
+        {status === null ? null : status.connected ? (
+          <div className="flex items-center justify-between rounded-lg border border-border p-4">
+            <div className="flex flex-col gap-0.5">
+              <p className="text-sm font-medium">{status.username}</p>
+              {status.connectedAt && (
+                <p className="text-xs text-muted-foreground">
+                  Connected {new Date(status.connectedAt).toLocaleDateString()}
+                </p>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleDisconnect(platform)}
+              disabled={disconnecting === platform}
+            >
+              {disconnecting === platform ? "Disconnecting..." : "Disconnect"}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+            <p className="text-sm text-muted-foreground">No {label} account connected.</p>
+            <Button
+              size="sm"
+              className="w-fit"
+              onClick={() => {
+                window.location.href = connectUrl;
+              }}
+            >
+              Connect {label}
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-5">
-      <div>
-        <p className="text-sm font-medium">X (Twitter)</p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Connect your X account to import posts, track followers, and fetch trends.
-        </p>
-      </div>
-
-      {status.connected ? (
-        <div className="flex items-center justify-between rounded-lg border border-border p-4">
-          <div className="flex flex-col gap-0.5">
-            <p className="text-sm font-medium">@{status.xUsername}</p>
-            {status.connectedAt && (
-              <p className="text-xs text-muted-foreground">
-                Connected {new Date(status.connectedAt).toLocaleDateString()}
-              </p>
-            )}
-          </div>
-          <Button variant="outline" size="sm" onClick={handleDisconnect} disabled={disconnecting}>
-            {disconnecting ? "Disconnecting..." : "Disconnect"}
-          </Button>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
-          <p className="text-sm text-muted-foreground">No X account connected.</p>
-          <Button
-            size="sm"
-            className="w-fit"
-            onClick={() => {
-              window.location.href = "/api/auth/x";
-            }}
-          >
-            Connect X Account
-          </Button>
-        </div>
+    <div className="flex flex-col gap-8">
+      {renderPlatform(
+        "X (Twitter)",
+        "Connect your X account to import posts, track followers, and fetch trends.",
+        xStatus,
+        "x",
+        "/api/auth/x"
+      )}
+      {renderPlatform(
+        "Threads",
+        "Connect your Threads account to publish posts directly.",
+        threadsStatus,
+        "threads",
+        "/api/auth/threads"
+      )}
+      {renderPlatform(
+        "LinkedIn",
+        "Connect your LinkedIn account to publish posts directly.",
+        linkedInStatus,
+        "linkedin",
+        "/api/auth/linkedin"
       )}
     </div>
   );
