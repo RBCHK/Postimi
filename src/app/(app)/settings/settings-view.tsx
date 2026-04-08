@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { Plus, Trash2, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -1077,8 +1078,23 @@ const SETTINGS_NAV: { value: SettingsSection; label: string }[] = [
   { value: "appearance", label: "Appearance" },
 ];
 
+const OAUTH_KEYS = [
+  "x_connected",
+  "x_error",
+  "threads_connected",
+  "threads_error",
+  "linkedin_connected",
+  "linkedin_error",
+];
+
 export function SettingsView() {
-  const [active, setActive] = useState<SettingsSection>("strategy");
+  const searchParams = useSearchParams();
+  const initialSection = useMemo<SettingsSection>(
+    () => (OAUTH_KEYS.some((k) => searchParams.has(k)) ? "connections" : "strategy"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+  const [active, setActive] = useState<SettingsSection>(initialSection);
 
   return (
     <PageContainer className="flex flex-col h-full overflow-hidden">
