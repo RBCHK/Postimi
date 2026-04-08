@@ -36,6 +36,8 @@ model User {
   planProposals          PlanProposal[]
   xApiCallLogs           XApiCallLog[]
   xApiToken              XApiToken?
+  threadsApiToken        ThreadsApiToken?
+  linkedInApiToken       LinkedInApiToken?
   trendSnapshots         TrendSnapshot[]
   media                  Media[]
 }
@@ -63,6 +65,44 @@ model XApiToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([xUserId])
+}
+
+model ThreadsApiToken {
+  id                       String   @id @default(cuid())
+  userId                   String   @unique
+  threadsUserId            String
+  threadsUsername           String
+  threadsProfilePictureUrl String?
+  threadsBiography         String?
+  accessToken              String   // encrypted (AES-256-GCM), long-lived token
+  expiresAt                DateTime
+  scopes                   String
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([threadsUserId])
+}
+
+model LinkedInApiToken {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  linkedinUserId    String
+  linkedinName      String?
+  linkedinEmail     String?
+  linkedinPictureUrl String?
+  linkedinHeadline  String?
+  accessToken       String   // encrypted (AES-256-GCM)
+  refreshToken      String   // encrypted (AES-256-GCM)
+  expiresAt         DateTime
+  scopes            String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([linkedinUserId])
 }
 
 // ─── Enums ───────────────────────────────────────────────
