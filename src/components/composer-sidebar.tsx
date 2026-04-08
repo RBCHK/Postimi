@@ -4,8 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
-  Link2,
-  Link2Off,
   PenSquare,
   Calendar,
   Send,
@@ -521,55 +519,21 @@ export function ComposerSidebar({
 
       {/* Platform tabs */}
       <div className="flex items-center gap-1 px-4 pb-3">
-        {connectedPlatforms.map((p) => {
-          const isX = p === "X";
-          const key = p.toLowerCase() as "threads" | "linkedin";
-          const isLinked = !isX && composerContent.linkedToX[key];
-
-          return (
-            <div key={p} className="flex items-center gap-0.5">
-              <Button
-                variant={activePlatform === p ? "secondary" : "ghost"}
-                size="sm"
-                className={cn(
-                  "h-8 min-w-[48px] text-xs font-medium",
-                  activePlatform === p && "bg-white/10"
-                )}
-                onClick={() => handlePlatformChange(p)}
-              >
-                <PlatformIcon platform={p} className="mr-1 h-3.5 w-3.5" />
-                {PLATFORM_CONFIG[p].label}
-              </Button>
-              {!isX && (
-                <TooltipProvider delayDuration={0}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => handleTogglePlatformLink(p as "THREADS" | "LINKEDIN")}
-                      >
-                        {isLinked ? (
-                          <Link2 className="h-3.5 w-3.5" />
-                        ) : (
-                          <Link2Off className="h-3.5 w-3.5 text-muted-foreground" />
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      <p>
-                        {isLinked
-                          ? `Unlink ${PLATFORM_CONFIG[p].label} from X`
-                          : `Link ${PLATFORM_CONFIG[p].label} to X`}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-            </div>
-          );
-        })}
+        {connectedPlatforms.map((p) => (
+          <Button
+            key={p}
+            variant={activePlatform === p ? "secondary" : "ghost"}
+            size="sm"
+            className={cn(
+              "h-8 min-w-[48px] text-xs font-medium",
+              activePlatform === p && "bg-white/10"
+            )}
+            onClick={() => handlePlatformChange(p)}
+          >
+            <PlatformIcon platform={p} className="mr-1 h-3.5 w-3.5" />
+            {PLATFORM_CONFIG[p].label}
+          </Button>
+        ))}
       </div>
 
       {/* Editor area */}
@@ -597,6 +561,8 @@ export function ComposerSidebar({
             avatarUrl={linkedInProfile?.avatarUrl ?? undefined}
             images={mediaItems}
             onDeleteImage={handleDeleteMedia}
+            syncedWithX={composerContent.linkedToX.linkedin}
+            onToggleSync={() => handleTogglePlatformLink("LINKEDIN")}
           />
         )}
         {activePlatform === "THREADS" && (
@@ -608,6 +574,8 @@ export function ComposerSidebar({
             avatarUrl={threadsProfile?.avatarUrl ?? undefined}
             images={mediaItems}
             onDeleteImage={handleDeleteMedia}
+            syncedWithX={composerContent.linkedToX.threads}
+            onToggleSync={() => handleTogglePlatformLink("THREADS")}
           />
         )}
       </div>
