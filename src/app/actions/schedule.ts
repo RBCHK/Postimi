@@ -199,15 +199,24 @@ export async function getScheduledSlots(options?: { from?: string; days?: number
 
   const realSlots: SlotItem[] = rows.map((r) => {
     const cc = r.conversation?.composerContent as {
-      linked?: boolean;
-      shared?: string;
+      // New format
+      linkedToX?: { threads: boolean; linkedin: boolean };
       x?: string;
       linkedin?: string;
       threads?: string;
+      // Old format (backward compat)
+      linked?: boolean;
+      shared?: string;
     } | null;
     const platforms: string[] = [];
     if (cc) {
-      if (cc.linked) {
+      if (cc.linkedToX) {
+        // New per-platform format
+        if (cc.x?.trim()) platforms.push("X");
+        if ((cc.linkedToX.linkedin ? cc.x : cc.linkedin)?.trim()) platforms.push("LINKEDIN");
+        if ((cc.linkedToX.threads ? cc.x : cc.threads)?.trim()) platforms.push("THREADS");
+      } else if (cc.linked) {
+        // Old linked format
         if (cc.shared?.trim()) platforms.push("X", "LINKEDIN", "THREADS");
       } else {
         if (cc.x?.trim()) platforms.push("X");
