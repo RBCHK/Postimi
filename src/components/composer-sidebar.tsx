@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -14,6 +14,7 @@ import { useConversation } from "@/contexts/conversation-context";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { ComposerContent, ContentType, Platform } from "@/lib/types";
 import { PLATFORM_CONFIG } from "@/lib/types";
 import { PlatformIcon } from "@/components/platform-icons";
@@ -293,11 +294,44 @@ export function ComposerSidebar({
   );
 
   // Connected platforms — derived from which profiles are loaded
-  const connectedPlatforms: Platform[] = [
-    ...(xProfile ? ["X" as Platform] : []),
-    ...(threadsProfile ? ["THREADS" as Platform] : []),
-    ...(linkedInProfile ? ["LINKEDIN" as Platform] : []),
-  ];
+  const connectedPlatforms = useMemo<Platform[]>(
+    () => [
+      ...(xProfile ? ["X" as Platform] : []),
+      ...(threadsProfile ? ["THREADS" as Platform] : []),
+      ...(linkedInProfile ? ["LINKEDIN" as Platform] : []),
+    ],
+    [xProfile, threadsProfile, linkedInProfile]
+  );
+
+  // Platforms enabled for publishing (default: all connected)
+  const [enabledPlatforms, setEnabledPlatforms] = useState<Set<Platform>>(
+    () => new Set(connectedPlatforms)
+  );
+
+  // Keep enabledPlatforms in sync when connectedPlatforms change
+  useEffect(() => {
+    setEnabledPlatforms((prev) => {
+      const next = new Set<Platform>();
+      for (const p of connectedPlatforms) {
+        if (prev.has(p)) next.add(p);
+      }
+      // If nothing would be enabled, enable all
+      return next.size > 0 ? next : new Set(connectedPlatforms);
+    });
+  }, [connectedPlatforms]);
+
+  const handleTogglePlatformEnabled = useCallback((platform: Platform) => {
+    setEnabledPlatforms((prev) => {
+      const next = new Set(prev);
+      if (next.has(platform)) {
+        // Don't allow disabling all platforms
+        if (next.size > 1) next.delete(platform);
+      } else {
+        next.add(platform);
+      }
+      return next;
+    });
+  }, []);
 
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
@@ -416,7 +450,7 @@ export function ComposerSidebar({
 
   const handlePublish = useCallback(async () => {
     const text = getCurrentText();
-    if (!text.trim() || connectedPlatforms.length === 0) return;
+    if (!text.trim() || enabledPlatforms.size === 0) return;
 
     setPublishing(true);
     try {
@@ -435,7 +469,8 @@ export function ComposerSidebar({
               ? composerContent.x
               : composerContent.threads,
           };
-      const result = await publishPost(conversationId, platformText, slotType);
+      const targetPlatforms = Array.from(enabledPlatforms);
+      const result = await publishPost(conversationId, platformText, slotType, targetPlatforms);
 
       if (result.postedPlatforms.length > 0) {
         toast.success("Published to", {
@@ -464,7 +499,7 @@ export function ComposerSidebar({
     } finally {
       setPublishing(false);
     }
-  }, [getCurrentText, connectedPlatforms.length, contentType, conversationId, composerContent]);
+  }, [getCurrentText, enabledPlatforms, contentType, conversationId, composerContent]);
 
   // --- Collapsed view ---
   if (collapsed) {
@@ -520,19 +555,26 @@ export function ComposerSidebar({
       {/* Platform tabs */}
       <div className="flex items-center gap-1 px-4 pb-3">
         {connectedPlatforms.map((p) => (
-          <Button
-            key={p}
-            variant={activePlatform === p ? "secondary" : "ghost"}
-            size="sm"
-            className={cn(
-              "h-8 min-w-[48px] text-xs font-medium",
-              activePlatform === p && "bg-white/10"
-            )}
-            onClick={() => handlePlatformChange(p)}
-          >
-            <PlatformIcon platform={p} className="mr-1 h-3.5 w-3.5" />
-            {PLATFORM_CONFIG[p].label}
-          </Button>
+          <div key={p} className="flex items-center gap-1">
+            <Checkbox
+              checked={enabledPlatforms.has(p)}
+              onCheckedChange={() => handleTogglePlatformEnabled(p)}
+              className="h-3.5 w-3.5"
+            />
+            <Button
+              variant={activePlatform === p ? "secondary" : "ghost"}
+              size="sm"
+              className={cn(
+                "h-8 min-w-[48px] text-xs font-medium",
+                activePlatform === p && "bg-white/10",
+                !enabledPlatforms.has(p) && "opacity-50"
+              )}
+              onClick={() => handlePlatformChange(p)}
+            >
+              <PlatformIcon platform={p} className="mr-1 h-3.5 w-3.5" />
+              {PLATFORM_CONFIG[p].label}
+            </Button>
+          </div>
         ))}
       </div>
 

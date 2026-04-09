@@ -98,7 +98,7 @@ export async function createConversation(data: {
   originalPostUrl?: string;
 }) {
   const userId = await requireUserId();
-  const contentType = data.contentType ?? "Reply";
+  const contentType = data.contentType ?? "Post";
   const conv = await prisma.conversation.create({
     data: {
       userId,
