@@ -54,11 +54,10 @@ export interface Note {
 // --- Composer ---
 
 export interface ComposerContent {
-  linked: boolean; // true = all platforms share `shared` text
-  shared: string; // common text (used when linked=true)
-  x?: string; // per-platform text (used when linked=false)
-  linkedin?: string;
-  threads?: string;
+  linkedToX: { threads: boolean; linkedin: boolean }; // per-platform sync to X
+  x: string; // X text (primary platform)
+  linkedin?: string; // own text when unlinked from X
+  threads?: string; // own text when unlinked from X
 }
 
 // --- Media ---

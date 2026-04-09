@@ -4,7 +4,7 @@
  */
 
 const REST_BASE = "https://api.linkedin.com/rest";
-const LINKEDIN_VERSION = "202401";
+const LINKEDIN_VERSION = "202504";
 
 export interface LinkedInApiCredentials {
   accessToken: string;
@@ -100,7 +100,7 @@ export async function uploadImageToLinkedIn(
 }
 
 /**
- * Post to LinkedIn with an image.
+ * Post to LinkedIn with a single image.
  */
 export async function postToLinkedInWithImage(
   credentials: LinkedInApiCredentials,
@@ -130,6 +130,44 @@ export async function postToLinkedInWithImage(
   if (!res.ok) {
     const respBody = await res.text();
     throw new Error(`LinkedIn post with image failed ${res.status}: ${respBody}`);
+  }
+
+  const postUrn = res.headers.get("x-restli-id") ?? "";
+
+  return { postUrn };
+}
+
+/**
+ * Post to LinkedIn with multiple images.
+ * Uses the multiImage content type.
+ */
+export async function postToLinkedInWithImages(
+  credentials: LinkedInApiCredentials,
+  text: string,
+  imageUrns: string[]
+): Promise<{ postUrn: string }> {
+  const body = {
+    author: `urn:li:person:${credentials.linkedinUserId}`,
+    lifecycleState: "PUBLISHED",
+    visibility: "PUBLIC",
+    commentary: text,
+    distribution: { feedDistribution: "MAIN_FEED" },
+    content: {
+      multiImage: {
+        images: imageUrns.map((urn) => ({ id: urn })),
+      },
+    },
+  };
+
+  const res = await fetch(`${REST_BASE}/posts`, {
+    method: "POST",
+    headers: linkedInHeaders(credentials.accessToken),
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const respBody = await res.text();
+    throw new Error(`LinkedIn multi-image post failed ${res.status}: ${respBody}`);
   }
 
   const postUrn = res.headers.get("x-restli-id") ?? "";

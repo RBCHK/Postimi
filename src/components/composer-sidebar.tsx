@@ -1,11 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
-  Link2,
-  Link2Off,
   PenSquare,
   Calendar,
   Send,
@@ -16,6 +14,7 @@ import { useConversation } from "@/contexts/conversation-context";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { ComposerContent, ContentType, Platform } from "@/lib/types";
 import { PLATFORM_CONFIG } from "@/lib/types";
 import { PlatformIcon } from "@/components/platform-icons";
@@ -238,21 +237,25 @@ export function ComposerSidebar({
 
   // Get the current text for the active platform
   const getCurrentText = useCallback((): string => {
-    if (composerContent.linked) {
-      return composerContent.shared;
-    }
-    const key = activePlatform.toLowerCase() as "x" | "linkedin" | "threads";
-    return composerContent[key] ?? composerContent.shared;
+    if (activePlatform === "X") return composerContent.x;
+    const key = activePlatform.toLowerCase() as "threads" | "linkedin";
+    if (composerContent.linkedToX[key]) return composerContent.x;
+    return composerContent[key] ?? composerContent.x;
   }, [composerContent, activePlatform]);
 
   const handleTextChange = useCallback(
     (text: string) => {
       let updated: ComposerContent;
-      if (composerContent.linked) {
-        updated = { ...composerContent, shared: text };
+      if (activePlatform === "X") {
+        updated = { ...composerContent, x: text };
       } else {
-        const key = activePlatform.toLowerCase() as "x" | "linkedin" | "threads";
-        updated = { ...composerContent, [key]: text };
+        const key = activePlatform.toLowerCase() as "threads" | "linkedin";
+        if (composerContent.linkedToX[key]) {
+          // Editing a linked platform edits X text
+          updated = { ...composerContent, x: text };
+        } else {
+          updated = { ...composerContent, [key]: text };
+        }
       }
       updateComposer(updated, activePlatform);
     },
@@ -266,32 +269,69 @@ export function ComposerSidebar({
     [composerContent, updateComposer]
   );
 
-  const handleToggleLink = useCallback(() => {
-    let updated: ComposerContent;
-    if (composerContent.linked) {
-      // Unlink: copy shared text to all platform fields
-      updated = {
-        linked: false,
-        shared: composerContent.shared,
-        x: composerContent.shared,
-        linkedin: composerContent.shared,
-        threads: composerContent.shared,
-      };
-    } else {
-      // Link: use current platform's text as the shared text
-      const key = activePlatform.toLowerCase() as "x" | "linkedin" | "threads";
-      const currentText = composerContent[key] ?? composerContent.shared;
-      updated = { linked: true, shared: currentText };
-    }
-    updateComposer(updated, activePlatform);
-  }, [composerContent, activePlatform, updateComposer]);
+  const handleTogglePlatformLink = useCallback(
+    (platform: "THREADS" | "LINKEDIN") => {
+      const key = platform.toLowerCase() as "threads" | "linkedin";
+      const isLinked = composerContent.linkedToX[key];
+      let updated: ComposerContent;
+      if (isLinked) {
+        // Unlink: copy X text as starting point for independent editing
+        updated = {
+          ...composerContent,
+          linkedToX: { ...composerContent.linkedToX, [key]: false },
+          [key]: composerContent.x,
+        };
+      } else {
+        // Link: discard platform text, sync with X
+        updated = {
+          ...composerContent,
+          linkedToX: { ...composerContent.linkedToX, [key]: true },
+        };
+      }
+      updateComposer(updated, activePlatform);
+    },
+    [composerContent, activePlatform, updateComposer]
+  );
 
   // Connected platforms — derived from which profiles are loaded
-  const connectedPlatforms: Platform[] = [
-    ...(xProfile ? ["X" as Platform] : []),
-    ...(threadsProfile ? ["THREADS" as Platform] : []),
-    ...(linkedInProfile ? ["LINKEDIN" as Platform] : []),
-  ];
+  const connectedPlatforms = useMemo<Platform[]>(
+    () => [
+      ...(xProfile ? ["X" as Platform] : []),
+      ...(threadsProfile ? ["THREADS" as Platform] : []),
+      ...(linkedInProfile ? ["LINKEDIN" as Platform] : []),
+    ],
+    [xProfile, threadsProfile, linkedInProfile]
+  );
+
+  // Platforms enabled for publishing (default: all connected)
+  const [enabledPlatforms, setEnabledPlatforms] = useState<Set<Platform>>(
+    () => new Set(connectedPlatforms)
+  );
+
+  // Keep enabledPlatforms in sync when connectedPlatforms change
+  useEffect(() => {
+    setEnabledPlatforms((prev) => {
+      const next = new Set<Platform>();
+      for (const p of connectedPlatforms) {
+        if (prev.has(p)) next.add(p);
+      }
+      // If nothing would be enabled, enable all
+      return next.size > 0 ? next : new Set(connectedPlatforms);
+    });
+  }, [connectedPlatforms]);
+
+  const handleTogglePlatformEnabled = useCallback((platform: Platform) => {
+    setEnabledPlatforms((prev) => {
+      const next = new Set(prev);
+      if (next.has(platform)) {
+        // Don't allow disabling all platforms
+        if (next.size > 1) next.delete(platform);
+      } else {
+        next.add(platform);
+      }
+      return next;
+    });
+  }, []);
 
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
@@ -410,21 +450,27 @@ export function ComposerSidebar({
 
   const handlePublish = useCallback(async () => {
     const text = getCurrentText();
-    if (!text.trim() || connectedPlatforms.length === 0) return;
+    if (!text.trim() || enabledPlatforms.size === 0) return;
 
     setPublishing(true);
     try {
       const slotType = contentTypeToPrismaSlot[contentType];
       // Pass per-platform text so each platform gets its own content
-      const platformText = composerContent.linked
-        ? composerContent.shared
+      const allLinked = composerContent.linkedToX.threads && composerContent.linkedToX.linkedin;
+      const platformText = allLinked
+        ? composerContent.x
         : {
-            shared: composerContent.shared,
+            shared: composerContent.x,
             x: composerContent.x,
-            linkedin: composerContent.linkedin,
-            threads: composerContent.threads,
+            linkedin: composerContent.linkedToX.linkedin
+              ? composerContent.x
+              : composerContent.linkedin,
+            threads: composerContent.linkedToX.threads
+              ? composerContent.x
+              : composerContent.threads,
           };
-      const result = await publishPost(conversationId, platformText, slotType);
+      const targetPlatforms = Array.from(enabledPlatforms);
+      const result = await publishPost(conversationId, platformText, slotType, targetPlatforms);
 
       if (result.postedPlatforms.length > 0) {
         toast.success("Published to", {
@@ -453,7 +499,7 @@ export function ComposerSidebar({
     } finally {
       setPublishing(false);
     }
-  }, [getCurrentText, connectedPlatforms.length, contentType, conversationId, composerContent]);
+  }, [getCurrentText, enabledPlatforms, contentType, conversationId, composerContent]);
 
   // --- Collapsed view ---
   if (collapsed) {
@@ -509,41 +555,27 @@ export function ComposerSidebar({
       {/* Platform tabs */}
       <div className="flex items-center gap-1 px-4 pb-3">
         {connectedPlatforms.map((p) => (
-          <Button
-            key={p}
-            variant={activePlatform === p ? "secondary" : "ghost"}
-            size="sm"
-            className={cn(
-              "h-8 min-w-[48px] text-xs font-medium",
-              activePlatform === p && "bg-white/10"
-            )}
-            onClick={() => handlePlatformChange(p)}
-          >
-            <PlatformIcon platform={p} className="mr-1 h-3.5 w-3.5" />
-            {PLATFORM_CONFIG[p].label}
-          </Button>
+          <div key={p} className="flex items-center gap-1">
+            <Checkbox
+              checked={enabledPlatforms.has(p)}
+              onCheckedChange={() => handleTogglePlatformEnabled(p)}
+              className="h-3.5 w-3.5"
+            />
+            <Button
+              variant={activePlatform === p ? "secondary" : "ghost"}
+              size="sm"
+              className={cn(
+                "h-8 min-w-[48px] text-xs font-medium",
+                activePlatform === p && "bg-white/10",
+                !enabledPlatforms.has(p) && "opacity-50"
+              )}
+              onClick={() => handlePlatformChange(p)}
+            >
+              <PlatformIcon platform={p} className="mr-1 h-3.5 w-3.5" />
+              {PLATFORM_CONFIG[p].label}
+            </Button>
+          </div>
         ))}
-        <div className="flex-1" />
-        <TooltipProvider delayDuration={0}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleToggleLink}>
-                {composerContent.linked ? (
-                  <Link2 className="h-4 w-4" />
-                ) : (
-                  <Link2Off className="h-4 w-4 text-muted-foreground" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p>
-                {composerContent.linked
-                  ? "Unlink platforms (edit separately)"
-                  : "Link platforms (share text)"}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
       </div>
 
       {/* Editor area */}
@@ -571,6 +603,8 @@ export function ComposerSidebar({
             avatarUrl={linkedInProfile?.avatarUrl ?? undefined}
             images={mediaItems}
             onDeleteImage={handleDeleteMedia}
+            syncedWithX={composerContent.linkedToX.linkedin}
+            onToggleSync={() => handleTogglePlatformLink("LINKEDIN")}
           />
         )}
         {activePlatform === "THREADS" && (
@@ -582,6 +616,8 @@ export function ComposerSidebar({
             avatarUrl={threadsProfile?.avatarUrl ?? undefined}
             images={mediaItems}
             onDeleteImage={handleDeleteMedia}
+            syncedWithX={composerContent.linkedToX.threads}
+            onToggleSync={() => handleTogglePlatformLink("THREADS")}
           />
         )}
       </div>

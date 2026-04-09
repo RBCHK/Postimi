@@ -198,21 +198,32 @@ export async function getScheduledSlots(options?: { from?: string; days?: number
   });
 
   const realSlots: SlotItem[] = rows.map((r) => {
-    const cc = r.conversation?.composerContent as {
-      linked?: boolean;
-      shared?: string;
-      x?: string;
-      linkedin?: string;
-      threads?: string;
-    } | null;
-    const platforms: string[] = [];
-    if (cc) {
-      if (cc.linked) {
-        if (cc.shared?.trim()) platforms.push("X", "LINKEDIN", "THREADS");
-      } else {
-        if (cc.x?.trim()) platforms.push("X");
-        if (cc.linkedin?.trim()) platforms.push("LINKEDIN");
-        if (cc.threads?.trim()) platforms.push("THREADS");
+    // For POSTED slots, use the actual postedPlatforms from DB
+    // For SCHEDULED slots, derive from composerContent (planned targets)
+    let platforms: string[] = [];
+    if (r.status === "POSTED" && r.postedPlatforms.length > 0) {
+      platforms = [...r.postedPlatforms];
+    } else {
+      const cc = r.conversation?.composerContent as {
+        linkedToX?: { threads: boolean; linkedin: boolean };
+        x?: string;
+        linkedin?: string;
+        threads?: string;
+        linked?: boolean;
+        shared?: string;
+      } | null;
+      if (cc) {
+        if (cc.linkedToX) {
+          if (cc.x?.trim()) platforms.push("X");
+          if ((cc.linkedToX.linkedin ? cc.x : cc.linkedin)?.trim()) platforms.push("LINKEDIN");
+          if ((cc.linkedToX.threads ? cc.x : cc.threads)?.trim()) platforms.push("THREADS");
+        } else if (cc.linked) {
+          if (cc.shared?.trim()) platforms.push("X", "LINKEDIN", "THREADS");
+        } else {
+          if (cc.x?.trim()) platforms.push("X");
+          if (cc.linkedin?.trim()) platforms.push("LINKEDIN");
+          if (cc.threads?.trim()) platforms.push("THREADS");
+        }
       }
     }
     return {
@@ -352,7 +363,8 @@ export async function unscheduleSlot(id: string) {
 export async function publishPost(
   conversationId: string,
   text: string | { shared: string; x?: string; linkedin?: string; threads?: string },
-  slotType: PrismaSlotType = "POST"
+  slotType: PrismaSlotType = "POST",
+  targetPlatforms?: string[]
 ): Promise<{
   postedPlatforms: string[];
   errors: Record<string, string>;
@@ -377,108 +389,134 @@ export async function publishPost(
   const postedPlatforms: string[] = [];
   const errors: Record<string, string> = {};
   let tweetUrl: string | undefined;
+  const targets = targetPlatforms ? new Set(targetPlatforms.map((p) => p.toUpperCase())) : null;
+
+  // Load media once for all platforms
+  let media: Awaited<ReturnType<typeof getMediaForConversationInternal>> = [];
+  try {
+    media = await getMediaForConversationInternal(conversationId, userId);
+  } catch {
+    // Media fetch failed — continue without images
+  }
 
   // --- Post to X ---
-  try {
-    const tokenRow = await prisma.xApiToken.findUnique({ where: { userId } });
-    if (!tokenRow) {
-      // X not connected — skip silently (not an error if user doesn't have X)
-    } else if (!tokenRow.scopes.includes("tweet.write")) {
-      errors.X = "Missing write permission. Reconnect X in Settings.";
-    } else {
-      const credentials = await getXApiTokenForUserInternal(userId);
-      if (!credentials) {
-        errors.X = "Failed to get X token. Try reconnecting in Settings.";
+  if (!targets || targets.has("X"))
+    try {
+      const tokenRow = await prisma.xApiToken.findUnique({ where: { userId } });
+      if (!tokenRow) {
+        // X not connected — skip silently
+      } else if (!tokenRow.scopes.includes("tweet.write")) {
+        errors.X = "Missing write permission. Reconnect X in Settings.";
       } else {
-        // Upload media to X if any
-        const media = await getMediaForConversationInternal(conversationId, userId);
-        let mediaIds: string[] | undefined;
+        const credentials = await getXApiTokenForUserInternal(userId);
+        if (!credentials) {
+          errors.X = "Failed to get X token. Try reconnecting in Settings.";
+        } else {
+          let mediaIds: string[] | undefined;
 
-        if (media.length > 0) {
-          if (!tokenRow.scopes.includes("media.write")) {
-            errors.X = "Missing media permission. Reconnect X in Settings.";
+          if (media.length > 0) {
+            if (!tokenRow.scopes.includes("media.write")) {
+              errors.X = "Missing media permission. Reconnect X in Settings.";
+            } else {
+              mediaIds = [];
+              for (const item of media) {
+                const imageRes = await fetch(item.url);
+                const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
+                const xMediaId = await uploadMediaToX(credentials, imageBuffer, item.mimeType, {
+                  callerJob: "publish",
+                  userId,
+                });
+                mediaIds.push(xMediaId);
+              }
+            }
+          }
+
+          if (!errors.X) {
+            const result = await postTweet(credentials, platformText.x, {
+              callerJob: "publish",
+              userId,
+              mediaIds,
+            });
+            tweetUrl = result.tweetUrl;
+            postedPlatforms.push("X");
+          }
+        }
+      }
+    } catch (err) {
+      errors.X = err instanceof Error ? err.message : "Failed to post to X";
+    }
+
+  // --- Post to Threads ---
+  if (!targets || targets.has("THREADS"))
+    try {
+      const threadsToken = await prisma.threadsApiToken.findUnique({ where: { userId } });
+      if (threadsToken) {
+        const { getThreadsApiTokenForUserInternal } = await import("@/app/actions/threads-token");
+        const credentials = await getThreadsApiTokenForUserInternal(userId);
+        if (!credentials) {
+          errors.THREADS = "Failed to get Threads token. Try reconnecting in Settings.";
+        } else {
+          const { postToThreads, postToThreadsWithImage, postToThreadsWithImages } =
+            await import("@/lib/threads-api");
+
+          if (media.length > 1) {
+            await postToThreadsWithImages(
+              credentials,
+              platformText.threads,
+              media.map((m) => m.url)
+            );
+          } else if (media.length === 1) {
+            await postToThreadsWithImage(credentials, platformText.threads, media[0].url);
           } else {
-            mediaIds = [];
+            await postToThreads(credentials, platformText.threads);
+          }
+          postedPlatforms.push("THREADS");
+        }
+      }
+    } catch (err) {
+      errors.THREADS = err instanceof Error ? err.message : "Failed to post to Threads";
+    }
+
+  // --- Post to LinkedIn ---
+  if (!targets || targets.has("LINKEDIN"))
+    try {
+      const linkedInToken = await prisma.linkedInApiToken.findUnique({ where: { userId } });
+      if (linkedInToken) {
+        const { getLinkedInApiTokenForUserInternal } = await import("@/app/actions/linkedin-token");
+        const credentials = await getLinkedInApiTokenForUserInternal(userId);
+        if (!credentials) {
+          errors.LINKEDIN = "Failed to get LinkedIn token. Try reconnecting in Settings.";
+        } else {
+          const {
+            postToLinkedIn,
+            postToLinkedInWithImage,
+            postToLinkedInWithImages,
+            uploadImageToLinkedIn,
+          } = await import("@/lib/linkedin-api");
+
+          if (media.length > 0) {
+            const imageUrns: string[] = [];
             for (const item of media) {
               const imageRes = await fetch(item.url);
               const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
-              const xMediaId = await uploadMediaToX(credentials, imageBuffer, item.mimeType, {
-                callerJob: "publish",
-                userId,
-              });
-              mediaIds.push(xMediaId);
+              const urn = await uploadImageToLinkedIn(credentials, imageBuffer, item.mimeType);
+              imageUrns.push(urn);
             }
+
+            if (imageUrns.length > 1) {
+              await postToLinkedInWithImages(credentials, platformText.linkedin, imageUrns);
+            } else {
+              await postToLinkedInWithImage(credentials, platformText.linkedin, imageUrns[0]);
+            }
+          } else {
+            await postToLinkedIn(credentials, platformText.linkedin);
           }
-        }
-
-        if (!errors.X) {
-          const result = await postTweet(credentials, platformText.x, {
-            callerJob: "publish",
-            userId,
-            mediaIds,
-          });
-          tweetUrl = result.tweetUrl;
-          postedPlatforms.push("X");
+          postedPlatforms.push("LINKEDIN");
         }
       }
+    } catch (err) {
+      errors.LINKEDIN = err instanceof Error ? err.message : "Failed to post to LinkedIn";
     }
-  } catch (err) {
-    errors.X = err instanceof Error ? err.message : "Failed to post to X";
-  }
-
-  // --- Post to Threads ---
-  try {
-    const threadsToken = await prisma.threadsApiToken.findUnique({ where: { userId } });
-    if (threadsToken) {
-      const { getThreadsApiTokenForUserInternal } = await import("@/app/actions/threads-token");
-      const credentials = await getThreadsApiTokenForUserInternal(userId);
-      if (!credentials) {
-        errors.THREADS = "Failed to get Threads token. Try reconnecting in Settings.";
-      } else {
-        const media = await getMediaForConversationInternal(conversationId, userId);
-        const { postToThreads, postToThreadsWithImage } = await import("@/lib/threads-api");
-
-        if (media.length > 0) {
-          // Threads accepts a public image URL — use the first image
-          await postToThreadsWithImage(credentials, platformText.threads, media[0].url);
-        } else {
-          await postToThreads(credentials, platformText.threads);
-        }
-        postedPlatforms.push("THREADS");
-      }
-    }
-  } catch (err) {
-    errors.THREADS = err instanceof Error ? err.message : "Failed to post to Threads";
-  }
-
-  // --- Post to LinkedIn ---
-  try {
-    const linkedInToken = await prisma.linkedInApiToken.findUnique({ where: { userId } });
-    if (linkedInToken) {
-      const { getLinkedInApiTokenForUserInternal } = await import("@/app/actions/linkedin-token");
-      const credentials = await getLinkedInApiTokenForUserInternal(userId);
-      if (!credentials) {
-        errors.LINKEDIN = "Failed to get LinkedIn token. Try reconnecting in Settings.";
-      } else {
-        const media = await getMediaForConversationInternal(conversationId, userId);
-        const { postToLinkedIn, postToLinkedInWithImage, uploadImageToLinkedIn } =
-          await import("@/lib/linkedin-api");
-
-        if (media.length > 0) {
-          // LinkedIn requires upload then URN
-          const imageRes = await fetch(media[0].url);
-          const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
-          const imageUrn = await uploadImageToLinkedIn(credentials, imageBuffer, media[0].mimeType);
-          await postToLinkedInWithImage(credentials, platformText.linkedin, imageUrn);
-        } else {
-          await postToLinkedIn(credentials, platformText.linkedin);
-        }
-        postedPlatforms.push("LINKEDIN");
-      }
-    }
-  } catch (err) {
-    errors.LINKEDIN = err instanceof Error ? err.message : "Failed to post to LinkedIn";
-  }
 
   // --- Create POSTED slot ---
   if (postedPlatforms.length > 0) {
@@ -496,6 +534,7 @@ export async function publishPost(
         content: platformText.shared,
         conversationId,
         postedAt: now,
+        postedPlatforms,
       },
     });
 

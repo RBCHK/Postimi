@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { ThumbsUp, MessageSquare, Repeat2, Send } from "lucide-react";
 import { ImageGrid } from "@/components/image-grid";
+import { SyncWithXToggle } from "@/components/sync-with-x-toggle";
 import type { MediaItem } from "@/lib/types";
 
 interface LinkedInPostPreviewProps {
@@ -14,6 +15,8 @@ interface LinkedInPostPreviewProps {
   avatarUrl?: string;
   images?: MediaItem[];
   onDeleteImage?: (id: string) => void;
+  syncedWithX?: boolean;
+  onToggleSync?: () => void;
 }
 
 export function LinkedInPostPreview({
@@ -25,6 +28,8 @@ export function LinkedInPostPreview({
   avatarUrl,
   images = [],
   onDeleteImage,
+  syncedWithX,
+  onToggleSync,
 }: LinkedInPostPreviewProps) {
   return (
     <div className="flex h-full w-full flex-col rounded-xl border border-white/10 bg-[#1b1f23] p-4">
@@ -64,14 +69,10 @@ export function LinkedInPostPreview({
           <p className="text-[12px] leading-[16px] text-[#71767b]">now</p>
         </div>
 
-        {/* More menu (dots) */}
-        <div className="shrink-0 text-[#71767b]">
-          <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="currentColor">
-            <circle cx="5" cy="12" r="2" />
-            <circle cx="12" cy="12" r="2" />
-            <circle cx="19" cy="12" r="2" />
-          </svg>
-        </div>
+        {/* Sync with X toggle */}
+        {syncedWithX !== undefined && onToggleSync && (
+          <SyncWithXToggle synced={syncedWithX} onToggle={onToggleSync} />
+        )}
       </div>
 
       {/* Editable post text */}

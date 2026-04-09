@@ -259,15 +259,16 @@ model Media {
 // ─── Schedule ────────────────────────────────────────────
 
 model ScheduledSlot {
-  id             String     @id @default(cuid())
-  userId         String
-  date           DateTime
-  timeSlot       String
-  slotType       SlotType
-  status         SlotStatus @default(EMPTY)
-  content        String?
-  conversationId String?
-  postedAt       DateTime?
+  id              String     @id @default(cuid())
+  userId          String
+  date            DateTime
+  timeSlot        String
+  slotType        SlotType
+  status          SlotStatus @default(EMPTY)
+  content         String?
+  conversationId  String?
+  postedAt        DateTime?
+  postedPlatforms String[]   @default([])
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)

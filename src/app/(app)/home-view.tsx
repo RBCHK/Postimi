@@ -27,7 +27,7 @@ export function HomeView({
 }: HomeViewProps) {
   const router = useRouter();
   const [input, setInput] = useState("");
-  const [contentType, setContentType] = useState<ContentType>("Reply");
+  const [contentType, setContentType] = useState<ContentType>("Post");
   const [isLoading, setIsLoading] = useState(false);
 
   async function handleSend() {

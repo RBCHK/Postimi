@@ -56,7 +56,43 @@ interface ConversationContextValue {
   clearNotes: () => void;
 }
 
-const DEFAULT_COMPOSER: ComposerContent = { linked: true, shared: "" };
+const DEFAULT_COMPOSER: ComposerContent = {
+  linkedToX: { threads: true, linkedin: true },
+  x: "",
+};
+
+/** Migrate old ComposerContent format (linked/shared) to new per-platform format */
+function migrateComposerContent(raw: unknown): ComposerContent {
+  if (!raw || typeof raw !== "object") return DEFAULT_COMPOSER;
+  const obj = raw as Record<string, unknown>;
+
+  // Already new format
+  if ("linkedToX" in obj && typeof obj.linkedToX === "object") {
+    return obj as unknown as ComposerContent;
+  }
+
+  // Old format: { linked: boolean, shared: string, x?, linkedin?, threads? }
+  if ("linked" in obj) {
+    const shared = typeof obj.shared === "string" ? obj.shared : "";
+    if (obj.linked) {
+      return {
+        linkedToX: { threads: true, linkedin: true },
+        x: shared,
+        threads: shared,
+        linkedin: shared,
+      };
+    } else {
+      return {
+        linkedToX: { threads: false, linkedin: false },
+        x: (typeof obj.x === "string" ? obj.x : undefined) ?? shared,
+        threads: typeof obj.threads === "string" ? obj.threads : undefined,
+        linkedin: typeof obj.linkedin === "string" ? obj.linkedin : undefined,
+      };
+    }
+  }
+
+  return DEFAULT_COMPOSER;
+}
 
 const ConversationContext = createContext<ConversationContextValue | null>(null);
 
@@ -104,13 +140,13 @@ export function ConversationProvider({
   children: ReactNode;
 }) {
   const [notes, setNotes] = useState<Note[]>(initialData?.notes ?? []);
-  const [contentType, setContentType] = useState<ContentType>(initialData?.contentType ?? "Reply");
+  const [contentType, setContentType] = useState<ContentType>(initialData?.contentType ?? "Post");
   const [input, setInput] = useState(initialData?.pendingInput ?? "");
   const [isFetchingTweet, setIsFetchingTweet] = useState(false);
   const router = useRouter();
 
   const [composerContent, setComposerContent] = useState<ComposerContent>(
-    initialData?.composerContent ?? DEFAULT_COMPOSER
+    migrateComposerContent(initialData?.composerContent) ?? DEFAULT_COMPOSER
   );
   const [composerPlatform, setComposerPlatform] = useState<Platform>(
     initialData?.composerPlatform ?? "X"
@@ -208,8 +244,8 @@ export function ConversationProvider({
       createdAt: n.createdAt instanceof Date ? n.createdAt : new Date(n.createdAt as string),
     }));
     setNotes(nts);
-    setContentType(initialData?.contentType ?? "Reply");
-    setComposerContent(initialData?.composerContent ?? DEFAULT_COMPOSER);
+    setContentType(initialData?.contentType ?? "Post");
+    setComposerContent(migrateComposerContent(initialData?.composerContent) ?? DEFAULT_COMPOSER);
     setComposerPlatform(initialData?.composerPlatform ?? "X");
     setComposerSaveStatus("idle");
   }, [conversationId, initialData]);
@@ -364,7 +400,9 @@ export function ConversationProvider({
       let derivedTitle: string | undefined;
       if (!titleLockedRef.current) {
         const platformKey = platform.toLowerCase() as "x" | "linkedin" | "threads";
-        const text = (content.linked ? content.shared : content[platformKey])?.trim();
+        const isLinked =
+          platformKey === "x" || content.linkedToX[platformKey as "threads" | "linkedin"];
+        const text = (isLinked ? content.x : content[platformKey])?.trim();
         if (text) {
           const firstLine = text.split("\n")[0];
           derivedTitle = firstLine.length > 80 ? firstLine.slice(0, 80) + "…" : firstLine;
