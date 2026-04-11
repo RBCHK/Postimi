@@ -1,6 +1,6 @@
 export type ThemePreference = "light" | "dark" | "system";
 
-const STORAGE_KEY = "xreba_theme";
+const STORAGE_KEY = "postimi_theme";
 
 export function applyTheme(pref: ThemePreference) {
   const dark =

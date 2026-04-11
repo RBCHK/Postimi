@@ -17,7 +17,7 @@ export function AppHeader() {
           onClick={() => window.dispatchEvent(new Event("focus-chat-input"))}
           className="text-lg font-semibold tracking-tight text-foreground hover:text-foreground/90 transition-colors"
         >
-          X Growth Copilot
+          Postimi
         </Link>
         <div className="flex items-center gap-1">
           <Button

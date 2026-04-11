@@ -6,13 +6,13 @@ export const MODEL_OPTIONS = [
 export type ModelValue = (typeof MODEL_OPTIONS)[number]["value"];
 
 // Legacy key — used for the Analyst (chat) agent
-export const MODEL_STORAGE_KEY = "xreba_model";
+export const MODEL_STORAGE_KEY = "postimi_model";
 
 export const AGENT_MODEL_KEYS = {
-  analyst: "xreba_model",
-  strategist: "xreba_model_strategist",
-  researcher: "xreba_model_researcher",
-  dailyInsight: "xreba_model_daily_insight",
+  analyst: "postimi_model",
+  strategist: "postimi_model_strategist",
+  researcher: "postimi_model_researcher",
+  dailyInsight: "postimi_model_daily_insight",
 } as const;
 
 export type AgentKey = keyof typeof AGENT_MODEL_KEYS;

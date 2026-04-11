@@ -1,6 +1,6 @@
 import type { LanguageSettings } from "@/lib/types";
 
-export const LANGUAGE_STORAGE_KEY = "xreba_language";
+export const LANGUAGE_STORAGE_KEY = "postimi_language";
 
 export const DEFAULT_LANGUAGE_SETTINGS: LanguageSettings = {
   interfaceLanguage: "en",
