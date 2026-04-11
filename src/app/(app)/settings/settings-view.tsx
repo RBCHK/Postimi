@@ -31,7 +31,7 @@ import {
   type ScheduleConfig,
 } from "@/app/actions/schedule";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage, type LanguageSettings } from "@/lib/types";
-import { getStoredLanguageSettings } from "@/lib/language";
+import { getStoredLanguageSettings, LANGUAGE_STORAGE_KEY } from "@/lib/language";
 import { type ThemePreference, applyTheme, saveTheme, getStoredTheme } from "@/lib/theme";
 import { PageContainer } from "@/components/page-container";
 import { PageHeader } from "@/components/page-header";
@@ -718,7 +718,6 @@ function LanguageTab() {
   function handleChange(key: keyof LanguageSettings, value: SupportedLanguage) {
     const updated = { ...settings, [key]: value };
     setSettings(updated);
-    const LANGUAGE_STORAGE_KEY = "xreba_language";
     localStorage.setItem(LANGUAGE_STORAGE_KEY, JSON.stringify(updated));
     toast.success("Language saved");
   }

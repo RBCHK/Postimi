@@ -25,13 +25,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "x-growth-copilot",
+  title: "Postimi",
   description: "AI-powered X growth copilot — thinking partner for content strategy",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "xGrowth",
+    title: "Postimi",
   },
 };
 
@@ -46,7 +46,7 @@ export default function RootLayout({
         <head>
           <script
             dangerouslySetInnerHTML={{
-              __html: `try{var s=localStorage.getItem('xreba_theme')||'system';var d=s==='dark'||(s==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}`,
+              __html: `try{var o=localStorage.getItem('xreba_theme');if(o!==null&&localStorage.getItem('postimi_theme')===null){localStorage.setItem('postimi_theme',o);localStorage.removeItem('xreba_theme');}var s=localStorage.getItem('postimi_theme')||'system';var d=s==='dark'||(s==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}`,
             }}
           />
         </head>
