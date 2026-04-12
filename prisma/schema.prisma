@@ -41,6 +41,8 @@ model User {
   trendSnapshots         TrendSnapshot[]
   media                  Media[]
   waitlistEntry          WaitlistEntry?          @relation("WaitlistConversion")
+  stripeCustomerId       String?                 @unique
+  subscription           Subscription?
 }
 
 // ─── Waitlist (open-registration path — see ADR 007) ─────
@@ -127,6 +129,36 @@ model LinkedInApiToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([linkedinUserId])
+}
+
+// ─── Subscription ───────────────────────────────────────
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  UNPAID
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String             @unique
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeCustomerId     String             @unique
+  stripeSubscriptionId String             @unique
+  stripePriceId        String
+  status               SubscriptionStatus
+  currentPeriodStart   DateTime
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean            @default(false)
+  canceledAt           DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([status])
 }
 
 // ─── Enums ───────────────────────────────────────────────

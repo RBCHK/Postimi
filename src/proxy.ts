@@ -24,6 +24,8 @@ const isAppOnlyApi = createRouteMatcher([
   "/api/strategist(.*)",
   "/api/media(.*)",
   "/api/webhooks/clerk(.*)",
+  "/api/webhooks/stripe(.*)",
+  "/api/billing/(.*)",
   "/api/debug(.*)",
 ]);
 
