@@ -14,7 +14,15 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Postimi uses a subdomain split in dev and prod:
+
+- **Marketing + waitlist**: [http://lvh.me:3000](http://lvh.me:3000)
+- **App (dashboard, protected)**: [http://app.lvh.me:3000](http://app.lvh.me:3000)
+
+`lvh.me` resolves to `127.0.0.1` without any `/etc/hosts` tweaks and supports
+cross-subdomain cookies — which `localhost` does not. Subdomain-related
+logic (middleware host rewrite, Clerk SSO between marketing and app) must be
+tested on `lvh.me`, not `localhost:3000`.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

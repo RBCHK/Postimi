@@ -1,4 +1,4 @@
-# xREBA — Project Guide for Claude
+# Postimi — Project Guide for Claude
 
 ## Stack
 
@@ -10,7 +10,9 @@
 
 ## Key Directories
 
-- `src/app/(app)/` — routes: home (`/`), conversation (`/c/[id]`)
+- `src/app/app/` — product routes (home, conversation, schedule, analytics, etc.)
+- `src/app/` — marketing routes (landing, waitlist, legal, sign-in)
+- `src/proxy.ts` — host-aware middleware: app.postimi.com → rewrite to /app/\*, marketing → static pages
 - `src/app/actions/` — Server Actions (DB layer)
 - `src/app/api/chat/` — streaming AI endpoint
 - `src/app/api/webhooks/clerk/` — Clerk webhook for user sync
