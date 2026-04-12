@@ -40,6 +40,30 @@ model User {
   linkedInApiToken       LinkedInApiToken?
   trendSnapshots         TrendSnapshot[]
   media                  Media[]
+  waitlistEntry          WaitlistEntry?          @relation("WaitlistConversion")
+}
+
+// ─── Waitlist (open-registration path — see ADR 007) ─────
+
+model WaitlistEntry {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  source    String?  // "landing_hero", "landing_footer", "twitter_bio", ...
+  locale    String?  // "en", "ru", "it"
+  userAgent String?
+  ipHash    String?  // sha256(ip + WAITLIST_IP_SALT) — never store raw IP
+  priority  Int      @default(0) // higher = invite sooner; FIFO within same priority
+  createdAt DateTime @default(now())
+
+  // Conversion tracking (populated in PR 7 when waitlist → invitation → sign-up)
+  invitedAt       DateTime?
+  invitationId    String?   // Clerk invitation ID
+  convertedUserId String?   @unique
+  convertedUser   User?     @relation("WaitlistConversion", fields: [convertedUserId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([source])
+  @@index([invitedAt])
 }
 
 model XApiToken {
