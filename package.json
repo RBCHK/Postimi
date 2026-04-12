@@ -59,6 +59,7 @@
     "rehype-raw": "^7.0.0",
     "sharp": "^0.34.5",
     "sonner": "^2.0.7",
+    "stripe": "^22.0.1",
     "svix": "^1.88.0",
     "tailwind-merge": "^3.5.0",
     "vaul": "^1.1.2"

@@ -100,3 +100,12 @@ export async function isAdmin(): Promise<boolean> {
   if (!clerkId) return false;
   return ADMIN_CLERK_IDS.includes(clerkId);
 }
+
+/**
+ * Pure check: is a given clerkId an admin?
+ * Works without Clerk request context — safe for cron jobs, quota checks, etc.
+ */
+export function isAdminClerkId(clerkId: string | null | undefined): boolean {
+  if (!clerkId) return false;
+  return ADMIN_CLERK_IDS.includes(clerkId);
+}

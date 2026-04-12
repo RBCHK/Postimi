@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Plus, Trash2, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -1114,6 +1115,12 @@ export function SettingsView() {
             {item.label}
           </button>
         ))}
+        <Link
+          href="/settings/billing"
+          className="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-muted transition-colors"
+        >
+          Billing
+        </Link>
       </div>
 
       {/* Desktop: sidebar + content */}
@@ -1134,6 +1141,12 @@ export function SettingsView() {
                 {item.label}
               </button>
             ))}
+            <Link
+              href="/settings/billing"
+              className="text-left px-3 py-2 rounded-md text-sm text-muted-foreground [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-muted/60 transition-colors"
+            >
+              Billing
+            </Link>
           </nav>
 
           {/* Content */}
