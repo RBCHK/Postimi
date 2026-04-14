@@ -211,6 +211,55 @@ describe("reserveQuota", () => {
     expect(quotaTxCall?.[1]).toEqual({ isolationLevel: "Serializable" });
   });
 
+  it("retries on Prisma serialization failure (P2034) and succeeds", async () => {
+    userMock.findUnique
+      .mockResolvedValueOnce({ rateLimitWindowStart: null, rateLimitRequestCount: 0 })
+      .mockResolvedValueOnce({ clerkId: "user-clerk-id", monthlyAiQuotaUsd: null });
+    userMock.update.mockResolvedValue({});
+    requireActiveSubscriptionMock.mockResolvedValueOnce(activeSub);
+
+    // Quota tx: first attempt fails with P2034, second succeeds
+    const serializationErr = Object.assign(new Error("serialization conflict"), { code: "P2034" });
+    let callCount = 0;
+    prismaMock.$transaction.mockImplementation(async (fn, opts?: unknown) => {
+      if (typeof fn !== "function") return Promise.all(fn);
+      // First call = rate limit tx (no opts). Pass through.
+      if (!opts) return fn(prismaMock);
+      // Subsequent calls = quota tx (Serializable). First throws.
+      callCount++;
+      if (callCount === 1) throw serializationErr;
+      return fn(prismaMock);
+    });
+
+    aiUsageMock.aggregate.mockResolvedValue({ _sum: { costUsd: 0 } });
+    aiUsageMock.create.mockResolvedValueOnce({ id: "res-retry" });
+
+    const { reserveQuota } = await import("../ai-quota");
+    const result = await reserveQuota({ userId: "user-1", operation: "chat" });
+    expect(result.reservationId).toBe("res-retry");
+    expect(callCount).toBe(2);
+  });
+
+  it("gives up after 3 serialization failures and throws", async () => {
+    userMock.findUnique
+      .mockResolvedValueOnce({ rateLimitWindowStart: null, rateLimitRequestCount: 0 })
+      .mockResolvedValueOnce({ clerkId: "user-clerk-id", monthlyAiQuotaUsd: null });
+    userMock.update.mockResolvedValue({});
+    requireActiveSubscriptionMock.mockResolvedValueOnce(activeSub);
+
+    const serializationErr = Object.assign(new Error("serialization conflict"), { code: "P2034" });
+    prismaMock.$transaction.mockImplementation(async (fn, opts?: unknown) => {
+      if (typeof fn !== "function") return Promise.all(fn);
+      if (!opts) return fn(prismaMock);
+      throw serializationErr;
+    });
+
+    const { reserveQuota } = await import("../ai-quota");
+    await expect(reserveQuota({ userId: "user-1", operation: "chat" })).rejects.toMatchObject({
+      code: "P2034",
+    });
+  });
+
   it("throws on unknown operation", async () => {
     const { reserveQuota } = await import("../ai-quota");
     await expect(reserveQuota({ userId: "user-1", operation: "nonexistent" })).rejects.toThrow(

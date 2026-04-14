@@ -8,6 +8,33 @@ import { PLANS } from "@/lib/plans";
 import { QuotaExceededError, RateLimitExceededError } from "@/lib/errors";
 
 /**
+ * Postgres serialization failure (SQLSTATE 40001). Raised when two
+ * Serializable transactions conflict — safe to retry with backoff.
+ * Prisma surfaces it as code "P2034".
+ */
+function isSerializationFailure(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { code?: string; meta?: { code?: string } };
+  return e.code === "P2034" || e.meta?.code === "40001";
+}
+
+async function withSerializationRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isSerializationFailure(err) || attempt === maxAttempts) throw err;
+      lastErr = err;
+      // Exponential backoff with jitter: 20-40ms, 40-80ms
+      const base = 20 * 2 ** (attempt - 1);
+      await new Promise((r) => setTimeout(r, base + Math.random() * base));
+    }
+  }
+  throw lastErr;
+}
+
+/**
  * Per-operation worst-case cost estimate. Used for RESERVED records.
  * Real cost is written back in onFinish via completeReservation.
  */
@@ -26,33 +53,36 @@ async function checkRateLimit(userId: string): Promise<void> {
   const now = new Date();
   const windowMs = 60 * 1000;
 
-  await prisma.$transaction(async (tx) => {
-    const user = await tx.user.findUnique({
-      where: { id: userId },
-      select: { rateLimitWindowStart: true, rateLimitRequestCount: true },
-    });
-    if (!user) throw new Error("User not found");
+  await withSerializationRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { rateLimitWindowStart: true, rateLimitRequestCount: true },
+      });
+      if (!user) throw new Error("User not found");
 
-    const windowExpired =
-      !user.rateLimitWindowStart || now.getTime() - user.rateLimitWindowStart.getTime() > windowMs;
+      const windowExpired =
+        !user.rateLimitWindowStart ||
+        now.getTime() - user.rateLimitWindowStart.getTime() > windowMs;
 
-    if (windowExpired) {
+      if (windowExpired) {
+        await tx.user.update({
+          where: { id: userId },
+          data: { rateLimitWindowStart: now, rateLimitRequestCount: 1 },
+        });
+        return;
+      }
+
+      if (user.rateLimitRequestCount >= PLANS.pro.rateLimitRequestsPerMinute) {
+        throw new RateLimitExceededError(PLANS.pro.rateLimitRequestsPerMinute);
+      }
+
       await tx.user.update({
         where: { id: userId },
-        data: { rateLimitWindowStart: now, rateLimitRequestCount: 1 },
+        data: { rateLimitRequestCount: { increment: 1 } },
       });
-      return;
-    }
-
-    if (user.rateLimitRequestCount >= PLANS.pro.rateLimitRequestsPerMinute) {
-      throw new RateLimitExceededError(PLANS.pro.rateLimitRequestsPerMinute);
-    }
-
-    await tx.user.update({
-      where: { id: userId },
-      data: { rateLimitRequestCount: { increment: 1 } },
-    });
-  });
+    })
+  );
 }
 
 /**
@@ -90,34 +120,36 @@ export async function reserveQuota(params: {
       ? Number(user.monthlyAiQuotaUsd)
       : PLANS.pro.monthlyAiQuotaUsd;
 
-    const reservation = await prisma.$transaction(
-      async (tx) => {
-        const agg = await tx.aiUsage.aggregate({
-          where: {
-            userId: params.userId,
-            createdAt: { gte: subscription.currentPeriodStart },
-            status: {
-              in: [AiUsageStatus.RESERVED, AiUsageStatus.COMPLETED, AiUsageStatus.ABORTED],
+    const reservation = await withSerializationRetry(() =>
+      prisma.$transaction(
+        async (tx) => {
+          const agg = await tx.aiUsage.aggregate({
+            where: {
+              userId: params.userId,
+              createdAt: { gte: subscription.currentPeriodStart },
+              status: {
+                in: [AiUsageStatus.RESERVED, AiUsageStatus.COMPLETED, AiUsageStatus.ABORTED],
+              },
             },
-          },
-          _sum: { costUsd: true },
-        });
-        const spent = Number(agg._sum.costUsd ?? 0);
-        if (spent + estimate.estimatedCostUsd > quota) {
-          throw new QuotaExceededError(spent, quota);
-        }
-        return tx.aiUsage.create({
-          data: {
-            userId: params.userId,
-            operation: params.operation,
-            model: estimate.model,
-            costUsd: estimate.estimatedCostUsd,
-            status: AiUsageStatus.RESERVED,
-          },
-          select: { id: true },
-        });
-      },
-      { isolationLevel: "Serializable" }
+            _sum: { costUsd: true },
+          });
+          const spent = Number(agg._sum.costUsd ?? 0);
+          if (spent + estimate.estimatedCostUsd > quota) {
+            throw new QuotaExceededError(spent, quota);
+          }
+          return tx.aiUsage.create({
+            data: {
+              userId: params.userId,
+              operation: params.operation,
+              model: estimate.model,
+              costUsd: estimate.estimatedCostUsd,
+              status: AiUsageStatus.RESERVED,
+            },
+            select: { id: true },
+          });
+        },
+        { isolationLevel: "Serializable" }
+      )
     );
     return { reservationId: reservation.id, model: estimate.model };
   }
