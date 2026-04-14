@@ -10,6 +10,7 @@
     { "path": "/api/cron/x-import", "schedule": "0 4 * * 1" },
     { "path": "/api/cron/x-import?mode=refresh", "schedule": "0 12 * * *" },
     { "path": "/api/cron/researcher", "schedule": "30 4 * * 1" },
-    { "path": "/api/cron/strategist", "schedule": "0 14 * * 1" }
+    { "path": "/api/cron/strategist", "schedule": "0 14 * * 1" },
+    { "path": "/api/cron/cleanup-stale-reservations", "schedule": "0 * * * *" }
   ]
 }

@@ -7,6 +7,13 @@ import { saveDailyInsightInternal } from "@/app/actions/daily-insight";
 import { getLatestTrendsInternal } from "@/app/actions/trends";
 import { getLatestFollowersSnapshotInternal } from "@/app/actions/followers";
 import { withCronLogging } from "@/lib/cron-helpers";
+import { reserveQuota, completeReservation, failReservation } from "@/lib/ai-quota";
+import { PLANS } from "@/lib/plans";
+import {
+  QuotaExceededError,
+  RateLimitExceededError,
+  SubscriptionRequiredError,
+} from "@/lib/errors";
 import type { DailyInsightContext } from "@/lib/types";
 
 export const maxDuration = 30;
@@ -16,7 +23,12 @@ export const GET = withCronLogging("daily-insight", async () => {
   const results: { userId: string; insightId?: string; error?: string }[] = [];
 
   for (const user of users) {
+    let reservationId: string | undefined;
+    let reservationCompleted = false;
     try {
+      const reservation = await reserveQuota({ userId: user.id, operation: "daily_insight" });
+      reservationId = reservation.reservationId;
+
       // 1. Latest StrategyAnalysis
       const latestStrategy = await prisma.strategyAnalysis.findFirst({
         where: { userId: user.id },
@@ -45,8 +57,10 @@ export const GET = withCronLogging("daily-insight", async () => {
       ]);
 
       // 5. Generate insights with Haiku
+      const insightModel = "claude-haiku-4-5-20251001";
       const result = await generateText({
-        model: anthropic("claude-haiku-4-5-20251001"),
+        model: anthropic(insightModel),
+        maxOutputTokens: PLANS.pro.maxOutputTokensPerRequest,
         system: getDailyInsightPrompt(),
         messages: [
           {
@@ -71,6 +85,14 @@ export const GET = withCronLogging("daily-insight", async () => {
           },
         ],
       });
+
+      await completeReservation({
+        reservationId,
+        model: insightModel,
+        tokensIn: result.usage.inputTokens ?? 0,
+        tokensOut: result.usage.outputTokens ?? 0,
+      });
+      reservationCompleted = true;
 
       // 6. Parse JSON array from response
       let insights: string[];
@@ -105,6 +127,16 @@ export const GET = withCronLogging("daily-insight", async () => {
 
       results.push({ userId: user.id, insightId: saved.id });
     } catch (err) {
+      if (reservationId && !reservationCompleted) await failReservation(reservationId);
+      if (
+        err instanceof SubscriptionRequiredError ||
+        err instanceof QuotaExceededError ||
+        err instanceof RateLimitExceededError
+      ) {
+        console.log(`[daily-insight] skip user=${user.id}: ${err.name}`);
+        results.push({ userId: user.id, error: err.name });
+        continue;
+      }
       Sentry.captureException(err);
       console.error(`[daily-insight] user=${user.id}`, err);
       results.push({

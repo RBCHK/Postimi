@@ -43,6 +43,10 @@ model User {
   waitlistEntry          WaitlistEntry?          @relation("WaitlistConversion")
   stripeCustomerId       String?                 @unique
   subscription           Subscription?
+  aiUsage                AiUsage[]
+  monthlyAiQuotaUsd      Decimal?                @db.Decimal(10, 2)
+  rateLimitWindowStart   DateTime?
+  rateLimitRequestCount  Int                     @default(0)
 }
 
 // ─── Waitlist (open-registration path — see ADR 007) ─────
@@ -159,6 +163,33 @@ model Subscription {
   updatedAt            DateTime           @updatedAt
 
   @@index([status])
+}
+
+// ─── AI usage tracking ──────────────────────────────────
+
+enum AiUsageStatus {
+  RESERVED
+  COMPLETED
+  ABORTED
+  FAILED
+}
+
+model AiUsage {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  operation String
+  model     String
+  tokensIn  Int           @default(0)
+  tokensOut Int           @default(0)
+  costUsd   Decimal       @db.Decimal(10, 6)
+  status    AiUsageStatus @default(COMPLETED)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([userId, status, createdAt])
+  @@index([operation])
 }
 
 // ─── Enums ───────────────────────────────────────────────

@@ -11,6 +11,13 @@ import {
   getAllResearchNotesInternal,
 } from "@/app/actions/research";
 import { withCronLogging } from "@/lib/cron-helpers";
+import { reserveQuota, completeReservation, failReservation } from "@/lib/ai-quota";
+import { PLANS } from "@/lib/plans";
+import {
+  QuotaExceededError,
+  RateLimitExceededError,
+  SubscriptionRequiredError,
+} from "@/lib/errors";
 import type { ResearchSource } from "@/lib/types";
 
 export const maxDuration = 120;
@@ -27,7 +34,12 @@ export const GET = withCronLogging("researcher", async () => {
   const results: { userId: string; noteId?: string; topic?: string; error?: string }[] = [];
 
   for (const user of users) {
+    let reservationId: string | undefined;
+    let reservationCompleted = false;
     try {
+      const reservation = await reserveQuota({ userId: user.id, operation: "researcher" });
+      reservationId = reservation.reservationId;
+
       // Fetch existing notes for self-management
       const existingNotes = await getAllResearchNotesInternal(user.id);
       const notesForPrompt = existingNotes.map((n) => ({
@@ -39,8 +51,10 @@ export const GET = withCronLogging("researcher", async () => {
       const searchQueries: string[] = [];
       const allSources: ResearchSource[] = [];
 
+      const researcherModel = "claude-sonnet-4-6";
       const result = await generateText({
-        model: anthropic("claude-sonnet-4-6"),
+        model: anthropic(researcherModel),
+        maxOutputTokens: PLANS.pro.maxOutputTokensPerRequest,
         system: getResearcherPrompt(),
         messages: [
           {
@@ -87,6 +101,14 @@ export const GET = withCronLogging("researcher", async () => {
 
       const text = result.text;
 
+      await completeReservation({
+        reservationId,
+        model: researcherModel,
+        tokensIn: result.usage.inputTokens ?? 0,
+        tokensOut: result.usage.outputTokens ?? 0,
+      });
+      reservationCompleted = true;
+
       // Parse topic from output
       const topicMatch =
         text.match(/\*\*(?:Topic|Тема)\*\*[:：]\s*(.+)/i) || text.match(/^#+\s*(.+)/m);
@@ -102,6 +124,16 @@ export const GET = withCronLogging("researcher", async () => {
 
       results.push({ userId: user.id, noteId: saved.id, topic: saved.topic });
     } catch (err) {
+      if (reservationId && !reservationCompleted) await failReservation(reservationId);
+      if (
+        err instanceof SubscriptionRequiredError ||
+        err instanceof QuotaExceededError ||
+        err instanceof RateLimitExceededError
+      ) {
+        console.log(`[researcher] skip user=${user.id}: ${err.name}`);
+        results.push({ userId: user.id, error: err.name });
+        continue;
+      }
       Sentry.captureException(err);
       console.error(`[researcher] user=${user.id}`, err);
       results.push({
