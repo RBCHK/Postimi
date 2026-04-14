@@ -3,6 +3,7 @@
 import { ChatMessages } from "@/components/chat-messages";
 import { ChatInput } from "@/components/chat-input";
 import { TextSelectionPopup } from "@/components/text-selection-popup";
+import { AiErrorBanner } from "@/components/ai-error-banner";
 import { useConversation } from "@/contexts/conversation-context";
 
 export function ConversationView() {
@@ -22,13 +23,7 @@ export function ConversationView() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <ChatMessages />
-      {error && (
-        <div className="mx-auto w-full max-w-2xl px-4 pb-2">
-          <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-400">
-            {error.message || "Ошибка при обращении к модели"}
-          </p>
-        </div>
-      )}
+      {error && <AiErrorBanner error={error} />}
       <ChatInput
         value={input}
         onChange={setInput}
