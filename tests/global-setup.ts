@@ -58,6 +58,15 @@ setup("authenticate via clerk", async ({ page }, testInfo) => {
   await page.waitForURL((url) => !url.toString().includes("/sign-in"), { timeout: 15_000 });
   await expect(page.locator("body")).toBeVisible();
 
+  // Grant an active subscription so AI endpoints aren't blocked by requireActiveSubscription.
+  // The endpoint is gated by ALLOW_TEST_SEED (never set in production).
+  const grantRes = await page.request.post("/api/test/grant-subscription");
+  if (!grantRes.ok()) {
+    throw new Error(
+      `Failed to seed test subscription: ${grantRes.status()} ${await grantRes.text()}`
+    );
+  }
+
   // Persist auth state for all other projects
   await page.context().storageState({ path: authFile });
 });
