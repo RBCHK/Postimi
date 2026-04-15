@@ -133,8 +133,8 @@ export function StrategistView() {
       </div>
 
       {/* Main layout */}
-      <div className="flex flex-1 min-h-0 justify-center">
-        <div className="flex flex-1 min-h-0 gap-0 md:gap-8 max-w-3xl w-full">
+      <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 min-h-0 gap-0 md:gap-8 w-full">
           {/* Sidebar */}
           <nav
             className={`flex-col gap-0.5 w-full md:w-44 shrink-0 ${mobileShowContent ? "hidden md:flex" : "flex"}`}

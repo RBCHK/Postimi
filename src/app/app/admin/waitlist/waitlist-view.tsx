@@ -72,7 +72,7 @@ export function WaitlistAdminView({ entries }: { entries: WaitlistRow[] }) {
   };
 
   return (
-    <PageContainer className="flex flex-col h-full space-y-4">
+    <PageContainer className="space-y-4">
       <PageHeader title="Waitlist" subtitle={`${entries.length} total`}>
         <Button onClick={onSend} disabled={pending || selected.size === 0}>
           {pending
@@ -96,7 +96,7 @@ export function WaitlistAdminView({ entries }: { entries: WaitlistRow[] }) {
         </TabsList>
       </Tabs>
 
-      <div className="rounded-lg border flex-1 overflow-auto">
+      <div className="rounded-lg border">
         <table className="w-full text-sm">
           <thead className="border-b text-xs text-muted-foreground">
             <tr>

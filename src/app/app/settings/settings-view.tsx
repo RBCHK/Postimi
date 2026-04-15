@@ -1061,8 +1061,8 @@ export function SettingsView() {
       </div>
 
       {/* Desktop: sidebar + content */}
-      <div className="flex flex-1 min-h-0 justify-center">
-        <div className="flex flex-1 min-h-0 gap-8 max-w-3xl w-full">
+      <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 min-h-0 gap-8 w-full">
           {/* Sidebar */}
           <nav className="hidden md:flex flex-col gap-0.5 w-44 shrink-0">
             {SETTINGS_NAV.map((item) => (
