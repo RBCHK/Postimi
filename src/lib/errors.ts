@@ -22,3 +22,13 @@ export class QuotaExceededError extends Error {
     this.name = "QuotaExceededError";
   }
 }
+
+/**
+ * Thrown when a user exceeds the per-minute request rate limit.
+ */
+export class RateLimitExceededError extends Error {
+  constructor(public readonly limitPerMinute: number) {
+    super(`Rate limit exceeded: ${limitPerMinute} requests per minute`);
+    this.name = "RateLimitExceededError";
+  }
+}

@@ -21,6 +21,13 @@ import { prisma } from "@/lib/prisma";
 import { fetchUserData } from "@/lib/x-api";
 import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
 import { withCronLogging } from "@/lib/cron-helpers";
+import { reserveQuota, completeReservation, failReservation } from "@/lib/ai-quota";
+import { PLANS } from "@/lib/plans";
+import {
+  QuotaExceededError,
+  RateLimitExceededError,
+  SubscriptionRequiredError,
+} from "@/lib/errors";
 import type { ConfigChange, MetricsSnapshot, PastDecisionItem } from "@/lib/types";
 
 export const maxDuration = 120;
@@ -36,7 +43,12 @@ export const GET = withCronLogging("strategist", async () => {
     [];
 
   for (const user of users) {
+    let reservationId: string | undefined;
+    let reservationCompleted = false;
     try {
+      const reservation = await reserveQuota({ userId: user.id, operation: "strategist" });
+      reservationId = reservation.reservationId;
+
       // 1. Collect context in parallel
       const dateRange = await getAnalyticsDateRangeInternal(user.id);
       if (!dateRange) continue; // skip users with no analytics data
@@ -128,8 +140,10 @@ export const GET = withCronLogging("strategist", async () => {
       const tavilyClient = tavily({ apiKey: tavilyApiKey });
       const searchQueries: string[] = [];
 
+      const strategistModel = "claude-sonnet-4-6";
       const result = await generateText({
-        model: anthropic("claude-sonnet-4-6"),
+        model: anthropic(strategistModel),
+        maxOutputTokens: PLANS.pro.maxOutputTokensPerRequest,
         system: getStrategistPrompt(),
         messages: [{ role: "user", content: userMessage }],
         tools: {
@@ -157,6 +171,14 @@ export const GET = withCronLogging("strategist", async () => {
       });
 
       const text = result.text;
+
+      await completeReservation({
+        reservationId,
+        model: strategistModel,
+        tokensIn: result.usage.inputTokens ?? 0,
+        tokensOut: result.usage.outputTokens ?? 0,
+      });
+      reservationCompleted = true;
 
       // 7. Build CsvSummary-compatible object
       const csvSummary = {
@@ -213,6 +235,16 @@ export const GET = withCronLogging("strategist", async () => {
 
       results.push({ userId: user.id, analysisId: saved.id, proposalId });
     } catch (err) {
+      if (reservationId && !reservationCompleted) await failReservation(reservationId);
+      if (
+        err instanceof SubscriptionRequiredError ||
+        err instanceof QuotaExceededError ||
+        err instanceof RateLimitExceededError
+      ) {
+        console.log(`[strategist] skip user=${user.id}: ${err.name}`);
+        results.push({ userId: user.id, error: err.name });
+        continue;
+      }
       Sentry.captureException(err);
       console.error(`[strategist] user=${user.id}`, err);
       results.push({

@@ -131,6 +131,78 @@ export function BillingView({ billing }: { billing: BillingInfo }) {
           </Button>
         )}
       </div>
+
+      <UsageSection billing={billing} />
     </PageContainer>
+  );
+}
+
+function UsageSection({ billing }: { billing: BillingInfo }) {
+  const pct = billing.quotaUsd > 0 ? Math.min(100, (billing.usedUsd / billing.quotaUsd) * 100) : 0;
+  const barColor = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-green-500";
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <div className="rounded-lg border p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium">AI usage this period</h3>
+          <span className="text-sm tabular-nums text-muted-foreground">
+            ${billing.usedUsd.toFixed(2)} / ${billing.quotaUsd.toFixed(2)}
+          </span>
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+          <div className={`h-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+        </div>
+
+        {billing.breakdown.length > 0 && (
+          <div className="space-y-1 pt-2">
+            {billing.breakdown.map((b) => (
+              <div
+                key={b.operation}
+                className="flex items-center justify-between text-xs text-muted-foreground"
+              >
+                <span>
+                  {b.operation} <span className="opacity-60">({b.count})</span>
+                </span>
+                <span className="tabular-nums">${b.costUsd.toFixed(4)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {billing.recent.length > 0 && (
+        <div className="rounded-lg border p-5 space-y-3">
+          <h3 className="text-sm font-medium">Recent activity (last 30 days)</h3>
+          <div className="space-y-1 text-xs">
+            {billing.recent.map((r) => (
+              <div
+                key={r.id}
+                className="flex items-center justify-between border-b border-border/50 py-1.5 last:border-0"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{r.operation}</span>
+                  <span className="opacity-60">{r.model}</span>
+                  {r.status !== "COMPLETED" && (
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase">
+                      {r.status.toLowerCase()}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 text-muted-foreground">
+                  <span className="tabular-nums">
+                    {r.tokensIn + r.tokensOut > 0
+                      ? `${(r.tokensIn + r.tokensOut).toLocaleString()}t`
+                      : "—"}
+                  </span>
+                  <span className="tabular-nums">${r.costUsd.toFixed(4)}</span>
+                  <span>{new Date(r.createdAt).toLocaleDateString()}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

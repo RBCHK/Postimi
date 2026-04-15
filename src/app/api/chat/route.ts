@@ -12,7 +12,20 @@ import { fetchTweetFromText, extractTweetUrl } from "@/lib/parse-tweet";
 import { fetchTweetById } from "@/lib/x-api";
 import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
 import { getLatestTrendsInternal } from "@/app/actions/trends";
+import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
+import {
+  reserveQuota,
+  completeReservation,
+  abortReservation,
+  failReservation,
+} from "@/lib/ai-quota";
+import { PLANS } from "@/lib/plans";
+import {
+  QuotaExceededError,
+  RateLimitExceededError,
+  SubscriptionRequiredError,
+} from "@/lib/errors";
 
 export const maxDuration = 60;
 
@@ -26,7 +39,14 @@ export async function POST(req: NextRequest) {
   const dbUser = await prisma.user.findUnique({ where: { clerkId }, select: { id: true } });
   const xCredentials = dbUser ? await getXApiTokenForUserInternal(dbUser.id) : null;
 
+  if (!dbUser) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
+  let reservationId: string | undefined;
   try {
+    const reservation = await reserveQuota({ userId: dbUser.id, operation: "chat" });
+    reservationId = reservation.reservationId;
     const body = await req.json();
     const {
       messages,
@@ -144,8 +164,12 @@ export async function POST(req: NextRequest) {
     // Convert UIMessage[] to ModelMessage[] for streamText
     const modelMessages = await convertToModelMessages(messages);
 
+    const rid = reservationId;
+    let finished = false;
+
     const result = streamText({
       model: anthropic(model),
+      maxOutputTokens: PLANS.pro.maxOutputTokensPerRequest,
       system: systemPrompt,
       messages: modelMessages,
       providerOptions: {
@@ -153,10 +177,42 @@ export async function POST(req: NextRequest) {
           cacheControl: { type: "ephemeral" },
         },
       },
+      onFinish: async ({ usage }) => {
+        finished = true;
+        await completeReservation({
+          reservationId: rid,
+          model,
+          tokensIn: usage.inputTokens ?? 0,
+          tokensOut: usage.outputTokens ?? 0,
+        });
+      },
+      onError: async ({ error }) => {
+        if (!finished) await abortReservation(rid);
+        Sentry.captureException(error, { tags: { area: "chat-stream" } });
+      },
+      onAbort: async () => {
+        if (!finished) await abortReservation(rid);
+      },
     });
 
     return result.toUIMessageStreamResponse();
   } catch (err) {
+    if (reservationId) await failReservation(reservationId);
+    if (err instanceof SubscriptionRequiredError) {
+      return NextResponse.json({ error: "subscription_required" }, { status: 402 });
+    }
+    if (err instanceof QuotaExceededError) {
+      return NextResponse.json(
+        { error: "quota_exceeded", usedUsd: err.usedUsd, limitUsd: err.limitUsd },
+        { status: 402 }
+      );
+    }
+    if (err instanceof RateLimitExceededError) {
+      return NextResponse.json(
+        { error: "rate_limit", limitPerMinute: err.limitPerMinute },
+        { status: 429 }
+      );
+    }
     console.error("[chat]", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : String(err) },
