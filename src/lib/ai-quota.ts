@@ -217,6 +217,25 @@ export async function abortReservation(reservationId: string): Promise<void> {
  * Marks a reservation as FAILED (request never reached Anthropic).
  * Excluded from quota — user isn't charged for something that didn't happen.
  */
+/**
+ * Sweeps RESERVED rows older than 10 min → ABORTED. Safe to call from any cron.
+ * Returns number of rows swept.
+ */
+export async function sweepStaleReservations(): Promise<number> {
+  const staleThreshold = new Date(Date.now() - 10 * 60 * 1000);
+  const result = await prisma.aiUsage.updateMany({
+    where: { status: AiUsageStatus.RESERVED, createdAt: { lt: staleThreshold } },
+    data: { status: AiUsageStatus.ABORTED },
+  });
+  if (result.count > 0) {
+    Sentry.captureMessage(
+      `[sweepStaleReservations] swept ${result.count} stale reservations`,
+      "warning"
+    );
+  }
+  return result.count;
+}
+
 export async function failReservation(reservationId: string): Promise<void> {
   try {
     await prisma.aiUsage.update({

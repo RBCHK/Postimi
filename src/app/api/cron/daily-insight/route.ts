@@ -7,7 +7,12 @@ import { saveDailyInsightInternal } from "@/app/actions/daily-insight";
 import { getLatestTrendsInternal } from "@/app/actions/trends";
 import { getLatestFollowersSnapshotInternal } from "@/app/actions/followers";
 import { withCronLogging } from "@/lib/cron-helpers";
-import { reserveQuota, completeReservation, failReservation } from "@/lib/ai-quota";
+import {
+  reserveQuota,
+  completeReservation,
+  failReservation,
+  sweepStaleReservations,
+} from "@/lib/ai-quota";
 import { PLANS } from "@/lib/plans";
 import {
   QuotaExceededError,
@@ -19,6 +24,9 @@ import type { DailyInsightContext } from "@/lib/types";
 export const maxDuration = 30;
 
 export const GET = withCronLogging("daily-insight", async () => {
+  await sweepStaleReservations().catch((err) =>
+    Sentry.captureException(err, { tags: { area: "ai-quota", step: "sweep" } })
+  );
   const users = await prisma.user.findMany({ select: { id: true } });
   const results: { userId: string; insightId?: string; error?: string }[] = [];
 
