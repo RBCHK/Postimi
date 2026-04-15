@@ -6,7 +6,6 @@ import Link from "next/link";
 import { Plus, Trash2, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -25,8 +24,6 @@ import {
 import {
   getScheduleConfig,
   saveScheduleConfig,
-  getGoalConfig,
-  updateGoalConfig,
   type DayKey,
   type SlotRow,
   type ScheduleConfig,
@@ -505,64 +502,6 @@ function ScheduleSection({
   );
 }
 
-function GoalConfigSection() {
-  const [targetFollowers, setTargetFollowers] = useState("100000");
-  const [targetDate, setTargetDate] = useState("2026-12-31");
-  const [saving, setSaving] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    getGoalConfig()
-      .then((cfg) => {
-        if (cfg?.targetFollowers) setTargetFollowers(String(cfg.targetFollowers));
-        if (cfg?.targetDate) setTargetDate(cfg.targetDate.toISOString().split("T")[0]);
-        setLoaded(true);
-      })
-      .catch(() => setLoaded(true));
-  }, []);
-
-  async function handleSave() {
-    setSaving(true);
-    try {
-      await updateGoalConfig({
-        targetFollowers: parseInt(targetFollowers),
-        targetDate: new Date(`${targetDate}T00:00:00.000Z`),
-      });
-      toast.success("Goal saved");
-    } catch {
-      toast.error("Failed to save goal");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (!loaded) return null;
-
-  return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm font-medium">Follower goal</p>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="flex flex-col gap-1.5 flex-1">
-          <label className="text-xs text-muted-foreground">Target followers</label>
-          <Input
-            type="number"
-            value={targetFollowers}
-            onChange={(e) => setTargetFollowers(e.target.value)}
-            placeholder="100000"
-          />
-        </div>
-        <div className="flex flex-col gap-1.5 flex-1">
-          <label className="text-xs text-muted-foreground">Target date</label>
-          <Input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
-        </div>
-        <Button onClick={handleSave} disabled={saving} size="sm" className="sm:mb-0 shrink-0">
-          {saving ? "Saving…" : "Save"}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 function StrategyConfigTab() {
   const [config, setConfig] = useState<ScheduleConfig>(DEFAULT_SCHEDULE);
   const configRef = useRef<ScheduleConfig>(DEFAULT_SCHEDULE);
@@ -683,8 +622,6 @@ function StrategyConfigTab() {
 
   return (
     <div className="flex flex-col gap-6">
-      <GoalConfigSection />
-      <Separator />
       <div className="flex flex-col gap-5">
         {sections.map(({ label, section }) => (
           <ScheduleSection
@@ -1124,8 +1061,8 @@ export function SettingsView() {
       </div>
 
       {/* Desktop: sidebar + content */}
-      <div className="flex flex-1 min-h-0 justify-center">
-        <div className="flex flex-1 min-h-0 gap-8 max-w-3xl w-full">
+      <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 min-h-0 gap-8 w-full">
           {/* Sidebar */}
           <nav className="hidden md:flex flex-col gap-0.5 w-44 shrink-0">
             {SETTINGS_NAV.map((item) => (

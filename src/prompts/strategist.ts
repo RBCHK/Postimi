@@ -2,7 +2,6 @@ import type {
   AnalyticsSummary,
   CsvSummary,
   FollowersSnapshotItem,
-  GoalTrackingData,
   PastDecisionItem,
   ScheduledSlot,
   TrendItem,
@@ -46,7 +45,6 @@ After searching, analyze the user's data alongside your research findings:
 - Follower growth rate: target ≥ 5% monthly
 - **Consistency check**: Are there gaps in the posting schedule? The X algorithm penalizes inconsistency — flag any days with 0 posts and propose fixes.
 - **Trending topics**: Are any current trends relevant to the user's niche? If so, note the urgency — AI trends live 4–8 days, act within 12–24 hours.
-- **Goal tracking**: Is the user on track to hit their follower target? Calculate required daily growth vs actual.
 
 ### Step 3 — Strategy Output
 Produce a structured weekly strategy using EXACTLY this markdown format:
@@ -62,7 +60,6 @@ Produce a structured weekly strategy using EXACTLY this markdown format:
 - New followers gained: [N]
 - Engagement rate: [N]% ([strong / average / needs fixing] vs 2.5% benchmark)
 - Follower growth rate: [N]% ([on track / below target] vs 5% monthly target)
-- Goal progress: [current] / [target] followers — [on track / N days behind / N days ahead]
 
 ### 🔍 What's Working
 [2–3 specific observations from the top posts. Be concrete — mention actual post patterns, not generic advice.]
@@ -143,7 +140,6 @@ export function buildStrategistUserMessage(
   _scheduledSlots?: ScheduledSlot[],
   researchNotes?: { topic: string; summary: string }[],
   previousAnalysis?: string,
-  goalData?: GoalTrackingData,
   scheduleConfig?: ScheduleConfig,
   pastDecisions?: PastDecisionItem[]
 ): string {
@@ -223,17 +219,6 @@ ${followersHistory
   )
   .join("\n")}`
       : "";
-
-  // --- Goal tracking section ---
-  const goalSection = goalData
-    ? `## Goal Tracking
-- Current followers: ${goalData.currentFollowers}
-- Target: ${goalData.targetFollowers} by ${goalData.targetDate.toISOString().split("T")[0]}
-- Rolling 30-day avg growth: +${goalData.dailyAvgGrowth}/day
-- Projected reach date: ${goalData.projectedDate ? goalData.projectedDate.toISOString().split("T")[0] : "unknown (no positive growth)"}
-- Deviation: ${goalData.deviationDays > 0 ? `${goalData.deviationDays} days ahead` : goalData.deviationDays < 0 ? `${Math.abs(goalData.deviationDays)} days behind` : "on track"}
-- Status: ${goalData.onTrack ? "✅ On track" : "❌ Behind schedule"}`
-    : "";
 
   // --- Trends section ---
   const trendsSection =
@@ -320,7 +305,6 @@ ${pastDecisions
     statsSection,
     topPostsSection,
     followersSection,
-    goalSection,
     trendsSection,
     scheduleConfigSection,
     researchSection,

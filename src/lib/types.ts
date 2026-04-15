@@ -1,4 +1,4 @@
-export const CONTENT_TYPES = ["Reply", "Post", "Thread", "Article", "Quote"] as const;
+export const CONTENT_TYPES = ["Post", "Reply", "Thread", "Article", "Quote"] as const;
 export type ContentType = (typeof CONTENT_TYPES)[number];
 
 export const DRAFT_DEFAULT_TITLE = "Empty draft";
@@ -9,7 +9,7 @@ export type DraftStatus = (typeof DRAFT_STATUSES)[number];
 export const SLOT_STATUSES = ["empty", "scheduled", "posted"] as const;
 export type SlotStatus = (typeof SLOT_STATUSES)[number];
 
-export const SLOT_TYPES = ["Reply", "Post", "Thread", "Article", "Quote"] as const;
+export const SLOT_TYPES = ["Post", "Reply", "Thread", "Article", "Quote"] as const;
 export type SlotType = (typeof SLOT_TYPES)[number];
 
 export interface Draft {
@@ -284,24 +284,6 @@ export interface FollowersSnapshotItem {
   followingCount: number;
   deltaFollowers: number;
   deltaFollowing: number;
-}
-
-export interface GoalTrackingData {
-  currentFollowers: number;
-  targetFollowers: number;
-  targetDate: Date;
-  dailyAvgGrowth: number;
-  projectedDate: Date | null;
-  deviationDays: number;
-  onTrack: boolean;
-}
-
-export interface GoalChartData {
-  snapshots: { date: string; followers: number }[];
-  targetFollowers: number;
-  targetDate: string;
-  firstFollowers: number;
-  firstDate: string;
 }
 
 // --- Trends ---

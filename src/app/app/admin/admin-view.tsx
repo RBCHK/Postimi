@@ -320,8 +320,8 @@ export function AdminView({ initialConfigs, initialRuns }: AdminViewProps) {
         </Button>
       </PageHeader>
 
-      <div className="flex flex-1 min-h-0 justify-center overflow-y-auto">
-        <div className="w-full max-w-3xl space-y-6 pb-8">
+      <div className="flex flex-1 min-h-0 flex-col overflow-y-auto">
+        <div className="space-y-6 pb-8">
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList>
               <TabsTrigger value="crons">Cron Jobs</TabsTrigger>

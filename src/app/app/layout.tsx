@@ -35,7 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <ClerkProviderWrapper>
-      <div className="flex h-dvh flex-col bg-background">
+      <div data-app-shell className="flex h-dvh flex-col bg-background">
         <AppHeader />
 
         <div className="flex flex-1 overflow-hidden md:px-[15px]">
