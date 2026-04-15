@@ -7,6 +7,8 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { EmptyState } from "@/components/empty-state";
 import { sendBatchInvitations, type BatchInvitationResult } from "@/app/actions/invitations";
 
 export interface WaitlistRow {
@@ -79,21 +81,20 @@ export function WaitlistAdminView({ entries }: { entries: WaitlistRow[] }) {
         </Button>
       </PageHeader>
 
-      <div className="flex gap-2">
-        {(["uninvited", "invited", "converted", "all"] as Filter[]).map((f) => (
-          <Button
-            key={f}
-            size="sm"
-            variant={filter === f ? "default" : "outline"}
-            onClick={() => {
-              setFilter(f);
-              setSelected(new Set());
-            }}
-          >
-            {f}
-          </Button>
-        ))}
-      </div>
+      <Tabs
+        value={filter}
+        onValueChange={(v) => {
+          setFilter(v as Filter);
+          setSelected(new Set());
+        }}
+      >
+        <TabsList>
+          <TabsTrigger value="uninvited">Uninvited</TabsTrigger>
+          <TabsTrigger value="invited">Invited</TabsTrigger>
+          <TabsTrigger value="converted">Converted</TabsTrigger>
+          <TabsTrigger value="all">All</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       <div className="rounded-lg border">
         <table className="w-full text-sm">
@@ -158,8 +159,8 @@ export function WaitlistAdminView({ entries }: { entries: WaitlistRow[] }) {
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-sm text-muted-foreground">
-                  No entries
+                <td colSpan={7}>
+                  <EmptyState message="No entries" />
                 </td>
               </tr>
             )}

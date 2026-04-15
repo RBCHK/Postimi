@@ -10,7 +10,7 @@ import {
 } from "@/app/actions/analytics";
 import { getFollowersHistoryInternal } from "@/app/actions/followers";
 import { getLatestTrendsInternal } from "@/app/actions/trends";
-import { getGoalTrackingDataInternal, getScheduleConfigInternal } from "@/app/actions/schedule";
+import { getScheduleConfigInternal } from "@/app/actions/schedule";
 import { getRecentResearchNotesInternal } from "@/app/actions/research";
 import { saveAnalysisInternal, getAnalysesInternal } from "@/app/actions/strategist";
 import {
@@ -62,7 +62,6 @@ export const GET = withCronLogging("strategist", async () => {
         followersHistory,
         trends,
         researchNotes,
-        goalData,
         previousAnalyses,
         scheduleConfig,
         acceptedProposals,
@@ -71,7 +70,6 @@ export const GET = withCronLogging("strategist", async () => {
         getFollowersHistoryInternal(user.id, 30),
         getLatestTrendsInternal(user.id),
         getRecentResearchNotesInternal(user.id, 3),
-        getGoalTrackingDataInternal(user.id),
         getAnalysesInternal(user.id),
         getScheduleConfigInternal(user.id),
         getAcceptedProposalsInternal(user.id, 30),
@@ -131,7 +129,6 @@ export const GET = withCronLogging("strategist", async () => {
         undefined,
         researchNotes.map((n) => ({ topic: n.topic, summary: n.summary })),
         previousAnalysis,
-        goalData ?? undefined,
         scheduleConfig ?? undefined,
         pastDecisions
       );

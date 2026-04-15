@@ -367,8 +367,6 @@ model StrategyConfig {
   id              String    @id @default(cuid())
   userId          String
   scheduleConfig  Json?     // { posts: { slots: [...] }, threads: {...}, articles: {...} }
-  targetFollowers Int?      // growth goal, e.g. 10000
-  targetDate      DateTime? // goal deadline, e.g. 2026-12-31
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

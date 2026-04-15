@@ -122,12 +122,16 @@
   * {
     @apply border-border outline-ring/50;
   }
-  html {
+  body {
+    @apply bg-background text-foreground;
+  }
+  /* App shell (dashboard) locks the viewport so inner columns own scroll.
+     Marketing pages and admin layouts use normal document scrolling. */
+  body:has([data-app-shell]) {
     overflow: hidden;
     height: 100dvh;
   }
-  body {
-    @apply bg-background text-foreground;
+  html:has(body [data-app-shell]) {
     overflow: hidden;
     height: 100dvh;
   }

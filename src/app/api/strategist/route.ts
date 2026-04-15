@@ -133,7 +133,6 @@ export async function POST(req: NextRequest) {
             undefined,
             undefined,
             undefined,
-            undefined,
             scheduleConfig ?? undefined,
             pastDecisions
           ),

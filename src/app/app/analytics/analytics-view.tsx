@@ -8,7 +8,6 @@ import { FollowerChart } from "./components/follower-chart";
 import { PostingFrequencyChart } from "./components/posting-frequency-chart";
 import { TopContentTable } from "./components/top-content-table";
 import { EngagementHeatmap } from "./components/engagement-heatmap";
-import { GoalProgressChart } from "./components/goal-progress-chart";
 import { PostVelocityChart } from "./components/post-velocity-chart";
 import { PeriodPicker } from "./components/period-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,7 +17,7 @@ import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 
 export function AnalyticsView() {
-  const { summary, goalChartData, dateRange, isLoading } = useAnalytics();
+  const { summary, dateRange, isLoading } = useAnalytics();
 
   return (
     <PageContainer className="space-y-4">
@@ -61,8 +60,6 @@ export function AnalyticsView() {
                 <FollowerChart data={summary.dailyStats} />
                 <PostingFrequencyChart data={summary.postsByDay} />
               </div>
-
-              {goalChartData && <GoalProgressChart data={goalChartData} />}
 
               <EngagementHeatmap />
             </TabsContent>

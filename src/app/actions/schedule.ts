@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUserId, requireUser } from "@/lib/auth";
-import type { GoalChartData, GoalTrackingData, SlotStatus, SlotType } from "@/lib/types";
+import type { SlotStatus, SlotType } from "@/lib/types";
 import { SlotType as PrismaSlotType } from "@/generated/prisma";
 import {
   calendarDateStr,
@@ -628,107 +628,6 @@ export async function addToQueue(
   return null;
 }
 
-// ─── Goal Config ──────────────────────────────────────────
-
-export async function getGoalConfig(): Promise<{
-  targetFollowers: number | null;
-  targetDate: Date | null;
-} | null> {
-  const userId = await requireUserId();
-  const row = await prisma.strategyConfig.findFirst({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    select: { targetFollowers: true, targetDate: true },
-  });
-  if (!row) return null;
-  return { targetFollowers: row.targetFollowers, targetDate: row.targetDate };
-}
-
-export async function updateGoalConfig(data: {
-  targetFollowers: number;
-  targetDate: Date;
-}): Promise<void> {
-  const userId = await requireUserId();
-  const existing = await prisma.strategyConfig.findFirst({ where: { userId } });
-  if (existing) {
-    await prisma.strategyConfig.update({
-      where: { id: existing.id },
-      data: { targetFollowers: data.targetFollowers, targetDate: data.targetDate },
-    });
-  } else {
-    await prisma.strategyConfig.create({
-      data: { targetFollowers: data.targetFollowers, targetDate: data.targetDate, userId },
-    });
-  }
-  revalidatePath("/");
-}
-
-export async function getGoalTrackingData(): Promise<GoalTrackingData | null> {
-  const userId = await requireUserId();
-  return _getGoalTrackingData(userId);
-}
-
-export async function getGoalTrackingDataInternal(
-  userId: string
-): Promise<GoalTrackingData | null> {
-  return _getGoalTrackingData(userId);
-}
-
-async function _getGoalTrackingData(userId: string): Promise<GoalTrackingData | null> {
-  const config = await prisma.strategyConfig.findFirst({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    select: { targetFollowers: true, targetDate: true },
-  });
-  if (!config?.targetFollowers || !config?.targetDate) return null;
-
-  const since = new Date();
-  since.setUTCHours(0, 0, 0, 0);
-  since.setUTCDate(since.getUTCDate() - 30);
-
-  const snapshots = await prisma.followersSnapshot.findMany({
-    where: { userId, date: { gte: since } },
-    orderBy: { date: "asc" },
-  });
-
-  if (snapshots.length === 0) return null;
-
-  const latest = snapshots[snapshots.length - 1];
-  const currentFollowers = latest.followersCount;
-
-  const totalDelta = snapshots.reduce((sum, s) => sum + s.deltaFollowers, 0);
-  const dailyAvgGrowth = snapshots.length > 1 ? totalDelta / snapshots.length : 0;
-
-  const remaining = config.targetFollowers - currentFollowers;
-  let projectedDate: Date | null = null;
-  if (dailyAvgGrowth > 0) {
-    const daysNeeded = Math.ceil(remaining / dailyAvgGrowth);
-    projectedDate = new Date();
-    projectedDate.setUTCDate(projectedDate.getUTCDate() + daysNeeded);
-  }
-
-  const targetDate = new Date(config.targetDate);
-  const now = new Date();
-  const daysToTarget = Math.ceil((targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  const requiredDailyGrowth =
-    daysToTarget > 0 ? remaining / daysToTarget : remaining > 0 ? Infinity : 0;
-  const deviationDays = projectedDate
-    ? Math.round((targetDate.getTime() - projectedDate.getTime()) / (1000 * 60 * 60 * 24))
-    : -Infinity;
-
-  const onTrack = dailyAvgGrowth >= requiredDailyGrowth;
-
-  return {
-    currentFollowers,
-    targetFollowers: config.targetFollowers,
-    targetDate: config.targetDate,
-    dailyAvgGrowth: Math.round(dailyAvgGrowth * 10) / 10,
-    projectedDate,
-    deviationDays: deviationDays === -Infinity ? -999 : deviationDays,
-    onTrack,
-  };
-}
-
 // ─── Composer: re-schedule helpers ────────────────────────
 
 /**
@@ -761,32 +660,4 @@ export async function updateScheduledContent(slotId: string, content: string) {
     data: { content },
   });
   revalidatePath("/");
-}
-
-export async function getGoalChartData(): Promise<GoalChartData | null> {
-  const userId = await requireUserId();
-  const config = await prisma.strategyConfig.findFirst({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    select: { targetFollowers: true, targetDate: true },
-  });
-  if (!config?.targetFollowers || !config?.targetDate) return null;
-
-  const snapshots = await prisma.followersSnapshot.findMany({
-    where: { userId },
-    orderBy: { date: "asc" },
-    select: { date: true, followersCount: true },
-  });
-  if (snapshots.length === 0) return null;
-
-  return {
-    snapshots: snapshots.map((s) => ({
-      date: s.date.toISOString().split("T")[0],
-      followers: s.followersCount,
-    })),
-    targetFollowers: config.targetFollowers,
-    targetDate: config.targetDate.toISOString().split("T")[0],
-    firstFollowers: snapshots[0].followersCount,
-    firstDate: snapshots[0].date.toISOString().split("T")[0],
-  };
 }
