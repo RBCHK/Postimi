@@ -32,7 +32,7 @@ const isAppOnlyApi = createRouteMatcher([
 // Paths allowed on the app host without authentication.
 // Everything else on the app host requires Clerk auth.
 // (API routes return early above — no need to include them here.)
-const isPublicAppPath = createRouteMatcher(["/sign-in(.*)"]);
+const isPublicAppPath = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"]);
 
 export default clerkMiddleware(async (auth, req: NextRequest) => {
   const rawHost = (req.headers.get("host") ?? "").split(":")[0].toLowerCase();
