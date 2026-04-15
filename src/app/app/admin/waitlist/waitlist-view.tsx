@@ -72,7 +72,7 @@ export function WaitlistAdminView({ entries }: { entries: WaitlistRow[] }) {
   };
 
   return (
-    <PageContainer className="space-y-4">
+    <PageContainer className="flex flex-col h-full space-y-4">
       <PageHeader title="Waitlist" subtitle={`${entries.length} total`}>
         <Button onClick={onSend} disabled={pending || selected.size === 0}>
           {pending
