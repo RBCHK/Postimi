@@ -125,6 +125,8 @@ IMPORTANT: Never commit directly to `main`. Branch protection is enabled.
 
 **After task is done**: verify CI passes + Vercel preview deploy succeeds + feature works in preview URL — only then create PR via `gh pr create` and report PR URL to user.
 
+**Before merging any PR**: run `gh pr view <n> --json statusCheckRollup` and verify **every** check is green (ci, e2e, Vercel — not a subset). One red check blocks merge even if others are green. "Ready to merge" requires ALL checks passing, not just the ones you remembered to look at. If a check is red but you believe it's a flake, rerun it and wait — never merge red.
+
 **After PR merge**: `git checkout main && git pull --rebase` to sync local main before starting next task.
 
 ## Workflow Rules

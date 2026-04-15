@@ -45,10 +45,10 @@ export async function POST(req: Request) {
   const { type, data } = payload as { type: string; data: ClerkUserEvent };
 
   if (type === "user.created" || type === "user.updated") {
-    const email = data.email_addresses?.[0]?.email_address ?? "";
+    const email = (data.email_addresses?.[0]?.email_address ?? "").toLowerCase();
     const name = [data.first_name, data.last_name].filter(Boolean).join(" ") || null;
 
-    await prisma.user.upsert({
+    const user = await prisma.user.upsert({
       where: { clerkId: data.id },
       update: {
         email,
@@ -62,6 +62,18 @@ export async function POST(req: Request) {
         imageUrl: data.image_url ?? null,
       },
     });
+
+    // Link waitlist conversion (best-effort; never fail webhook on this).
+    if (type === "user.created" && email) {
+      try {
+        await prisma.waitlistEntry.updateMany({
+          where: { email, convertedUserId: null },
+          data: { convertedUserId: user.id },
+        });
+      } catch (err) {
+        console.error("[clerk-webhook] waitlist conversion link failed:", err);
+      }
+    }
   }
 
   if (type === "user.deleted") {
