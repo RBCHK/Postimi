@@ -96,7 +96,7 @@ export function WaitlistAdminView({ entries }: { entries: WaitlistRow[] }) {
         </TabsList>
       </Tabs>
 
-      <div className="rounded-lg border">
+      <div className="rounded-lg border flex-1 overflow-auto">
         <table className="w-full text-sm">
           <thead className="border-b text-xs text-muted-foreground">
             <tr>
