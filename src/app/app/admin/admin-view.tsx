@@ -324,7 +324,7 @@ export function AdminView({ initialConfigs, initialRuns, initialWaitlist }: Admi
   };
 
   return (
-    <PageContainer className="flex flex-col h-full overflow-hidden">
+    <PageContainer width="full" className="flex flex-col h-full overflow-hidden">
       <PageHeader title="Admin">
         <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isPending}>
           <RefreshCw className={`mr-2 h-4 w-4 ${isPending ? "animate-spin" : ""}`} />
