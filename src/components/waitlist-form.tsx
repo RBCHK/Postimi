@@ -35,6 +35,11 @@ export function WaitlistForm({ source, className }: Props) {
           name="email"
           type="email"
           required
+          autoComplete="email"
+          inputMode="email"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
           placeholder="you@example.com"
           aria-label="Email address"
           className="h-11 text-base sm:flex-1"
