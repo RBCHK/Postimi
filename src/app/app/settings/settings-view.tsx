@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { Plus, Trash2, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -34,6 +33,7 @@ import { type ThemePreference, applyTheme, saveTheme, getStoredTheme } from "@/l
 import { PageContainer } from "@/components/page-container";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
+import { SideNavLayout } from "@/components/side-nav-layout";
 
 interface VoiceBankEntry {
   id: string;
@@ -1037,67 +1037,20 @@ export function SettingsView() {
     <PageContainer className="flex flex-col h-full overflow-hidden">
       <PageHeader title="Settings" />
 
-      {/* Mobile: horizontal scrollable tabs */}
-      <div className="md:hidden flex gap-1 overflow-x-auto pb-2 shrink-0 scrollbar-hide">
-        {SETTINGS_NAV.map((item) => (
-          <button
-            key={item.value}
-            onClick={() => setActive(item.value)}
-            className={`shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-              active === item.value
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-muted"
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
-        <Link
-          href="/settings/billing"
-          className="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium text-muted-foreground [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-muted transition-colors"
-        >
-          Billing
-        </Link>
-      </div>
-
-      {/* Desktop: sidebar + content */}
-      <div className="flex flex-1 min-h-0">
-        <div className="flex flex-1 min-h-0 gap-8 w-full">
-          {/* Sidebar */}
-          <nav className="hidden md:flex flex-col gap-0.5 w-44 shrink-0">
-            {SETTINGS_NAV.map((item) => (
-              <button
-                key={item.value}
-                onClick={() => setActive(item.value)}
-                className={`text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                  active === item.value
-                    ? "bg-muted font-medium text-foreground"
-                    : "text-muted-foreground [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-muted/60"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-            <Link
-              href="/settings/billing"
-              className="text-left px-3 py-2 rounded-md text-sm text-muted-foreground [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-muted/60 transition-colors"
-            >
-              Billing
-            </Link>
-          </nav>
-
-          {/* Content */}
-          <div className="flex-1 min-w-0 overflow-y-auto">
-            <div className="max-w-2xl pb-8">
-              {active === "voice-bank" && <VoiceBankTab />}
-              {active === "strategy" && <StrategyConfigTab />}
-              {active === "connections" && <ConnectionsTab />}
-              {active === "language" && <LanguageTab />}
-              {active === "appearance" && <AppearanceTab />}
-            </div>
-          </div>
+      <SideNavLayout
+        items={SETTINGS_NAV}
+        active={active}
+        onChange={setActive}
+        links={[{ href: "/settings/billing", label: "Billing" }]}
+      >
+        <div className="max-w-2xl pb-8">
+          {active === "voice-bank" && <VoiceBankTab />}
+          {active === "strategy" && <StrategyConfigTab />}
+          {active === "connections" && <ConnectionsTab />}
+          {active === "language" && <LanguageTab />}
+          {active === "appearance" && <AppearanceTab />}
         </div>
-      </div>
+      </SideNavLayout>
     </PageContainer>
   );
 }

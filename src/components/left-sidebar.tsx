@@ -5,7 +5,6 @@ import { useRouter, usePathname } from "next/navigation";
 import {
   Settings,
   Shield,
-  Mail,
   Trash2,
   MoreHorizontal,
   Pin,
@@ -685,15 +684,6 @@ export function LeftSidebar({
               >
                 <Shield className="h-4 w-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9"
-                onClick={() => router.push("/admin/waitlist")}
-                title="Waitlist"
-              >
-                <Mail className="h-4 w-4" />
-              </Button>
             </>
           )}
           <Button
@@ -857,14 +847,6 @@ export function LeftSidebar({
             >
               <Shield className="h-4 w-4" />
               <span className="text-sm">Admin</span>
-            </Button>
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-2 text-muted-foreground"
-              onClick={() => router.push("/admin/waitlist")}
-            >
-              <Mail className="h-4 w-4" />
-              <span className="text-sm">Waitlist</span>
             </Button>
           </>
         )}

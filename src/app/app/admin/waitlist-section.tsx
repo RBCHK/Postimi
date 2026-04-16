@@ -2,8 +2,6 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { PageContainer } from "@/components/page-container";
-import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +23,7 @@ export interface WaitlistRow {
 
 type Filter = "all" | "uninvited" | "invited" | "converted";
 
-export function WaitlistAdminView({ entries }: { entries: WaitlistRow[] }) {
+export function WaitlistSection({ entries }: { entries: WaitlistRow[] }) {
   const [filter, setFilter] = useState<Filter>("uninvited");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
@@ -72,14 +70,15 @@ export function WaitlistAdminView({ entries }: { entries: WaitlistRow[] }) {
   };
 
   return (
-    <PageContainer className="space-y-4">
-      <PageHeader title="Waitlist" subtitle={`${entries.length} total`}>
+    <div className="space-y-4 pb-8">
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-sm text-muted-foreground">{entries.length} total</span>
         <Button onClick={onSend} disabled={pending || selected.size === 0}>
           {pending
             ? "Sending..."
             : `Send ${selected.size || ""} invitation${selected.size === 1 ? "" : "s"}`}
         </Button>
-      </PageHeader>
+      </div>
 
       <Tabs
         value={filter}
@@ -167,6 +166,6 @@ export function WaitlistAdminView({ entries }: { entries: WaitlistRow[] }) {
           </tbody>
         </table>
       </div>
-    </PageContainer>
+    </div>
   );
 }
