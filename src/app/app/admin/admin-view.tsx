@@ -14,7 +14,8 @@ import {
   Play,
   Loader2,
 } from "lucide-react";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SideNavLayout } from "@/components/side-nav-layout";
+import { WaitlistSection, type WaitlistRow } from "./waitlist-section";
 import {
   Select,
   SelectContent,
@@ -89,6 +90,7 @@ interface CostDaily {
 interface AdminViewProps {
   initialConfigs: CronConfig[];
   initialRuns: CronRun[];
+  initialWaitlist: WaitlistRow[];
 }
 
 // ─── Agent model config ─────────────────────────────────────
@@ -173,8 +175,18 @@ function formatCents(cents: number): string {
 
 // ─── Component ─────────────────────────────────────────────
 
-export function AdminView({ initialConfigs, initialRuns }: AdminViewProps) {
-  const [tab, setTab] = useState("crons");
+type AdminTab = "crons" | "runs" | "costs" | "models" | "waitlist";
+
+const ADMIN_NAV: { value: AdminTab; label: string }[] = [
+  { value: "crons", label: "Cron Jobs" },
+  { value: "runs", label: "Run Log" },
+  { value: "costs", label: "API Costs" },
+  { value: "models", label: "Models" },
+  { value: "waitlist", label: "Waitlist" },
+];
+
+export function AdminView({ initialConfigs, initialRuns, initialWaitlist }: AdminViewProps) {
+  const [tab, setTab] = useState<AdminTab>("crons");
   const [configs, setConfigs] = useState(initialConfigs);
   const [runs, setRuns] = useState(initialRuns);
   const [isPending, startTransition] = useTransition();
@@ -320,16 +332,9 @@ export function AdminView({ initialConfigs, initialRuns }: AdminViewProps) {
         </Button>
       </PageHeader>
 
-      <div className="flex flex-1 min-h-0 flex-col overflow-y-auto">
+      <SideNavLayout items={ADMIN_NAV} active={tab} onChange={setTab}>
         <div className="space-y-6 pb-8">
-          <Tabs value={tab} onValueChange={setTab}>
-            <TabsList>
-              <TabsTrigger value="crons">Cron Jobs</TabsTrigger>
-              <TabsTrigger value="runs">Run Log</TabsTrigger>
-              <TabsTrigger value="costs">API Costs</TabsTrigger>
-              <TabsTrigger value="models">Models</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          {tab === "waitlist" && <WaitlistSection entries={initialWaitlist} />}
 
           {/* ─── Cron Jobs Tab ─────────────────────────────────── */}
           {tab === "crons" && (
@@ -569,7 +574,7 @@ export function AdminView({ initialConfigs, initialRuns }: AdminViewProps) {
             </div>
           )}
         </div>
-      </div>
+      </SideNavLayout>
     </PageContainer>
   );
 }
