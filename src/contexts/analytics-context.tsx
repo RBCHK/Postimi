@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
-import type { AnalyticsSummary, ContentCsvRow, OverviewCsvRow } from "@/lib/types";
+import type { AnalyticsSummary, ContentCsvRow, OverviewCsvRow, Platform } from "@/lib/types";
 import { detectCsvType, parseContentCsvRows, parseOverviewCsvRows } from "@/lib/csv-parser";
 import {
   importContentData,
@@ -36,6 +36,11 @@ interface AnalyticsContextValue {
   summary: AnalyticsSummary | null;
   isLoading: boolean;
 
+  // Platforms
+  connectedPlatforms: Platform[];
+  selectedPlatform: Platform;
+  setSelectedPlatform: (platform: Platform) => void;
+
   // Import
   contentCsv: ContentCsvRow[] | null;
   overviewCsv: OverviewCsvRow[] | null;
@@ -64,14 +69,24 @@ interface Props {
   children: ReactNode;
   initialDateRange: { from: Date; to: Date } | null;
   initialSummary: AnalyticsSummary | null;
+  initialConnectedPlatforms: Platform[];
+  initialSelectedPlatform: Platform;
 }
 
-export function AnalyticsProvider({ children, initialDateRange, initialSummary }: Props) {
+export function AnalyticsProvider({
+  children,
+  initialDateRange,
+  initialSummary,
+  initialConnectedPlatforms,
+  initialSelectedPlatform,
+}: Props) {
   const [fullDateRange, setFullDateRange] = useState(initialDateRange);
   const [dateRange, setDateRange] = useState(initialDateRange);
   const [activePreset, setActivePreset] = useState<PeriodPreset>("ALL");
   const [summary, setSummary] = useState(initialSummary);
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedPlatform, setSelectedPlatform] = useState<Platform>(initialSelectedPlatform);
+  const [connectedPlatforms] = useState<Platform[]>(initialConnectedPlatforms);
 
   const [contentCsv, setContentCsv] = useState<ContentCsvRow[] | null>(null);
   const [overviewCsv, setOverviewCsv] = useState<OverviewCsvRow[] | null>(null);
@@ -200,6 +215,9 @@ export function AnalyticsProvider({ children, initialDateRange, initialSummary }
         activePreset,
         summary,
         isLoading,
+        connectedPlatforms,
+        selectedPlatform,
+        setSelectedPlatform,
         contentCsv,
         overviewCsv,
         importError,
