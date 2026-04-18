@@ -12,3 +12,4 @@ CLAUDE.md has the **rules**; ADRs have the **reasoning**.
 | 005 | [Data source: CSV vs X API](005-csv-vs-api.md)                                    | Phase 1 (CSV) |
 | 006 | [Component-based design system](006-component-design-system.md)                   | Accepted      |
 | 007 | [Open-registration path: waitlist → invite → paid](007-open-registration-path.md) | In progress   |
+| 008 | [Multi-platform Strategist & analytics](008-multi-platform-architecture.md)       | In progress   |

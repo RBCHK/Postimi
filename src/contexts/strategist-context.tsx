@@ -1,11 +1,20 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+  type ReactNode,
+} from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage, type TextUIPart, type DynamicToolUIPart } from "ai";
 import type {
   ConfigChange,
   CsvSummary,
+  Platform,
   ResearchNoteItem,
   StrategyAnalysisItem,
   XProfile,
@@ -19,7 +28,12 @@ import { getStoredAgentModel } from "@/lib/model";
 export type LeftTab = "analyses" | "research";
 
 interface StrategistContextValue {
+  /** Analyses filtered to the currently selected platform */
   analyses: StrategyAnalysisItem[];
+  /** Every platform this user has some signal for (tokens or data) */
+  connectedPlatforms: Platform[];
+  selectedPlatform: Platform;
+  setSelectedPlatform: (p: Platform) => void;
   selectedId: string | null;
   csvSummary: CsvSummary | null;
   csvError: string | null;
@@ -59,15 +73,24 @@ interface StrategistProviderProps {
   children: ReactNode;
   initialAnalyses: StrategyAnalysisItem[];
   initialResearchNotes: ResearchNoteItem[];
+  connectedPlatforms: Platform[];
+  primaryPlatform: Platform;
 }
 
 export function StrategistProvider({
   children,
   initialAnalyses,
   initialResearchNotes,
+  connectedPlatforms,
+  primaryPlatform,
 }: StrategistProviderProps) {
   const [analyses, setAnalyses] = useState<StrategyAnalysisItem[]>(initialAnalyses);
-  const [selectedId, setSelectedId] = useState<string | null>(initialAnalyses[0]?.id ?? null);
+  const [selectedPlatform, setSelectedPlatform] = useState<Platform>(primaryPlatform);
+  const filteredAnalyses = useMemo(
+    () => analyses.filter((a) => a.platform === selectedPlatform),
+    [analyses, selectedPlatform]
+  );
+  const [selectedId, setSelectedId] = useState<string | null>(filteredAnalyses[0]?.id ?? null);
   const [csvSummary, setCsvSummary] = useState<CsvSummary | null>(null);
   const [csvError, setCsvError] = useState<string | null>(null);
   const [savedSearchQueries, setSavedSearchQueries] = useState<string[]>([]);
@@ -89,6 +112,12 @@ export function StrategistProvider({
 
   const weekStartRef = useRef(new Date().toISOString().split("T")[0]);
 
+  // Mirror the selected platform into a ref so the transport's body()
+  // callback reads the latest value without having to recreate the
+  // transport on every platform switch.
+  const selectedPlatformRef = useRef<Platform>(selectedPlatform);
+  selectedPlatformRef.current = selectedPlatform;
+
   const [transport] = useState(
     () =>
       new DefaultChatTransport({
@@ -98,6 +127,7 @@ export function StrategistProvider({
           weekStart: weekStartRef.current,
           profile: profileRef.current,
           model: getStoredAgentModel("strategist"),
+          platform: selectedPlatformRef.current,
         }),
       })
   );
@@ -133,7 +163,9 @@ export function StrategistProvider({
       setSavedSearchQueries(queries);
 
       try {
+        const platformAtRunTime = selectedPlatformRef.current;
         const saved = await saveAnalysis({
+          platform: platformAtRunTime,
           csvSummary: csvSummaryRef.current,
           searchQueries: queries,
           recommendation: text,
@@ -149,11 +181,14 @@ export function StrategistProvider({
           try {
             const changes: ConfigChange[] = JSON.parse(proposalMatch[1].trim());
             if (Array.isArray(changes) && changes.length > 0) {
-              const summaryMatch = text.match(/##[^#\n]*Стратегия[^#\n]*\n([\s\S]{0,300})/i);
+              const summaryMatch =
+                text.match(/##[^#\n]*Strategy[^#\n]*\n([\s\S]{0,300})/i) ??
+                text.match(/##[^#\n]*Стратегия[^#\n]*\n([\s\S]{0,300})/i);
               const proposalSummary =
                 summaryMatch?.[1]?.trim().slice(0, 300) ??
-                `Изменения в шаблон расписания (${changes.length} шт.) от ${weekStartRef.current}`;
+                `Schedule template updates (${changes.length}) — ${weekStartRef.current}`;
               await savePlanProposal({
+                platform: platformAtRunTime,
                 changes,
                 summary: proposalSummary,
                 analysisId: saved.id,
@@ -231,10 +266,20 @@ export function StrategistProvider({
 
   const displayedSearchQueries = isAnalyzing ? liveSearchQueries : savedSearchQueries;
 
+  const handleSelectPlatform = useCallback((p: Platform) => {
+    setSelectedPlatform(p);
+    // Clear the analysis selection on platform switch — the list the
+    // user sees is about to change under them.
+    setSelectedId(null);
+  }, []);
+
   return (
     <StrategistContext.Provider
       value={{
-        analyses,
+        analyses: filteredAnalyses,
+        connectedPlatforms,
+        selectedPlatform,
+        setSelectedPlatform: handleSelectPlatform,
         selectedId,
         csvSummary,
         csvError,

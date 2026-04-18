@@ -49,7 +49,10 @@ export async function GET() {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
-    scope: "threads_basic,threads_content_publish",
+    // ADR-008 Phase 2: include threads_manage_insights so the
+    // social-import cron can fetch per-post and account-level metrics.
+    // Users who decline it get publish-only (cron skips silently).
+    scope: "threads_basic,threads_content_publish,threads_manage_insights",
     response_type: "code",
     state,
   });

@@ -127,6 +127,21 @@ async function exchangeForRefreshedToken(accessToken: string): Promise<ThreadsTo
 
 // ─── Auth-checked actions (for UI / server actions) ──────
 
+// ADR-008 Phase 2: OAuth scopes requested in the authorize redirect.
+// Kept in sync with `src/app/api/auth/threads/route.ts`. The user may
+// deselect individual scopes during consent — we can't detect silent
+// downgrades at token-exchange time, so the cron verifies presence in
+// `grantedScopes` before attempting insight calls and removes missing
+// scopes from the array on 400/403 from the insight endpoints.
+// Not exported — Next.js "use server" files can only export async
+// functions. Callers that need the scope list should import it from
+// a non-server-action module if the need arises.
+const THREADS_REQUESTED_SCOPES = [
+  "threads_basic",
+  "threads_content_publish",
+  "threads_manage_insights",
+] as const;
+
 /** Save tokens after OAuth callback */
 export async function saveThreadsApiToken(
   userId: string,
@@ -142,6 +157,8 @@ export async function saveThreadsApiToken(
     threadsBiography: profile.threads_biography ?? null,
   };
 
+  const scopesJoined = THREADS_REQUESTED_SCOPES.join(",");
+
   await prisma.threadsApiToken.upsert({
     where: { userId },
     create: {
@@ -149,13 +166,15 @@ export async function saveThreadsApiToken(
       ...profileData,
       accessToken: encryptToken(tokenData.access_token),
       expiresAt,
-      scopes: "threads_basic,threads_content_publish",
+      scopes: scopesJoined,
+      grantedScopes: [...THREADS_REQUESTED_SCOPES],
     },
     update: {
       ...profileData,
       accessToken: encryptToken(tokenData.access_token),
       expiresAt,
-      scopes: "threads_basic,threads_content_publish",
+      scopes: scopesJoined,
+      grantedScopes: [...THREADS_REQUESTED_SCOPES],
     },
   });
 }

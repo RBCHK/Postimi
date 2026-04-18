@@ -4,9 +4,16 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth";
 import type { CsvSummary, StrategyAnalysisItem } from "@/lib/types";
+import type { Platform } from "@/generated/prisma";
+
+// ADR-008 Phase 6: analyses are scoped per (userId × platform). Reads
+// ALWAYS filter by platform; a user may have up to 3 analyses running
+// independently, and we never want the X analysis to leak into the
+// LinkedIn view.
 
 function mapRow(row: {
   id: string;
+  platform: Platform;
   weekStart: Date;
   recommendation: string;
   createdAt: Date;
@@ -16,6 +23,7 @@ function mapRow(row: {
 }): StrategyAnalysisItem {
   return {
     id: row.id,
+    platform: row.platform,
     weekStart: row.weekStart,
     recommendation: row.recommendation,
     createdAt: row.createdAt,
@@ -26,6 +34,7 @@ function mapRow(row: {
 }
 
 export async function saveAnalysis(data: {
+  platform?: Platform;
   csvSummary: CsvSummary;
   searchQueries: string[];
   recommendation: string;
@@ -39,6 +48,7 @@ export async function saveAnalysis(data: {
 export async function saveAnalysisInternal(
   userId: string,
   data: {
+    platform?: Platform;
     csvSummary: CsvSummary;
     searchQueries: string[];
     recommendation: string;
@@ -52,6 +62,7 @@ export async function saveAnalysisInternal(
 async function _saveAnalysis(
   userId: string,
   data: {
+    platform?: Platform;
     csvSummary: CsvSummary;
     searchQueries: string[];
     recommendation: string;
@@ -62,6 +73,7 @@ async function _saveAnalysis(
   const row = await prisma.strategyAnalysis.create({
     data: {
       userId,
+      platform: data.platform ?? "X",
       csvSummary: data.csvSummary as object,
       searchQueries: data.searchQueries,
       recommendation: data.recommendation,
@@ -75,21 +87,25 @@ async function _saveAnalysis(
   return mapRow(row);
 }
 
-export async function getAnalyses(): Promise<StrategyAnalysisItem[]> {
+export async function getAnalyses(platform?: Platform): Promise<StrategyAnalysisItem[]> {
   const userId = await requireUserId();
-  return _getAnalyses(userId);
+  return _getAnalyses(userId, platform);
 }
 
-export async function getAnalysesInternal(userId: string): Promise<StrategyAnalysisItem[]> {
-  return _getAnalyses(userId);
+export async function getAnalysesInternal(
+  userId: string,
+  platform?: Platform
+): Promise<StrategyAnalysisItem[]> {
+  return _getAnalyses(userId, platform);
 }
 
-async function _getAnalyses(userId: string): Promise<StrategyAnalysisItem[]> {
+async function _getAnalyses(userId: string, platform?: Platform): Promise<StrategyAnalysisItem[]> {
   const rows = await prisma.strategyAnalysis.findMany({
-    where: { userId },
+    where: platform ? { userId, platform } : { userId },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
+      platform: true,
       weekStart: true,
       recommendation: true,
       createdAt: true,

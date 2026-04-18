@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { useAnalytics } from "@/contexts/analytics-context";
 import { importFromXApi } from "@/app/actions/x-import";
+import { importLinkedInCsv } from "@/app/actions/linkedin-csv";
 
 function FileDropZone({
   label,
@@ -76,7 +77,14 @@ function FileDropZone({
   );
 }
 
-type Tab = "csv" | "api";
+type Tab = "csv" | "api" | "linkedin";
+
+interface LinkedInResult {
+  kind: "content" | "followers";
+  imported: number;
+  updated: number;
+  rowsParsed: number;
+}
 
 export function ImportPanel() {
   const {
@@ -88,6 +96,7 @@ export function ImportPanel() {
     handleCsvFile,
     clearCsvFile,
     runImport,
+    refreshData,
   } = useAnalytics();
 
   const [open, setOpen] = useState(false);
@@ -99,6 +108,10 @@ export function ImportPanel() {
     total: number;
   } | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const linkedInInputRef = useRef<HTMLInputElement>(null);
+  const [linkedInLoading, setLinkedInLoading] = useState(false);
+  const [linkedInResult, setLinkedInResult] = useState<LinkedInResult | null>(null);
+  const [linkedInError, setLinkedInError] = useState<string | null>(null);
 
   const hasAnyData = !!contentCsv || !!overviewCsv;
 
@@ -121,6 +134,28 @@ export function ImportPanel() {
       setApiError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setApiLoading(false);
+    }
+  }
+
+  async function handleLinkedInFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (linkedInInputRef.current) linkedInInputRef.current.value = "";
+
+    setLinkedInLoading(true);
+    setLinkedInError(null);
+    setLinkedInResult(null);
+    try {
+      const fd = new FormData();
+      fd.set("file", file);
+      const result = await importLinkedInCsv(fd);
+      setLinkedInResult(result);
+      await refreshData();
+      setTimeout(() => setOpen(false), 2000);
+    } catch (err) {
+      setLinkedInError(err instanceof Error ? err.message : "LinkedIn import failed");
+    } finally {
+      setLinkedInLoading(false);
     }
   }
 
@@ -147,7 +182,7 @@ export function ImportPanel() {
             }`}
             onClick={() => setTab("csv")}
           >
-            CSV Upload
+            X CSV
           </button>
           <button
             className={`flex-1 px-3 py-2 text-center transition-colors ${
@@ -158,6 +193,16 @@ export function ImportPanel() {
             onClick={() => setTab("api")}
           >
             X API
+          </button>
+          <button
+            className={`flex-1 px-3 py-2 text-center transition-colors ${
+              tab === "linkedin"
+                ? "bg-primary text-primary-foreground font-medium"
+                : "text-muted-foreground hover:bg-muted"
+            }`}
+            onClick={() => setTab("linkedin")}
+          >
+            LinkedIn CSV
           </button>
         </div>
 
@@ -259,6 +304,61 @@ export function ImportPanel() {
                 <>
                   <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
                   Fetch Latest Tweets
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+
+        {tab === "linkedin" && (
+          <div className="space-y-3">
+            <div className="rounded-lg border border-border p-4 space-y-1">
+              <p className="text-sm font-medium">Upload LinkedIn CSV</p>
+              <p className="text-xs text-muted-foreground">
+                Export from LinkedIn → Analytics → Content, then drop either the Content or
+                Followers CSV here. LinkedIn&apos;s analytics API is gated for new apps, so CSV is
+                the only available path.
+              </p>
+            </div>
+
+            {linkedInError && <p className="text-sm text-destructive">{linkedInError}</p>}
+
+            {linkedInResult && (
+              <div className="rounded-md bg-muted p-3 text-xs">
+                <p className="text-green-600 font-medium flex items-center gap-1">
+                  <Check className="h-3.5 w-3.5" />
+                  Done
+                </p>
+                <p>
+                  {linkedInResult.kind === "content" ? "Content" : "Followers"}:{" "}
+                  {linkedInResult.rowsParsed} rows parsed · {linkedInResult.imported} new ·{" "}
+                  {linkedInResult.updated} updated
+                </p>
+              </div>
+            )}
+
+            <input
+              ref={linkedInInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={handleLinkedInFile}
+            />
+
+            <Button
+              className="w-full"
+              disabled={linkedInLoading}
+              onClick={() => linkedInInputRef.current?.click()}
+            >
+              {linkedInLoading ? (
+                <>
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  Parsing CSV...
+                </>
+              ) : (
+                <>
+                  <Upload className="mr-1.5 h-3.5 w-3.5" />
+                  Choose LinkedIn CSV
                 </>
               )}
             </Button>

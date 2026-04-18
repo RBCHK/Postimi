@@ -1,5 +1,6 @@
 "use server";
 
+import * as Sentry from "@sentry/nextjs";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth";
@@ -45,6 +46,26 @@ export async function importContentData(
         detailExpands: row.detailExpands,
       },
     });
+
+    // ADR-008 Phase 1a: dual-write CSV enrichment to SocialPost.
+    // updateMany (not update) so a missing SocialPost row — possible for
+    // XPosts created before Phase 1a dual-write landed — is a no-op
+    // instead of a thrown P2025. Phase 1b removes this branch.
+    try {
+      await prisma.socialPost.updateMany({
+        where: { userId, platform: "X", externalPostId: row.postId },
+        data: {
+          newFollowers: row.newFollowers,
+          detailExpands: row.detailExpands,
+        },
+      });
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: { phase: "1a-dual-write", model: "SocialPost", platform: "X" },
+        extra: { userId, externalPostId: row.postId, source: "importContentData" },
+      });
+    }
+
     enriched++;
   }
 
@@ -95,6 +116,27 @@ export async function importDailyStats(
       },
       update: statsData,
     });
+
+    // ADR-008 Phase 1a: dual-write to SocialDailyStats with platform="X".
+    try {
+      await prisma.socialDailyStats.upsert({
+        where: {
+          userId_platform_date: { userId, platform: "X", date: dayStart },
+        },
+        create: {
+          userId,
+          platform: "X",
+          date: dayStart,
+          ...statsData,
+        },
+        update: statsData,
+      });
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: { phase: "1a-dual-write", model: "SocialDailyStats", platform: "X" },
+        extra: { userId, date: dayStart.toISOString(), source: "importDailyStats" },
+      });
+    }
 
     if (existing) updated++;
     else imported++;

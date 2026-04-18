@@ -1,5 +1,6 @@
 "use server";
 
+import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth";
 import type { FollowersSnapshotItem } from "@/lib/types";
@@ -77,6 +78,38 @@ async function _saveFollowersSnapshot(
       deltaFollowing,
     },
   });
+
+  // ADR-008 Phase 1a: dual-write to SocialFollowersSnapshot with platform="X".
+  // This file is called from the followers-snapshot cron (X-only today).
+  // Wrapped so a SocialFollowersSnapshot failure never affects the legacy
+  // write. Phase 1b removes the legacy branch.
+  try {
+    await prisma.socialFollowersSnapshot.upsert({
+      where: {
+        userId_platform_date: { userId, platform: "X", date: today },
+      },
+      create: {
+        userId,
+        platform: "X",
+        date: today,
+        followersCount: data.followersCount,
+        followingCount: data.followingCount,
+        deltaFollowers,
+        deltaFollowing,
+      },
+      update: {
+        followersCount: data.followersCount,
+        followingCount: data.followingCount,
+        deltaFollowers,
+        deltaFollowing,
+      },
+    });
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { phase: "1a-dual-write", model: "SocialFollowersSnapshot", platform: "X" },
+      extra: { userId, date: today.toISOString() },
+    });
+  }
 
   return mapRow(row);
 }

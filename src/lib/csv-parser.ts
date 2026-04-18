@@ -6,40 +6,10 @@ import type {
   OverviewCsvRow,
   XPostType,
 } from "./types";
-
-function parseNumber(value: string): number {
-  const n = parseInt(value.replace(/,/g, "").trim(), 10);
-  return isNaN(n) ? 0 : n;
-}
-
-// Parses a single CSV line respecting quoted fields
-function parseCsvLine(line: string): string[] {
-  const fields: string[] = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    if (char === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === "," && !inQuotes) {
-      fields.push(current);
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  fields.push(current);
-  return fields;
-}
+import { parseCsvLine, parseNumber, splitCsvLines } from "./csv/primitives";
 
 export function parseCsv(raw: string): CsvSummary {
-  const lines = raw.trim().split("\n").filter(Boolean);
+  const lines = splitCsvLines(raw);
   if (lines.length < 2) {
     throw new Error("CSV file is empty or has no data rows");
   }
@@ -124,7 +94,7 @@ export function parseCsv(raw: string): CsvSummary {
 // --- New parsers for analytics pipeline ---
 
 function getHeaders(raw: string): string[] {
-  const firstLine = raw.trim().split("\n")[0] ?? "";
+  const firstLine = splitCsvLines(raw)[0] ?? "";
   return parseCsvLine(firstLine).map((h) => h.trim());
 }
 
@@ -145,7 +115,7 @@ function detectPostType(text: string): XPostType {
 }
 
 export function parseContentCsvRows(raw: string): ContentCsvRow[] {
-  const lines = raw.trim().split("\n").filter(Boolean);
+  const lines = splitCsvLines(raw);
   if (lines.length < 2) {
     throw new Error("CSV file is empty or has no data rows");
   }
@@ -209,7 +179,7 @@ export function parseContentCsvRows(raw: string): ContentCsvRow[] {
 }
 
 export function parseOverviewCsvRows(raw: string): OverviewCsvRow[] {
-  const lines = raw.trim().split("\n").filter(Boolean);
+  const lines = splitCsvLines(raw);
   if (lines.length < 2) {
     throw new Error("CSV file is empty or has no data rows");
   }

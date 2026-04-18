@@ -22,31 +22,41 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  conversations          Conversation[]
-  voiceBankEntries       VoiceBankEntry[]
-  scheduledSlots         ScheduledSlot[]
-  strategyConfigs        StrategyConfig[]
-  xPosts                 XPost[]
-  dailyAccountStats      DailyAccountStats[]
-  strategyAnalyses       StrategyAnalysis[]
-  researchNotes          ResearchNote[]
-  dailyInsights          DailyInsight[]
-  followersSnapshots     FollowersSnapshot[]
-  postEngagementSnapshots PostEngagementSnapshot[]
-  planProposals          PlanProposal[]
-  xApiCallLogs           XApiCallLog[]
-  xApiToken              XApiToken?
-  threadsApiToken        ThreadsApiToken?
-  linkedInApiToken       LinkedInApiToken?
-  trendSnapshots         TrendSnapshot[]
-  media                  Media[]
-  waitlistEntry          WaitlistEntry?          @relation("WaitlistConversion")
-  stripeCustomerId       String?                 @unique
-  subscription           Subscription?
-  aiUsage                AiUsage[]
-  monthlyAiQuotaUsd      Decimal?                @db.Decimal(10, 2)
-  rateLimitWindowStart   DateTime?
-  rateLimitRequestCount  Int                     @default(0)
+  // ADR-008: Strategist output language. Null = use fallback (EN) in
+  // code; populated from Clerk locale via whitelist in the user-sync
+  // webhook. Enum type prevents prompt-injection via free-form string.
+  outputLanguage Language?
+
+  conversations                 Conversation[]
+  voiceBankEntries              VoiceBankEntry[]
+  scheduledSlots                ScheduledSlot[]
+  strategyConfigs               StrategyConfig[]
+  xPosts                        XPost[]
+  dailyAccountStats             DailyAccountStats[]
+  strategyAnalyses              StrategyAnalysis[]
+  researchNotes                 ResearchNote[]
+  dailyInsights                 DailyInsight[]
+  followersSnapshots            FollowersSnapshot[]
+  postEngagementSnapshots       PostEngagementSnapshot[]
+  planProposals                 PlanProposal[]
+  xApiCallLogs                  XApiCallLog[]
+  xApiToken                     XApiToken?
+  threadsApiToken               ThreadsApiToken?
+  linkedInApiToken              LinkedInApiToken?
+  trendSnapshots                TrendSnapshot[]
+  media                         Media[]
+  // ADR-008: platform-agnostic data models (Phase 1a additive, dual-write)
+  socialPosts                   SocialPost[]
+  socialDailyStats              SocialDailyStats[]
+  socialFollowersSnapshots      SocialFollowersSnapshot[]
+  socialPostEngagementSnapshots SocialPostEngagementSnapshot[]
+  waitlistEntry                 WaitlistEntry?                 @relation("WaitlistConversion")
+  stripeCustomerId              String?                        @unique
+  subscription                  Subscription?
+  aiUsage                       AiUsage[]
+  monthlyAiQuotaUsd             Decimal?                       @db.Decimal(10, 2)
+  rateLimitWindowStart          DateTime?
+  rateLimitRequestCount         Int                            @default(0)
 }
 
 // ─── Waitlist (open-registration path — see ADR 007) ─────
@@ -54,16 +64,16 @@ model User {
 model WaitlistEntry {
   id        String   @id @default(cuid())
   email     String   @unique
-  source    String?  // "landing_hero", "landing_footer", "twitter_bio", ...
-  locale    String?  // "en", "ru", "it"
+  source    String? // "landing_hero", "landing_footer", "twitter_bio", ...
+  locale    String? // "en", "ru", "it"
   userAgent String?
-  ipHash    String?  // sha256(ip + WAITLIST_IP_SALT) — never store raw IP
+  ipHash    String? // sha256(ip + WAITLIST_IP_SALT) — never store raw IP
   priority  Int      @default(0) // higher = invite sooner; FIFO within same priority
   createdAt DateTime @default(now())
 
   // Conversion tracking (populated in PR 7 when waitlist → invitation → sign-up)
   invitedAt       DateTime?
-  invitationId    String?   // Clerk invitation ID
+  invitationId    String? // Clerk invitation ID
   convertedUserId String?   @unique
   convertedUser   User?     @relation("WaitlistConversion", fields: [convertedUserId], references: [id], onDelete: SetNull)
 
@@ -73,24 +83,24 @@ model WaitlistEntry {
 }
 
 model XApiToken {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  xUserId         String
-  xUsername        String
-  xDisplayName    String?
-  xProfileImageUrl String?
-  xDescription    String?
-  xLocation       String?
-  xUrl            String?
-  xVerified       Boolean  @default(false)
-  xVerifiedType   String?
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  xUserId           String
+  xUsername         String
+  xDisplayName      String?
+  xProfileImageUrl  String?
+  xDescription      String?
+  xLocation         String?
+  xUrl              String?
+  xVerified         Boolean   @default(false)
+  xVerifiedType     String?
   xAccountCreatedAt DateTime?
-  accessToken     String
-  refreshToken    String
-  expiresAt       DateTime
-  scopes          String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  accessToken       String
+  refreshToken      String
+  expiresAt         DateTime
+  scopes            String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -101,12 +111,17 @@ model ThreadsApiToken {
   id                       String   @id @default(cuid())
   userId                   String   @unique
   threadsUserId            String
-  threadsUsername           String
+  threadsUsername          String
   threadsProfilePictureUrl String?
   threadsBiography         String?
-  accessToken              String   // encrypted (AES-256-GCM), long-lived token
+  accessToken              String // encrypted (AES-256-GCM), long-lived token
   expiresAt                DateTime
   scopes                   String
+  // ADR-008: structured list of granted OAuth scopes. Meta can silently
+  // grant fewer scopes than requested (user deselects some during consent).
+  // Legacy rows get `[]` and the social-import cron skips Threads until
+  // they re-auth to grant `threads_manage_insights`.
+  grantedScopes            String[] @default([])
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
@@ -116,19 +131,19 @@ model ThreadsApiToken {
 }
 
 model LinkedInApiToken {
-  id                String   @id @default(cuid())
-  userId            String   @unique
-  linkedinUserId    String
-  linkedinName      String?
-  linkedinEmail     String?
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  linkedinUserId     String
+  linkedinName       String?
+  linkedinEmail      String?
   linkedinPictureUrl String?
-  linkedinHeadline  String?
-  accessToken       String   // encrypted (AES-256-GCM)
-  refreshToken      String   // encrypted (AES-256-GCM)
-  expiresAt         DateTime
-  scopes            String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  linkedinHeadline   String?
+  accessToken        String // encrypted (AES-256-GCM)
+  refreshToken       String // encrypted (AES-256-GCM)
+  expiresAt          DateTime
+  scopes             String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -193,6 +208,35 @@ model AiUsage {
 }
 
 // ─── Enums ───────────────────────────────────────────────
+
+// ADR-008: canonical platform tag for multi-platform data models
+// and the Strategist. Keep in sync with PLATFORMS in src/lib/types.ts.
+enum Platform {
+  X
+  LINKEDIN
+  THREADS
+}
+
+// ADR-008: output language for Strategist and other AI-generated
+// copy. Enum (not String) is a type-level prompt-injection defense —
+// values like "EN\nIgnore previous" cannot pass Prisma validation.
+enum Language {
+  EN
+  RU
+  UK
+  ES
+  DE
+  FR
+}
+
+// ADR-008: bucket for PlatformBenchmark lookup. Size bands are:
+// NANO <1k, MICRO 1-10k, MID 10-100k, MACRO >100k.
+enum AudienceSize {
+  NANO
+  MICRO
+  MID
+  MACRO
+}
 
 enum ContentType {
   REPLY
@@ -261,20 +305,20 @@ enum CronJobStatus {
 // ─── Content ─────────────────────────────────────────────
 
 model Conversation {
-  id                String              @id @default(cuid())
-  userId            String
-  title             String
-  contentType       ContentType
-  status            ConversationStatus  @default(DRAFT)
-  originalPostText  String?
-  originalPostUrl   String?
-  composerContent   Json?               // { linked, shared, x?, linkedin?, threads? }
-  composerPlatform  String?             // active tab: "X" | "LINKEDIN" | "THREADS"
-  pendingInput      String?             // pre-filled input text (from highlights), not yet sent
-  pinned            Boolean             @default(false)
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  lastActivityAt    DateTime            @default(now())
+  id               String             @id @default(cuid())
+  userId           String
+  title            String
+  contentType      ContentType
+  status           ConversationStatus @default(DRAFT)
+  originalPostText String?
+  originalPostUrl  String?
+  composerContent  Json? // { linked, shared, x?, linkedin?, threads? }
+  composerPlatform String? // active tab: "X" | "LINKEDIN" | "THREADS"
+  pendingInput     String? // pre-filled input text (from highlights), not yet sent
+  pinned           Boolean            @default(false)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  lastActivityAt   DateTime           @default(now())
 
   user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages Message[]
@@ -288,7 +332,7 @@ model Conversation {
 model Message {
   id             String   @id @default(cuid())
   conversationId String
-  role           String   // "user" | "assistant"
+  role           String // "user" | "assistant"
   content        String
   createdAt      DateTime @default(now())
 
@@ -308,12 +352,12 @@ model Note {
 }
 
 model VoiceBankEntry {
-  id        String         @id @default(cuid())
+  id        String        @id @default(cuid())
   userId    String
   content   String
   type      VoiceBankType
   topic     String?
-  createdAt DateTime       @default(now())
+  createdAt DateTime      @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -364,47 +408,198 @@ model ScheduledSlot {
 }
 
 model StrategyConfig {
-  id              String    @id @default(cuid())
-  userId          String
-  scheduleConfig  Json?     // { posts: { slots: [...] }, threads: {...}, articles: {...} }
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id             String   @id @default(cuid())
+  userId         String
+  scheduleConfig Json? // { posts: { slots: [...] }, threads: {...}, articles: {...} }
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
 
-// ─── X Analytics ─────────────────────────────────────────
+// ─── Social Analytics ────────────────────────────────────
+//
+// ADR-008: platform-agnostic analytics models. Replacing XPost /
+// DailyAccountStats / FollowersSnapshot / PostEngagementSnapshot with
+// these four. Cutover happens in two phases:
+//   Phase 1a: additive CREATE TABLEs + dual-write, old models kept.
+//   Phase 1b (≥1 week later): reads switch to Social*, DROP old tables.
+// All queries MUST filter by `(userId, platform)` — the composite
+// indexes are tuned for that.
+
+model SocialPost {
+  id             String   @id @default(cuid())
+  userId         String
+  platform       Platform
+  externalPostId String // post id as issued by the platform (tweet id, urn:li:share:…, threads media id)
+  postedAt       DateTime
+  text           String
+  postUrl        String?
+  postType       String // free-form per platform: "POST"|"REPLY"|"QUOTE" for X, "POST"|"REPOST"|"ARTICLE" for LinkedIn, "TEXT_POST"|"IMAGE"|… for Threads
+
+  // Shared metric surface — not every platform fills every field.
+  impressions   Int @default(0)
+  likes         Int @default(0)
+  engagements   Int @default(0)
+  bookmarks     Int @default(0)
+  replies       Int @default(0)
+  reposts       Int @default(0)
+  quoteCount    Int @default(0)
+  urlClicks     Int @default(0)
+  profileVisits Int @default(0)
+  shares        Int @default(0) // Threads-only today
+  views         Int @default(0) // Threads-only today
+
+  // CSV enrichment (not provided by APIs)
+  newFollowers  Int @default(0)
+  detailExpands Int @default(0)
+
+  // Platform-specific fields live here. Validated at the application
+  // layer by PlatformMetadataSchema (Zod discriminated union, ADR-008).
+  // Never store platform secrets here.
+  platformMetadata Json?
+
+  dataSource DataSource @default(API)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  user                User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  engagementSnapshots SocialPostEngagementSnapshot[]
+
+  @@unique([userId, platform, externalPostId])
+  @@index([userId, platform, postedAt])
+}
+
+model SocialDailyStats {
+  id       String   @id @default(cuid())
+  userId   String
+  platform Platform
+  date     DateTime
+
+  impressions   Int @default(0)
+  likes         Int @default(0)
+  engagements   Int @default(0)
+  bookmarks     Int @default(0)
+  shares        Int @default(0)
+  newFollows    Int @default(0)
+  unfollows     Int @default(0)
+  replies       Int @default(0)
+  reposts       Int @default(0)
+  profileVisits Int @default(0)
+  createPost    Int @default(0)
+  videoViews    Int @default(0)
+  mediaViews    Int @default(0)
+  views         Int @default(0) // Threads-only today
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform, date])
+  @@index([userId, platform, date])
+}
+
+model SocialFollowersSnapshot {
+  id             String   @id @default(cuid())
+  userId         String
+  platform       Platform
+  date           DateTime // UTC midnight
+  followersCount Int
+  followingCount Int? // LinkedIn doesn't expose this; Threads does partially
+  deltaFollowers Int      @default(0)
+  deltaFollowing Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform, date])
+  @@index([userId, platform, date])
+}
+
+model SocialPostEngagementSnapshot {
+  id           String   @id @default(cuid())
+  userId       String
+  platform     Platform
+  postId       String // FK to SocialPost.id
+  snapshotDate DateTime
+
+  impressions   Int @default(0)
+  likes         Int @default(0)
+  engagements   Int @default(0)
+  bookmarks     Int @default(0)
+  replies       Int @default(0)
+  reposts       Int @default(0)
+  quoteCount    Int @default(0)
+  profileVisits Int @default(0)
+  urlClicks     Int @default(0)
+  shares        Int @default(0)
+  views         Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform, postId, snapshotDate])
+  @@index([userId, platform])
+  @@index([postId])
+}
+
+// ─── Platform Benchmarks (global, admin-curated) ────────
+
+// ADR-008: replaces the hardcoded engagement / follower-growth
+// thresholds in the Strategist prompt. Admin-only writes; reads are
+// per-user. `source` + `sourceUrl` carry provenance so the agent can
+// cite where the numbers come from in its output.
+model PlatformBenchmark {
+  id              String       @id @default(cuid())
+  platform        Platform
+  audienceSize    AudienceSize
+  metric          String // e.g. "engagement_rate", "follower_growth_monthly"
+  strongThreshold Float // >= this = strong
+  avgThreshold    Float // >= this but < strongThreshold = average
+  weakThreshold   Float // >= this but < avgThreshold = weak (below = poor)
+  source          String // human-readable citation
+  sourceUrl       String
+  updatedAt       DateTime     @updatedAt
+  createdAt       DateTime     @default(now())
+
+  @@unique([platform, audienceSize, metric])
+  @@index([platform])
+}
+
+// ─── X Analytics (legacy, to be dropped in Phase 1b) ─────
 
 model XPost {
-  id            String     @id @default(cuid())
-  userId        String
-  postId        String
-  date          DateTime
-  text          String
-  postLink      String?
-  postType      XPostType
+  id       String    @id @default(cuid())
+  userId   String
+  postId   String
+  date     DateTime
+  text     String
+  postLink String?
+  postType XPostType
 
   // Core metrics (API owns these)
-  impressions   Int        @default(0)
-  likes         Int        @default(0)
-  engagements   Int        @default(0)
-  bookmarks     Int        @default(0)
-  replies       Int        @default(0)
-  reposts       Int        @default(0)
-  quoteCount    Int        @default(0)
-  urlClicks     Int        @default(0)
-  profileVisits Int        @default(0)
+  impressions   Int @default(0)
+  likes         Int @default(0)
+  engagements   Int @default(0)
+  bookmarks     Int @default(0)
+  replies       Int @default(0)
+  reposts       Int @default(0)
+  quoteCount    Int @default(0)
+  urlClicks     Int @default(0)
+  profileVisits Int @default(0)
 
   // CSV-only enrichment (API doesn't provide these)
-  newFollowers  Int        @default(0)
-  detailExpands Int        @default(0)
+  newFollowers  Int @default(0)
+  detailExpands Int @default(0)
 
   // Source tracking
-  dataSource    DataSource @default(CSV)
-  updatedAt     DateTime   @updatedAt
-  createdAt     DateTime   @default(now())
+  dataSource DataSource @default(CSV)
+  updatedAt  DateTime   @updatedAt
+  createdAt  DateTime   @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -442,9 +637,12 @@ model DailyAccountStats {
 model StrategyAnalysis {
   id             String   @id @default(cuid())
   userId         String
-  csvSummary     Json     // { totalPosts, avgImpressions, topPosts[], dateRange }
+  // ADR-008: the Strategist runs once per (user × platform × week).
+  // Default X for backfill of rows created before Phase 1a.
+  platform       Platform @default(X)
+  csvSummary     Json // { totalPosts, avgImpressions, topPosts[], dateRange }
   searchQueries  String[] // queries the agent ran, for transparency
-  recommendation String   // full markdown output from Claude
+  recommendation String // full markdown output from Claude
   weekStart      DateTime // the Monday of the week this analysis covers
   autoGenerated  Boolean  @default(false) // true for cron-generated analyses
   createdAt      DateTime @default(now())
@@ -452,6 +650,7 @@ model StrategyAnalysis {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, platform, weekStart])
 }
 
 model ResearchNote {
@@ -459,7 +658,7 @@ model ResearchNote {
   userId    String
   topic     String
   summary   String
-  sources   Json     // [{ title, url, snippet }]
+  sources   Json // [{ title, url, snippet }]
   queries   String[]
   createdAt DateTime @default(now())
 
@@ -472,8 +671,8 @@ model DailyInsight {
   id        String   @id @default(cuid())
   userId    String
   date      DateTime // UTC midnight, one record per day per user
-  insights  Json     // string[] of 5 insights in Russian
-  context   Json     // { strategyAnalysisId, researchNoteIds[], daysOfStats }
+  insights  Json // string[] of 5 insights in Russian
+  context   Json // { strategyAnalysisId, researchNoteIds[], daysOfStats }
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -483,14 +682,14 @@ model DailyInsight {
 }
 
 model FollowersSnapshot {
-  id              String   @id @default(cuid())
-  userId          String
-  date            DateTime // UTC midnight, one per day per user
-  followersCount  Int
-  followingCount  Int
-  deltaFollowers  Int      @default(0) // today - yesterday
-  deltaFollowing  Int      @default(0)
-  createdAt       DateTime @default(now())
+  id             String   @id @default(cuid())
+  userId         String
+  date           DateTime // UTC midnight, one per day per user
+  followersCount Int
+  followingCount Int
+  deltaFollowers Int      @default(0) // today - yesterday
+  deltaFollowing Int      @default(0)
+  createdAt      DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -499,18 +698,22 @@ model FollowersSnapshot {
 }
 
 // ─── Trends (per-user) ──────────────────────────────────
+//
+// ADR-008: TrendSnapshot is X-only by design. LinkedIn and Threads
+// do not expose personalized trending-topic feeds — there is no
+// equivalent surface to import. Keep this table X-specific.
 
 model TrendSnapshot {
-  id             String    @id @default(cuid())
-  userId         String
-  date           DateTime  // UTC midnight of the day fetched
-  trendName      String
-  postCount      Int       @default(0)
-  category       String?
-  trendingSince  DateTime?
-  createdAt      DateTime  @default(now())
+  id            String    @id @default(cuid())
+  userId        String
+  date          DateTime // UTC midnight of the day fetched
+  trendName     String
+  postCount     Int       @default(0)
+  category      String?
+  trendingSince DateTime?
+  createdAt     DateTime  @default(now())
 
-  fetchHour     Int       @default(0) // UTC hour of fetch (0-23), enables multiple snapshots per day
+  fetchHour Int @default(0) // UTC hour of fetch (0-23), enables multiple snapshots per day
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -548,32 +751,36 @@ model PostEngagementSnapshot {
 model PlanProposal {
   id              String         @id @default(cuid())
   userId          String
+  // ADR-008: proposals are scoped to a single platform.
+  // Default X for rows created before Phase 1a.
+  platform        Platform       @default(X)
   status          ProposalStatus @default(PENDING)
   proposalType    String         @default("config") // "config" | "schedule" (legacy)
-  changes         Json           // ConfigChange[] or PlanChange[] depending on proposalType
-  summary         String         // markdown summary from strategist
-  analysisId      String?        // link to StrategyAnalysis that generated it
-  metricsSnapshot Json?          // MetricsSnapshot at time of proposal creation
+  changes         Json // ConfigChange[] or PlanChange[] depending on proposalType
+  summary         String // markdown summary from strategist
+  analysisId      String? // link to StrategyAnalysis that generated it
+  metricsSnapshot Json? // MetricsSnapshot at time of proposal creation
   createdAt       DateTime       @default(now())
   reviewedAt      DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, platform])
 }
 
 // ─── Admin: API Cost Tracking ───────────────────────────
 
 model XApiCallLog {
   id            String           @id @default(cuid())
-  endpoint      String           // e.g. "/users/me", "/users/:id/tweets"
+  endpoint      String // e.g. "/users/me", "/users/:id/tweets"
   resourceType  XApiResourceType
-  resourceCount Int              // number of resources fetched
-  costCents     Float            // calculated cost in cents
-  callerJob     String?          // cron job name or "manual"
-  userId        String?          // user for whom the call was made (null for global, e.g. trends)
+  resourceCount Int // number of resources fetched
+  costCents     Float // calculated cost in cents
+  callerJob     String? // cron job name or "manual"
+  userId        String? // user for whom the call was made (null for global, e.g. trends)
   httpStatus    Int?
-  error         String?          // truncated to 2000 chars
+  error         String? // truncated to 2000 chars
   calledAt      DateTime         @default(now())
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -590,7 +797,7 @@ model CronJobRun {
   status     CronJobStatus
   durationMs Int?
   resultJson Json?
-  error      String?       // truncated to 2000 chars
+  error      String? // truncated to 2000 chars
   startedAt  DateTime      @default(now())
 
   @@index([jobName])
@@ -603,7 +810,7 @@ model CronJobConfig {
   jobName     String   @id
   enabled     Boolean  @default(true)
   description String?
-  schedule    String?  // human-readable cron expression
-  updatedBy   String?  // clerkId of admin who last toggled
+  schedule    String? // human-readable cron expression
+  updatedBy   String? // clerkId of admin who last toggled
   updatedAt   DateTime @updatedAt
 }

@@ -7,6 +7,8 @@ import { tavily } from "@tavily/core";
 import { getStrategistPrompt, buildStrategistUserMessage } from "@/prompts/strategist";
 import { getScheduleConfig } from "@/app/actions/schedule";
 import { getAcceptedProposals } from "@/app/actions/plan-proposal";
+import { getBenchmarksInternal } from "@/app/actions/benchmarks";
+import { getOutputLanguageInternal } from "@/app/actions/user-settings";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import {
@@ -21,11 +23,15 @@ import {
   RateLimitExceededError,
   SubscriptionRequiredError,
 } from "@/lib/errors";
+import { getAudienceSize } from "@/lib/audience-size";
+import { DEFAULT_LANGUAGE } from "@/lib/i18n/language-names";
+import { PLATFORMS } from "@/lib/types";
 import type {
   ConfigChange,
   CsvSummary,
   MetricsSnapshot,
   PastDecisionItem,
+  Platform,
   XProfile,
 } from "@/lib/types";
 
@@ -43,11 +49,25 @@ export async function POST(req: NextRequest) {
     weekStart,
     profile,
     model: modelParam,
-  }: { csvSummary: CsvSummary; weekStart: string; profile?: XProfile; model?: string } = body;
+    platform: platformParam,
+  }: {
+    csvSummary: CsvSummary;
+    weekStart: string;
+    profile?: XProfile;
+    model?: string;
+    platform?: string;
+  } = body;
 
   if (!csvSummary || !weekStart) {
     return NextResponse.json({ error: "Missing csvSummary or weekStart" }, { status: 400 });
   }
+
+  // Platform defaults to X for backward compat. Validate against the
+  // enum so a malicious caller can't pass e.g. "X; DROP TABLE" as a
+  // Prisma filter value later.
+  const platform: Platform = PLATFORMS.includes(platformParam as Platform)
+    ? (platformParam as Platform)
+    : "X";
 
   const ALLOWED_MODELS = ["claude-sonnet-4-6", "claude-haiku-4-5-20251001"] as const;
   type AllowedModel = (typeof ALLOWED_MODELS)[number];
@@ -88,11 +108,19 @@ export async function POST(req: NextRequest) {
     throw err;
   }
 
-  // Load context for self-improvement loop
-  const [scheduleConfig, acceptedProposals] = await Promise.all([
+  // Load context for self-improvement loop. Benchmarks are keyed by
+  // audience size derived from the user's follower count (CSV-provided
+  // — the client has it from the X profile step).
+  const followerCountGuess = profile?.followers ? Number(profile.followers.replace(/\D/g, "")) : 0;
+  const audienceSize = getAudienceSize(followerCountGuess);
+
+  const [scheduleConfig, acceptedProposals, benchmarks, outputLanguageRaw] = await Promise.all([
     getScheduleConfig(),
-    getAcceptedProposals(30),
+    getAcceptedProposals(30, platform),
+    getBenchmarksInternal(platform, audienceSize),
+    getOutputLanguageInternal(dbUser.id),
   ]);
+  const outputLanguage = outputLanguageRaw ?? DEFAULT_LANGUAGE;
 
   const currentMetrics: MetricsSnapshot = {
     avgImpressions: csvSummary.avgImpressions,
@@ -120,7 +148,7 @@ export async function POST(req: NextRequest) {
     result = streamText({
       model: anthropic(model),
       maxOutputTokens: PLANS.pro.maxOutputTokensPerRequest,
-      system: getStrategistPrompt(),
+      system: getStrategistPrompt(platform, outputLanguage),
       messages: [
         {
           role: "user",
@@ -134,7 +162,9 @@ export async function POST(req: NextRequest) {
             undefined,
             undefined,
             scheduleConfig ?? undefined,
-            pastDecisions
+            pastDecisions,
+            platform,
+            benchmarks
           ),
         },
       ],

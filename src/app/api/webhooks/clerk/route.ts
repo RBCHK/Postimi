@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Webhook } from "svix";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { localeToLanguage } from "@/lib/i18n/locale-to-language";
 
 interface ClerkUserEvent {
   id: string;
@@ -9,6 +10,12 @@ interface ClerkUserEvent {
   first_name?: string | null;
   last_name?: string | null;
   image_url?: string | null;
+  // Clerk user may carry locale in a few places depending on how the app
+  // is configured. We read all three and let `localeToLanguage` pick
+  // the first whitelisted one — never trust the raw value.
+  public_metadata?: { locale?: unknown } | null;
+  unsafe_metadata?: { locale?: unknown } | null;
+  locale?: unknown;
 }
 
 export async function POST(req: Request) {
@@ -48,6 +55,17 @@ export async function POST(req: Request) {
     const email = (data.email_addresses?.[0]?.email_address ?? "").toLowerCase();
     const name = [data.first_name, data.last_name].filter(Boolean).join(" ") || null;
 
+    // ADR-008 Phase 5: derive outputLanguage from Clerk locale on
+    // user.created only. On user.updated we never overwrite — the user
+    // may have explicitly changed their language in Settings, and a
+    // webhook refire must not clobber that choice.
+    const locale =
+      (data.public_metadata && (data.public_metadata as { locale?: unknown }).locale) ??
+      (data.unsafe_metadata && (data.unsafe_metadata as { locale?: unknown }).locale) ??
+      data.locale ??
+      null;
+    const derivedLanguage = localeToLanguage(locale);
+
     const user = await prisma.user.upsert({
       where: { clerkId: data.id },
       update: {
@@ -60,6 +78,8 @@ export async function POST(req: Request) {
         email,
         name,
         imageUrl: data.image_url ?? null,
+        // Null → reader falls back to DEFAULT_LANGUAGE ("EN").
+        outputLanguage: derivedLanguage,
       },
     });
 
