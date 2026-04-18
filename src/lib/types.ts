@@ -236,6 +236,7 @@ export interface XProfile {
 
 export interface StrategyAnalysisItem {
   id: string;
+  platform: Platform;
   weekStart: Date;
   recommendation: string;
   createdAt: Date;
@@ -374,6 +375,7 @@ export interface PastDecisionItem {
 
 export interface PlanProposalItem {
   id: string;
+  platform: Platform;
   status: ProposalStatus;
   proposalType: "config" | "schedule";
   changes: PlanChange[] | ConfigChange[];

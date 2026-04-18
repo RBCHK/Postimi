@@ -24,10 +24,14 @@ import { deleteAnalysis } from "@/app/actions/strategist";
 import { PageContainer } from "@/components/page-container";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
+import { PLATFORM_CONFIG } from "@/lib/types";
 
 export function StrategistView() {
   const {
     analyses,
+    connectedPlatforms,
+    selectedPlatform,
+    setSelectedPlatform,
     selectedId,
     csvSummary,
     csvError,
@@ -116,6 +120,25 @@ export function StrategistView() {
           </Button>
         )}
       </PageHeader>
+
+      {/* Platform switcher — only shown when user has >1 connected platform */}
+      {connectedPlatforms.length > 1 && (
+        <div className="flex gap-1 overflow-x-auto shrink-0 pb-1">
+          {connectedPlatforms.map((p) => (
+            <button
+              key={p}
+              onClick={() => setSelectedPlatform(p)}
+              className={`shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                selectedPlatform === p
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-muted/60"
+              }`}
+            >
+              {PLATFORM_CONFIG[p].label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Mobile: horizontal tabs */}
       <div className="md:hidden flex gap-1 overflow-x-auto pb-2 shrink-0">

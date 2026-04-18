@@ -105,6 +105,13 @@ export async function getSocialAnalyticsDateRange(
   return _getSocialAnalyticsDateRange(userId, platform);
 }
 
+export async function getSocialAnalyticsDateRangeInternal(
+  userId: string,
+  platform: Platform
+): Promise<{ from: Date; to: Date } | null> {
+  return _getSocialAnalyticsDateRange(userId, platform);
+}
+
 async function _getSocialAnalyticsSummary(
   userId: string,
   platform: Platform,

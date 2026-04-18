@@ -7,12 +7,67 @@ import type {
   TrendItem,
   XProfile,
 } from "../lib/types";
+import type { Platform, Language } from "@/generated/prisma";
 import type { ScheduleConfig } from "../app/actions/schedule";
+import type { BenchmarkRow } from "@/app/actions/benchmarks";
+import { languageName } from "@/lib/i18n/language-names";
 
-export function getStrategistPrompt(): string {
-  return `You are an expert X (Twitter) growth strategist. Your job is to analyze account performance data and produce a concrete, actionable weekly content strategy.
+// ADR-008 Phase 6: Strategist is now platform-aware and language-aware.
+//
+// The system prompt used to hardcode "X Twitter growth strategist",
+// the current year, benchmarks, and "All output in Russian". Those are
+// all parameterized now:
+//   - `platform` selects the platform-specific name + notes
+//   - `language` selects the output language via `languageName()` —
+//      which is a pure enum→name map, so there's no way user input
+//      flows into the prompt
+//   - year is computed at runtime from `new Date()`
+//   - benchmarks are passed via the USER message (see cron route)
+//     using `PlatformBenchmark` from DB, which admins curate
 
-You have access to a web search tool. Use it to find the latest research and best practices for growing X accounts in 2026.
+const PLATFORM_META: Record<
+  Platform,
+  {
+    displayName: string;
+    algoNotes: string;
+    webSearchTopic: string;
+    scheduleValidSections: string;
+  }
+> = {
+  X: {
+    displayName: "X (Twitter)",
+    algoNotes:
+      "The X algorithm favors original content, engagement within the first hour, and replies to larger accounts. Consistency matters — gaps get penalized. Threads are a distinct content type that index well.",
+    webSearchTopic: "X Twitter growth algorithm best posting time engagement",
+    scheduleValidSections: '"replies", "posts", "threads", "articles"',
+  },
+  LINKEDIN: {
+    displayName: "LinkedIn",
+    algoNotes:
+      "LinkedIn rewards dwell time and early comments. Native documents (carousels) and long-form text posts outperform link shares. Posting Tue-Thu mornings in the author's timezone is standard advice. The feed is slower — a strong post can keep earning impressions for days.",
+    webSearchTopic: "LinkedIn content strategy creator algorithm engagement",
+    scheduleValidSections: '"posts", "articles"',
+  },
+  THREADS: {
+    displayName: "Threads",
+    algoNotes:
+      "Threads rewards conversation — replies to your own post and to others drive reach. Shorter bursts, quick takes, and replies to trending topics work better than long essays. The feed mixes followed accounts with For You recommendations, so new accounts can reach a wide audience.",
+    webSearchTopic: "Meta Threads growth strategy best posting time engagement",
+    scheduleValidSections: '"posts", "replies"',
+  },
+};
+
+export function getStrategistPrompt(platform: Platform, language: Language): string {
+  const meta = PLATFORM_META[platform];
+  const year = new Date().getFullYear();
+  const outputLanguageName = languageName(language);
+
+  return `You are an expert ${meta.displayName} growth strategist. Your job is to analyze account performance data and produce a concrete, actionable weekly content strategy.
+
+You have access to a web search tool. Use it to find the latest research and best practices for growing ${meta.displayName} accounts in ${year}.
+
+## Platform Notes
+${meta.algoNotes}
 
 ## Your Process
 
@@ -24,42 +79,38 @@ If the user message contains a "## Past Strategy Decisions" section, evaluate ea
 - Do NOT propose reversing effective decisions. Do NOT re-propose what already works.
 
 ### Step 1 — Research (use webSearch tool, 3–5 queries)
-Always run these 2 core queries:
-- "X Twitter algorithm 2026 what content gets boosted"
-- "best posting time X Twitter 2026"
+Always run these core queries (adapt the topic to the user's niche if obvious):
+- "${meta.webSearchTopic} ${year}"
 
-Then run 1–3 adaptive queries based on the user's data weaknesses:
-- Engagement rate < 1.5% → "how to improve X engagement rate 2026"
-- New follows < 5 per week → "X reply strategy to gain followers 2026"
-- Threads are top performers → "X thread strategy growth 2026"
-- Impressions are low → "X impression boosting tactics 2026"
-- No clear pattern in top posts → "X content mix strategy 2026"
+Then run 2–4 adaptive queries based on the user's data weaknesses. Pick from:
+- Engagement rate below the AVG benchmark provided → "how to improve ${meta.displayName} engagement rate ${year}"
+- New follows below weak threshold → "${meta.displayName} strategy to gain followers ${year}"
+- Impressions are low → "${meta.displayName} impression boosting tactics ${year}"
+- No clear pattern in top posts → "${meta.displayName} content mix strategy ${year}"
 
 ### Step 2 — Analysis
 After searching, analyze the user's data alongside your research findings:
 - What is working? (high-impression posts — what do they have in common?)
 - What is underperforming? (low-impression posts — why?)
 - What patterns emerge from the top 5 posts?
-- How does posting frequency compare to recommended levels (target: 3+ posts/day OR 1 post + 10–15 quality replies/day)?
-- Engagement rate benchmark: > 2.5% = strong, 1–2.5% = average, < 1% = needs fixing
-- Follower growth rate: target ≥ 5% monthly
-- **Consistency check**: Are there gaps in the posting schedule? The X algorithm penalizes inconsistency — flag any days with 0 posts and propose fixes.
-- **Trending topics**: Are any current trends relevant to the user's niche? If so, note the urgency — AI trends live 4–8 days, act within 12–24 hours.
+- How does posting frequency compare to recommended levels for ${meta.displayName}?
+- Use the BENCHMARKS section in the user message (if provided) as the frame of reference — never invent numbers.
+- **Consistency check**: Are there gaps in the posting schedule? Flag any days with 0 posts and propose fixes.
 
 ### Step 3 — Strategy Output
 Produce a structured weekly strategy using EXACTLY this markdown format:
 
 ---
 
-## X Growth Strategy — Week of [date range]
+## ${meta.displayName} Growth Strategy — Week of [date range]
 
 ### 📊 Your Numbers at a Glance
 - Total posts analyzed: [N]
 - Avg impressions per post: [N]
 - Best post: [N] impressions
 - New followers gained: [N]
-- Engagement rate: [N]% ([strong / average / needs fixing] vs 2.5% benchmark)
-- Follower growth rate: [N]% ([on track / below target] vs 5% monthly target)
+- Engagement rate: [N]% ([strong / average / weak / needs fixing] vs the benchmark in the user message)
+- Follower growth rate: [N]% ([on track / below target] vs the benchmark in the user message)
 
 ### 🔍 What's Working
 [2–3 specific observations from the top posts. Be concrete — mention actual post patterns, not generic advice.]
@@ -71,9 +122,7 @@ Produce a structured weekly strategy using EXACTLY this markdown format:
 
 **Daily posting target:**
 - Posts: [N] per day
-- Replies: [N] per day (reply sessions)
-- Threads: [N] per week
-- Best posting times: [specific times, e.g., "9:00 AM, 1:00 PM, 6:00 PM"]
+- Best posting times: [specific times]
 
 **Topics to focus on this week:**
 1. [Topic 1] — [why it fits your niche and what angle to take]
@@ -81,16 +130,12 @@ Produce a structured weekly strategy using EXACTLY this markdown format:
 3. [Topic 3] — [why it fits your niche and what angle to take]
 
 **Content format mix:**
-- [%] original insights / hot takes
-- [%] educational threads
-- [%] personal stories / case studies
-- [%] curated commentary (replies to big accounts)
-- [%] multimedia posts (if applicable)
+[Platform-appropriate mix with percentages]
 
 ### 💡 One Specific Experiment This Week
 - **Hypothesis**: [what we're testing and why]
-- **Test**: [specific action to take, e.g., "Post at 8 AM instead of 10 AM for 3 consecutive days"]
-- **Success Metric**: [what to measure, e.g., "avg impressions per post"]
+- **Test**: [specific action to take]
+- **Success Metric**: [what to measure]
 - **Decision Threshold**: [e.g., "If morning posts average > [N+20%], make it the default posting time"]
 
 ### 📚 Sources Used
@@ -111,24 +156,36 @@ Output a JSON block (can be empty array [] if no changes needed):
 
 \`\`\`json:config-proposal
 [
-  {"action": "add", "section": "replies", "time": "08:00", "days": {"Mon": true, "Wed": true, "Fri": true}, "reason": "..."},
+  {"action": "add", "section": "posts", "time": "08:00", "days": {"Mon": true, "Wed": true, "Fri": true}, "reason": "..."},
   {"action": "remove", "section": "posts", "time": "15:00", "days": {"Tue": true, "Thu": true}, "reason": "..."}
 ]
 \`\`\`
 
 Valid actions: "add", "remove".
-Valid sections: "replies", "posts", "threads", "articles".
+Valid sections for ${meta.displayName}: ${meta.scheduleValidSections}.
 Time format: "HH:MM" in 24h (e.g. "09:00", "18:30").
 Days: any subset of Mon, Tue, Wed, Thu, Fri, Sat, Sun.
 Each change applies to ALL future weeks — think in terms of recurring patterns, not specific dates.
 
 ## Rules
-- Be specific, not generic. Use actual numbers from the user's data.
+- Be specific, not generic. Use actual numbers from the user's data and from the BENCHMARKS section.
 - Ground every recommendation in either their actual data or a specific source you found.
 - Do not recommend things that conflict with each other.
 - Keep the total output under 1200 words — this is a weekly action plan, not an essay.
-- All output in Russian.
-- At the very end, add a short section **"📋 Что поможет улучшить следующий анализ"** — list 2–3 specific data points that are missing and would make the strategy more accurate. Skip this section if all key data is already provided.`;
+- All output in ${outputLanguageName}.
+- At the very end, add a short section titled in ${outputLanguageName} along the lines of "What would improve the next analysis" — list 2–3 specific data points that are missing and would make the strategy more accurate. Skip this section if all key data is already provided.`;
+}
+
+// ─── User message builder ────────────────────────────────
+
+function formatBenchmarksBlock(benchmarks: BenchmarkRow[]): string {
+  if (benchmarks.length === 0) return "";
+  const lines = benchmarks.map(
+    (b) =>
+      `- **${b.metric}**: strong ≥ ${b.thresholds.strong}, average ≥ ${b.thresholds.avg}, weak ≥ ${b.thresholds.weak} (below weak = needs urgent fix). Source: ${b.source}`
+  );
+  return `## Benchmarks (for this platform × your audience size)
+${lines.join("\n")}`;
 }
 
 export function buildStrategistUserMessage(
@@ -141,8 +198,12 @@ export function buildStrategistUserMessage(
   researchNotes?: { topic: string; summary: string }[],
   previousAnalysis?: string,
   scheduleConfig?: ScheduleConfig,
-  pastDecisions?: PastDecisionItem[]
+  pastDecisions?: PastDecisionItem[],
+  platform: Platform = "X",
+  benchmarks: BenchmarkRow[] = []
 ): string {
+  const platformLabel = PLATFORM_META[platform].displayName;
+
   // --- Profile section ---
   const hasProfile = profile && (profile.name || profile.username || profile.followers);
   const profileSection = hasProfile
@@ -159,7 +220,6 @@ ${profile.following ? `- Following: ${profile.following}` : ""}`.trim()
   let topPostsSection: string;
 
   if ("totalReplies" in summary) {
-    // AnalyticsSummary
     const s = summary as AnalyticsSummary;
     statsSection = `## My Stats
 - Period: ${s.dateRange.from} to ${s.dateRange.to} (${s.periodDays} days)
@@ -186,7 +246,6 @@ ${s.topPosts
   .join("\n")}`
         : "";
   } else {
-    // Legacy CsvSummary
     const s = summary as CsvSummary;
     statsSection = `## My Stats
 - Period: ${s.dateRange.from} to ${s.dateRange.to}
@@ -208,6 +267,9 @@ ${s.topPosts
         : "";
   }
 
+  // --- Benchmarks section ---
+  const benchmarksSection = formatBenchmarksBlock(benchmarks);
+
   // --- Followers history section ---
   const followersSection =
     followersHistory && followersHistory.length > 0
@@ -220,9 +282,9 @@ ${followersHistory
   .join("\n")}`
       : "";
 
-  // --- Trends section ---
+  // --- Trends section (X-only — other platforms don't expose trends) ---
   const trendsSection =
-    trends && trends.length > 0
+    platform === "X" && trends && trends.length > 0
       ? `## Current Trends on X (personalized)
 ${trends
   .slice(0, 10)
@@ -300,9 +362,10 @@ ${pastDecisions
       : "";
 
   const sections = [
-    `Here is my X account analytics data for the week starting ${weekStart}.`,
+    `Here is my ${platformLabel} account analytics data for the week starting ${weekStart}.`,
     profileSection,
     statsSection,
+    benchmarksSection,
     topPostsSection,
     followersSection,
     trendsSection,
@@ -310,7 +373,7 @@ ${pastDecisions
     researchSection,
     previousSection,
     pastDecisionsSection,
-    "Please search the web for the latest X growth strategies, analyze my data, and produce my weekly strategy.",
+    `Please search the web for the latest ${platformLabel} growth strategies, analyze my data, and produce my weekly strategy.`,
   ].filter(Boolean);
 
   return sections.join("\n\n");

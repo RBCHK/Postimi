@@ -7,6 +7,7 @@ import { requireUserId } from "@/lib/auth";
 import {
   ProposalStatus as PrismaProposalStatus,
   SlotType as PrismaSlotType,
+  type Platform,
 } from "@/generated/prisma";
 import {
   getScheduleConfig,
@@ -37,6 +38,7 @@ const slotTypeToPrisma: Record<string, PrismaSlotType> = {
 
 function mapRow(row: {
   id: string;
+  platform: Platform;
   status: PrismaProposalStatus;
   proposalType: string;
   changes: unknown;
@@ -47,6 +49,7 @@ function mapRow(row: {
 }): PlanProposalItem {
   return {
     id: row.id,
+    platform: row.platform,
     status: statusFromPrisma[row.status],
     proposalType: row.proposalType === "schedule" ? "schedule" : "config",
     changes: row.changes as PlanChange[] | ConfigChange[],
@@ -130,6 +133,7 @@ function applyConfigChanges(config: ScheduleConfig, changes: ConfigChange[]): Sc
 
 /** Create a new PENDING plan proposal */
 export async function savePlanProposal(data: {
+  platform?: Platform;
   changes: PlanChange[] | ConfigChange[];
   summary: string;
   analysisId?: string;
@@ -143,6 +147,7 @@ export async function savePlanProposal(data: {
 export async function savePlanProposalInternal(
   userId: string,
   data: {
+    platform?: Platform;
     changes: PlanChange[] | ConfigChange[];
     summary: string;
     analysisId?: string;
@@ -156,6 +161,7 @@ export async function savePlanProposalInternal(
 async function _savePlanProposal(
   userId: string,
   data: {
+    platform?: Platform;
     changes: PlanChange[] | ConfigChange[];
     summary: string;
     analysisId?: string;
@@ -166,6 +172,7 @@ async function _savePlanProposal(
   const row = await prisma.planProposal.create({
     data: {
       userId,
+      platform: data.platform ?? "X",
       changes: data.changes as object,
       summary: data.summary,
       analysisId: data.analysisId ?? null,
@@ -189,23 +196,36 @@ export async function getPendingProposal(): Promise<PlanProposalItem | null> {
 }
 
 /** Get accepted proposals from the last N days (for effectiveness review) */
-export async function getAcceptedProposals(days: number): Promise<PlanProposalItem[]> {
+export async function getAcceptedProposals(
+  days: number,
+  platform?: Platform
+): Promise<PlanProposalItem[]> {
   const userId = await requireUserId();
-  return _getAcceptedProposals(userId, days);
+  return _getAcceptedProposals(userId, days, platform);
 }
 
 export async function getAcceptedProposalsInternal(
   userId: string,
-  days: number
+  days: number,
+  platform?: Platform
 ): Promise<PlanProposalItem[]> {
-  return _getAcceptedProposals(userId, days);
+  return _getAcceptedProposals(userId, days, platform);
 }
 
-async function _getAcceptedProposals(userId: string, days: number): Promise<PlanProposalItem[]> {
+async function _getAcceptedProposals(
+  userId: string,
+  days: number,
+  platform?: Platform
+): Promise<PlanProposalItem[]> {
   const since = new Date();
   since.setUTCDate(since.getUTCDate() - days);
   const rows = await prisma.planProposal.findMany({
-    where: { userId, status: "ACCEPTED", reviewedAt: { gte: since } },
+    where: {
+      userId,
+      status: "ACCEPTED",
+      reviewedAt: { gte: since },
+      ...(platform ? { platform } : {}),
+    },
     orderBy: { reviewedAt: "desc" },
   });
   return rows.map(mapRow);
