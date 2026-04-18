@@ -87,6 +87,8 @@ export const GET = withCronLogging("x-import", async (req) => {
           updateData.profileVisits = tweet.profileVisits;
         }
 
+        const postType = detectPostType(tweet.text);
+
         await prisma.xPost.upsert({
           where: { userId_postId: { userId: user.id, postId: tweet.postId } },
           create: {
@@ -95,7 +97,7 @@ export const GET = withCronLogging("x-import", async (req) => {
             date: tweet.createdAt,
             text: tweet.text,
             postLink: tweet.postLink,
-            postType: detectPostType(tweet.text),
+            postType,
             ...apiMetrics,
             profileVisits: tweet.profileVisits ?? 0,
             dataSource: "API",
@@ -105,6 +107,50 @@ export const GET = withCronLogging("x-import", async (req) => {
 
         if (existing) updated++;
         else imported++;
+
+        // ADR-008 Phase 1a: dual-write to platform-agnostic SocialPost.
+        // Wrapped in its own try/catch so a schema/Zod regression on the
+        // new table never rolls back the legacy XPost write. The Phase 1b
+        // cutover removes the legacy branch and this `.catch` safety net.
+        let socialPostId: string | null = null;
+        try {
+          const socialMetrics = {
+            ...apiMetrics,
+            profileVisits: tweet.profileVisits ?? 0,
+          };
+          const socialPost = await prisma.socialPost.upsert({
+            where: {
+              userId_platform_externalPostId: {
+                userId: user.id,
+                platform: "X",
+                externalPostId: tweet.postId,
+              },
+            },
+            create: {
+              userId: user.id,
+              platform: "X",
+              externalPostId: tweet.postId,
+              postedAt: tweet.createdAt,
+              text: tweet.text,
+              postUrl: tweet.postLink,
+              postType,
+              platformMetadata: { platform: "X", postType },
+              ...socialMetrics,
+              dataSource: "API",
+            },
+            update: {
+              ...socialMetrics,
+              dataSource: "API",
+            },
+            select: { id: true },
+          });
+          socialPostId = socialPost.id;
+        } catch (socialErr) {
+          Sentry.captureException(socialErr, {
+            tags: { phase: "1a-dual-write", model: "SocialPost", platform: "X" },
+            extra: { userId: user.id, externalPostId: tweet.postId },
+          });
+        }
 
         // Save engagement snapshot for velocity tracking
         const postAgeDays = (Date.now() - tweet.createdAt.getTime()) / (1000 * 60 * 60 * 24);
@@ -131,6 +177,41 @@ export const GET = withCronLogging("x-import", async (req) => {
             update: snapshotMetrics,
           });
           snapshots++;
+
+          // ADR-008 Phase 1a: dual-write engagement snapshot. Requires
+          // SocialPost to have been created first (FK on postId). Skip
+          // if the SocialPost write above failed — Sentry already captured.
+          if (socialPostId) {
+            try {
+              await prisma.socialPostEngagementSnapshot.upsert({
+                where: {
+                  userId_platform_postId_snapshotDate: {
+                    userId: user.id,
+                    platform: "X",
+                    postId: socialPostId,
+                    snapshotDate,
+                  },
+                },
+                create: {
+                  userId: user.id,
+                  platform: "X",
+                  postId: socialPostId,
+                  snapshotDate,
+                  ...snapshotMetrics,
+                },
+                update: snapshotMetrics,
+              });
+            } catch (snapErr) {
+              Sentry.captureException(snapErr, {
+                tags: {
+                  phase: "1a-dual-write",
+                  model: "SocialPostEngagementSnapshot",
+                  platform: "X",
+                },
+                extra: { userId: user.id, externalPostId: tweet.postId },
+              });
+            }
+          }
         }
       }
 
