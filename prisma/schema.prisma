@@ -117,6 +117,11 @@ model ThreadsApiToken {
   accessToken              String // encrypted (AES-256-GCM), long-lived token
   expiresAt                DateTime
   scopes                   String
+  // ADR-008: structured list of granted OAuth scopes. Meta can silently
+  // grant fewer scopes than requested (user deselects some during consent).
+  // Legacy rows get `[]` and the social-import cron skips Threads until
+  // they re-auth to grant `threads_manage_insights`.
+  grantedScopes            String[] @default([])
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 

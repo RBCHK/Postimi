@@ -1,10 +1,11 @@
 import { getThreadsApiTokenForUserInternal } from "@/app/actions/threads-token";
 import { prisma } from "@/lib/prisma";
+import { threadsImporter } from "@/lib/threads-importer";
 import { registerPlatform } from "../registry";
 import type { PlatformTokenClient } from "../types";
 
-// Threads gets a `PlatformImporter` in Phase 2 (Threads Insights API).
-// Phase 0 registers the token client only.
+// ADR-008 Phase 2: Threads now has both a token client and an importer.
+// The cron wires them together via `listImportablePlatforms()`.
 
 export const threadsTokenClient: PlatformTokenClient<"THREADS"> = {
   platform: "THREADS",
@@ -18,4 +19,4 @@ export const threadsTokenClient: PlatformTokenClient<"THREADS"> = {
   },
 };
 
-registerPlatform({ token: threadsTokenClient });
+registerPlatform({ token: threadsTokenClient, importer: threadsImporter });
