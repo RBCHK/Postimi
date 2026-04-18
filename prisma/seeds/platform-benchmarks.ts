@@ -206,9 +206,14 @@ const SEEDS: BenchmarkSeed[] = [
 ];
 
 async function main() {
-  console.log(`Seeding ${SEEDS.length} platform benchmarks...`);
-  let inserted = 0;
-  let updated = 0;
+  const dryRun = process.argv.includes("--dry-run");
+  const prefix = dryRun ? "[dry-run] " : "";
+  console.log(
+    `${prefix}Seeding ${SEEDS.length} platform benchmarks against ${redactDbUrl(connectionString!)}...`
+  );
+
+  let toInsert = 0;
+  let toUpdate = 0;
 
   for (const seed of SEEDS) {
     const existing = await prisma.platformBenchmark.findUnique({
@@ -220,26 +225,50 @@ async function main() {
         },
       },
     });
+    if (existing) toUpdate++;
+    else toInsert++;
 
-    if (existing) {
-      await prisma.platformBenchmark.update({
-        where: { id: existing.id },
-        data: {
-          strongThreshold: seed.strongThreshold,
-          avgThreshold: seed.avgThreshold,
-          weakThreshold: seed.weakThreshold,
-          source: seed.source,
-          sourceUrl: seed.sourceUrl,
+    if (dryRun) continue;
+
+    await prisma.platformBenchmark.upsert({
+      where: {
+        platform_audienceSize_metric: {
+          platform: seed.platform,
+          audienceSize: seed.audienceSize,
+          metric: seed.metric,
         },
-      });
-      updated++;
-    } else {
-      await prisma.platformBenchmark.create({ data: seed });
-      inserted++;
-    }
+      },
+      update: {
+        strongThreshold: seed.strongThreshold,
+        avgThreshold: seed.avgThreshold,
+        weakThreshold: seed.weakThreshold,
+        source: seed.source,
+        sourceUrl: seed.sourceUrl,
+      },
+      create: seed,
+    });
   }
 
-  console.log(`Done. Inserted: ${inserted}, updated: ${updated}.`);
+  const total = await prisma.platformBenchmark.count();
+  if (dryRun) {
+    console.log(
+      `[dry-run] Would insert ${toInsert}, would update ${toUpdate}. Current row count: ${total}. No writes performed.`
+    );
+  } else {
+    console.log(
+      `Done. Inserted ${toInsert}, updated ${toUpdate}. PlatformBenchmark now has ${total} rows.`
+    );
+  }
+}
+
+function redactDbUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (u.password) u.password = "***";
+    return `${u.protocol}//${u.username ? u.username + "@" : ""}${u.host}${u.pathname}`;
+  } catch {
+    return "<db>";
+  }
 }
 
 main()
