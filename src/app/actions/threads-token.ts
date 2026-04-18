@@ -133,7 +133,10 @@ async function exchangeForRefreshedToken(accessToken: string): Promise<ThreadsTo
 // downgrades at token-exchange time, so the cron verifies presence in
 // `grantedScopes` before attempting insight calls and removes missing
 // scopes from the array on 400/403 from the insight endpoints.
-export const THREADS_REQUESTED_SCOPES = [
+// Not exported — Next.js "use server" files can only export async
+// functions. Callers that need the scope list should import it from
+// a non-server-action module if the need arises.
+const THREADS_REQUESTED_SCOPES = [
   "threads_basic",
   "threads_content_publish",
   "threads_manage_insights",

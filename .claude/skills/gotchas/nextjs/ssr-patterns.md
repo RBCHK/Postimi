@@ -26,6 +26,13 @@ setIsLoading(true);
 
 **Watch out:** This is a legitimate loading state pattern. The ESLint rule is overly strict here.
 
+### `"use server"` file exports only async functions (Next 16)
+
+**Tried:** `export const SCOPES = [...] as const` at top-level of a `"use server"` server-action file (next to the async actions).
+**Broke:** Local `npx tsc --noEmit` passed. `npm run build` failed with `A "use server" file can only export async functions, found object` during "Collecting page data". The error pointed at an unrelated route handler that transitively imported the module.
+**Fix:** Remove the `export` — keep it as a module-private const. If callers outside the module need it, move the constant to a non-server-action file (e.g. `src/lib/…`) and import it from there. `export type` / `export interface` are fine — types erase at build time and don't emit runtime values.
+**Watch out:** Only the production build catches this; `tsc` and unit tests don't. Lint in this repo doesn't catch it either. Check build output before pushing any PR that adds `export const`/`export let` to a `"use server"` module.
+
 ### router.refresh() causes initialData object reference to change
 
 **Tried:** Storing content type in component state, updating it via dropdown, calling `router.refresh()` after note operations
