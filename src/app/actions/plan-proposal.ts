@@ -4,30 +4,15 @@ import { revalidatePath } from "next/cache";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth";
+import { SlotType as PrismaSlotType, type Platform } from "@/generated/prisma";
+import { getScheduleConfig, saveScheduleConfig } from "@/app/actions/schedule";
+import type { ScheduleConfig, DayKey } from "@/lib/server/schedule";
+import type { PlanChange, ConfigChange, MetricsSnapshot, PlanProposalItem } from "@/lib/types";
 import {
-  ProposalStatus as PrismaProposalStatus,
-  SlotType as PrismaSlotType,
-  type Platform,
-} from "@/generated/prisma";
-import {
-  getScheduleConfig,
-  saveScheduleConfig,
-  type ScheduleConfig,
-  type DayKey,
-} from "@/app/actions/schedule";
-import type {
-  PlanChange,
-  ConfigChange,
-  MetricsSnapshot,
-  PlanProposalItem,
-  ProposalStatus,
-} from "@/lib/types";
-
-const statusFromPrisma: Record<PrismaProposalStatus, ProposalStatus> = {
-  PENDING: "pending",
-  ACCEPTED: "accepted",
-  REJECTED: "rejected",
-};
+  savePlanProposal as _savePlanProposal,
+  getAcceptedProposals as _getAcceptedProposals,
+  mapProposalRow,
+} from "@/lib/server/plan-proposal";
 
 const slotTypeToPrisma: Record<string, PrismaSlotType> = {
   Post: "POST",
@@ -35,30 +20,6 @@ const slotTypeToPrisma: Record<string, PrismaSlotType> = {
   Thread: "THREAD",
   Article: "ARTICLE",
 };
-
-function mapRow(row: {
-  id: string;
-  platform: Platform;
-  status: PrismaProposalStatus;
-  proposalType: string;
-  changes: unknown;
-  summary: string;
-  analysisId: string | null;
-  metricsSnapshot: unknown;
-  createdAt: Date;
-}): PlanProposalItem {
-  return {
-    id: row.id,
-    platform: row.platform,
-    status: statusFromPrisma[row.status],
-    proposalType: row.proposalType === "schedule" ? "schedule" : "config",
-    changes: row.changes as PlanChange[] | ConfigChange[],
-    summary: row.summary,
-    analysisId: row.analysisId ?? undefined,
-    metricsSnapshot: row.metricsSnapshot ? (row.metricsSnapshot as MetricsSnapshot) : undefined,
-    createdAt: row.createdAt,
-  };
-}
 
 /** Build an empty ScheduleConfig (all sections empty) */
 function emptyScheduleConfig(): ScheduleConfig {
@@ -81,7 +42,6 @@ const SECTION_MAP: Record<ConfigChange["section"], keyof ScheduleConfig> = {
 
 /** Apply a list of ConfigChange items to a ScheduleConfig and return the new config */
 function applyConfigChanges(config: ScheduleConfig, changes: ConfigChange[]): ScheduleConfig {
-  // Deep clone to avoid mutation
   const next: ScheduleConfig = {
     replies: { slots: config.replies.slots.map((s) => ({ ...s, days: { ...s.days } })) },
     posts: { slots: config.posts.slots.map((s) => ({ ...s, days: { ...s.days } })) },
@@ -109,7 +69,6 @@ function applyConfigChanges(config: ScheduleConfig, changes: ConfigChange[]): Sc
         const days = { ...allDays, ...change.days } as Record<DayKey, boolean>;
         next[section].slots.push({ id: randomUUID(), time: change.time, days });
       } else {
-        // Merge days into existing slot
         for (const [day, val] of Object.entries(change.days)) {
           if (val) (existing.days as Record<string, boolean>)[day] = true;
         }
@@ -120,7 +79,6 @@ function applyConfigChanges(config: ScheduleConfig, changes: ConfigChange[]): Sc
         for (const [day, val] of Object.entries(change.days)) {
           if (val) (slot.days as Record<string, boolean>)[day] = false;
         }
-        // Remove the slot entirely if no days remain active
         if (!Object.values(slot.days).some(Boolean)) {
           next[section].slots = next[section].slots.filter((s) => s.time !== change.time);
         }
@@ -144,46 +102,6 @@ export async function savePlanProposal(data: {
   return _savePlanProposal(userId, data);
 }
 
-export async function savePlanProposalInternal(
-  userId: string,
-  data: {
-    platform?: Platform;
-    changes: PlanChange[] | ConfigChange[];
-    summary: string;
-    analysisId?: string;
-    proposalType?: "config" | "schedule";
-    metricsSnapshot?: MetricsSnapshot;
-  }
-): Promise<PlanProposalItem> {
-  return _savePlanProposal(userId, data);
-}
-
-async function _savePlanProposal(
-  userId: string,
-  data: {
-    platform?: Platform;
-    changes: PlanChange[] | ConfigChange[];
-    summary: string;
-    analysisId?: string;
-    proposalType?: "config" | "schedule";
-    metricsSnapshot?: MetricsSnapshot;
-  }
-): Promise<PlanProposalItem> {
-  const row = await prisma.planProposal.create({
-    data: {
-      userId,
-      platform: data.platform ?? "X",
-      changes: data.changes as object,
-      summary: data.summary,
-      analysisId: data.analysisId ?? null,
-      proposalType: data.proposalType ?? "config",
-      metricsSnapshot: data.metricsSnapshot ? (data.metricsSnapshot as object) : undefined,
-    },
-  });
-  revalidatePath("/");
-  return mapRow(row);
-}
-
 /** Get the current pending proposal (if any) */
 export async function getPendingProposal(): Promise<PlanProposalItem | null> {
   const userId = await requireUserId();
@@ -192,7 +110,7 @@ export async function getPendingProposal(): Promise<PlanProposalItem | null> {
     orderBy: { createdAt: "desc" },
   });
   if (!row) return null;
-  return mapRow(row);
+  return mapProposalRow(row);
 }
 
 /** Get accepted proposals from the last N days (for effectiveness review) */
@@ -202,33 +120,6 @@ export async function getAcceptedProposals(
 ): Promise<PlanProposalItem[]> {
   const userId = await requireUserId();
   return _getAcceptedProposals(userId, days, platform);
-}
-
-export async function getAcceptedProposalsInternal(
-  userId: string,
-  days: number,
-  platform?: Platform
-): Promise<PlanProposalItem[]> {
-  return _getAcceptedProposals(userId, days, platform);
-}
-
-async function _getAcceptedProposals(
-  userId: string,
-  days: number,
-  platform?: Platform
-): Promise<PlanProposalItem[]> {
-  const since = new Date();
-  since.setUTCDate(since.getUTCDate() - days);
-  const rows = await prisma.planProposal.findMany({
-    where: {
-      userId,
-      status: "ACCEPTED",
-      reviewedAt: { gte: since },
-      ...(platform ? { platform } : {}),
-    },
-    orderBy: { reviewedAt: "desc" },
-  });
-  return rows.map(mapRow);
 }
 
 /**
@@ -253,13 +144,10 @@ export async function acceptProposal(id: string, selectedIndices?: number[]): Pr
     : allChanges;
 
   if (proposal.proposalType !== "schedule") {
-    // Config-level: update the recurring ScheduleConfig template
     const currentConfig = (await getScheduleConfig()) ?? emptyScheduleConfig();
     const newConfig = applyConfigChanges(currentConfig, changesToApply as ConfigChange[]);
-    // saveScheduleConfig calls regenerateSlotsFromConfig + revalidatePath("/")
     await saveScheduleConfig(newConfig);
   } else {
-    // Legacy schedule: apply one-time slot changes
     for (const change of changesToApply as PlanChange[]) {
       const date = new Date(`${change.date}T00:00:00.000Z`);
       const slotType = slotTypeToPrisma[change.slotType];

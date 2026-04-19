@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requireUserId } from "@/lib/auth";
-import { saveLinkedInApiToken } from "@/app/actions/linkedin-token";
+import { saveLinkedInApiToken } from "@/lib/server/linkedin-token";
 
 const COOKIE_NAME = "linkedin_oauth_state";
 

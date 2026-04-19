@@ -93,8 +93,8 @@ vi.mock("@/lib/parse-tweet", () => ({
   fetchTweetFromText: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("@/lib/x-api", () => ({ fetchTweetById: vi.fn() }));
-vi.mock("@/app/actions/x-token", () => ({
-  getXApiTokenForUserInternal: vi.fn().mockResolvedValue(null),
+vi.mock("@/lib/server/x-token", () => ({
+  getXApiTokenForUser: vi.fn().mockResolvedValue(null),
 }));
 
 beforeEach(() => {

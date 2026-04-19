@@ -9,13 +9,18 @@ const prismaMock = vi.hoisted(() => ({
 }));
 
 const requireAdminMock = vi.hoisted(() => vi.fn<() => Promise<string>>());
+const requireUserIdMock = vi.hoisted(() => vi.fn<() => Promise<string>>());
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
-vi.mock("@/lib/auth", () => ({ requireAdmin: requireAdminMock }));
+vi.mock("@/lib/auth", () => ({
+  requireAdmin: requireAdminMock,
+  requireUserId: requireUserIdMock,
+}));
 
 beforeEach(() => {
   vi.resetAllMocks();
   requireAdminMock.mockResolvedValue("admin-user-id");
+  requireUserIdMock.mockResolvedValue("user-id");
 });
 
 describe("getBenchmarks (public read)", () => {
@@ -58,12 +63,13 @@ describe("getBenchmarks (public read)", () => {
   });
 });
 
-describe("getBenchmarksInternal (cron path)", () => {
-  it("skips admin check", async () => {
+describe("getBenchmarks (lib/server — cron path)", () => {
+  it("skips all auth checks", async () => {
     prismaMock.platformBenchmark.findMany.mockResolvedValue([]);
-    const { getBenchmarksInternal } = await import("../benchmarks");
-    await getBenchmarksInternal("LINKEDIN", "MID");
+    const { getBenchmarks } = await import("@/lib/server/benchmarks");
+    await getBenchmarks("LINKEDIN", "MID");
     expect(requireAdminMock).not.toHaveBeenCalled();
+    expect(requireUserIdMock).not.toHaveBeenCalled();
   });
 });
 

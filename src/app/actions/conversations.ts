@@ -6,9 +6,9 @@ import { requireUserId } from "@/lib/auth";
 import { DRAFT_DEFAULT_TITLE } from "@/lib/types";
 import type { ContentType, DraftStatus, ComposerContent, Platform } from "@/lib/types";
 import { fetchTweetFromText, extractTweetUrl } from "@/lib/parse-tweet";
-import { deleteMediaStorageForConversation } from "@/app/actions/media";
+import { deleteMediaStorageForConversation } from "@/lib/server/media";
 import { fetchTweetById } from "@/lib/x-api";
-import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
+import { getXApiTokenForUser } from "@/lib/server/x-token";
 import {
   ContentType as PrismaContentType,
   ConversationStatus as PrismaConversationStatus,
@@ -279,7 +279,7 @@ export async function fetchTweetFullTextAction(text: string): Promise<string | n
 
   const tweetIdMatch = url.match(/\/status\/(\d+)/);
   if (tweetIdMatch) {
-    const credentials = await getXApiTokenForUserInternal(userId);
+    const credentials = await getXApiTokenForUser(userId);
     if (credentials) {
       const fullText = await fetchTweetById(credentials, tweetIdMatch[1]);
       if (fullText) return fullText;

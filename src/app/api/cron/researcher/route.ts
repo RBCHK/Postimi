@@ -5,11 +5,7 @@ import { z } from "zod";
 import { tavily } from "@tavily/core";
 import { getResearcherPrompt, buildResearcherUserMessage } from "@/prompts/researcher";
 import { prisma } from "@/lib/prisma";
-import {
-  saveResearchNoteInternal,
-  deleteResearchNoteInternal,
-  getAllResearchNotesInternal,
-} from "@/app/actions/research";
+import { saveResearchNote, deleteResearchNote, getAllResearchNotes } from "@/lib/server/research";
 import { withCronLogging } from "@/lib/cron-helpers";
 import { reserveQuota, completeReservation, failReservation } from "@/lib/ai-quota";
 import { PLANS } from "@/lib/plans";
@@ -41,7 +37,7 @@ export const GET = withCronLogging("researcher", async () => {
       reservationId = reservation.reservationId;
 
       // Fetch existing notes for self-management
-      const existingNotes = await getAllResearchNotesInternal(user.id);
+      const existingNotes = await getAllResearchNotes(user.id);
       const notesForPrompt = existingNotes.map((n) => ({
         id: n.id,
         topic: n.topic,
@@ -91,7 +87,7 @@ export const GET = withCronLogging("researcher", async () => {
               reason: z.string().describe("Why this note is being deleted"),
             }),
             execute: async ({ noteId, reason }) => {
-              await deleteResearchNoteInternal(user.id, noteId);
+              await deleteResearchNote(user.id, noteId);
               return { deleted: noteId, reason };
             },
           }),
@@ -115,7 +111,7 @@ export const GET = withCronLogging("researcher", async () => {
       const topic =
         topicMatch?.[1]?.trim() ?? `Research — ${new Date().toISOString().split("T")[0]}`;
 
-      const saved = await saveResearchNoteInternal(user.id, {
+      const saved = await saveResearchNote(user.id, {
         topic,
         summary: text,
         sources: allSources.slice(0, 20),

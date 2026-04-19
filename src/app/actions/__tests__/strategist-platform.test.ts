@@ -22,8 +22,8 @@ const prismaMock = vi.hoisted(() => ({
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
 import { requireUserId } from "@/lib/auth";
-import { saveAnalysisInternal, getAnalysesInternal } from "../strategist";
-import { savePlanProposalInternal, getAcceptedProposalsInternal } from "../plan-proposal";
+import { saveAnalysis, getAnalyses } from "@/lib/server/strategist";
+import { savePlanProposal, getAcceptedProposals } from "@/lib/server/plan-proposal";
 
 const USER_ID = "user-phase6";
 
@@ -65,9 +65,9 @@ beforeEach(() => {
   prismaMock.planProposal.findMany.mockResolvedValue([]);
 });
 
-describe("saveAnalysisInternal — platform column", () => {
+describe("saveAnalysis — platform column", () => {
   it("defaults to X when no platform is given (legacy callers)", async () => {
-    await saveAnalysisInternal(USER_ID, {
+    await saveAnalysis(USER_ID, {
       csvSummary: baseCsvSummary,
       searchQueries: [],
       recommendation: "text",
@@ -79,7 +79,7 @@ describe("saveAnalysisInternal — platform column", () => {
   });
 
   it("persists the explicit platform argument", async () => {
-    await saveAnalysisInternal(USER_ID, {
+    await saveAnalysis(USER_ID, {
       platform: "LINKEDIN",
       csvSummary: baseCsvSummary,
       searchQueries: [],
@@ -90,9 +90,9 @@ describe("saveAnalysisInternal — platform column", () => {
   });
 });
 
-describe("getAnalysesInternal — platform filter", () => {
+describe("getAnalyses — platform filter", () => {
   it("omits platform from the where clause when no platform is given", async () => {
-    await getAnalysesInternal(USER_ID);
+    await getAnalyses(USER_ID);
     const where = prismaMock.strategyAnalysis.findMany.mock.calls[0]![0].where;
     expect(where).toEqual({ userId: USER_ID });
     // No cross-platform leakage via an accidental undefined — the
@@ -101,7 +101,7 @@ describe("getAnalysesInternal — platform filter", () => {
   });
 
   it("adds the platform filter when specified", async () => {
-    await getAnalysesInternal(USER_ID, "THREADS");
+    await getAnalyses(USER_ID, "THREADS");
     expect(prismaMock.strategyAnalysis.findMany.mock.calls[0]![0].where).toEqual({
       userId: USER_ID,
       platform: "THREADS",
@@ -109,9 +109,9 @@ describe("getAnalysesInternal — platform filter", () => {
   });
 });
 
-describe("savePlanProposalInternal — platform column", () => {
+describe("savePlanProposal — platform column", () => {
   it("defaults to X when omitted", async () => {
-    await savePlanProposalInternal(USER_ID, {
+    await savePlanProposal(USER_ID, {
       changes: [],
       summary: "s",
     });
@@ -119,7 +119,7 @@ describe("savePlanProposalInternal — platform column", () => {
   });
 
   it("persists explicit platform for new LinkedIn proposals", async () => {
-    await savePlanProposalInternal(USER_ID, {
+    await savePlanProposal(USER_ID, {
       platform: "LINKEDIN",
       changes: [],
       summary: "s",
@@ -128,9 +128,9 @@ describe("savePlanProposalInternal — platform column", () => {
   });
 });
 
-describe("getAcceptedProposalsInternal — platform filter", () => {
+describe("getAcceptedProposals — platform filter", () => {
   it("returns all platforms when no filter is given", async () => {
-    await getAcceptedProposalsInternal(USER_ID, 30);
+    await getAcceptedProposals(USER_ID, 30);
     const where = prismaMock.planProposal.findMany.mock.calls[0]![0].where;
     expect(where.userId).toBe(USER_ID);
     expect(where.status).toBe("ACCEPTED");
@@ -138,14 +138,14 @@ describe("getAcceptedProposalsInternal — platform filter", () => {
   });
 
   it("filters by platform when specified — guards against cross-platform leakage", async () => {
-    await getAcceptedProposalsInternal(USER_ID, 30, "THREADS");
+    await getAcceptedProposals(USER_ID, 30, "THREADS");
     const where = prismaMock.planProposal.findMany.mock.calls[0]![0].where;
     expect(where).toMatchObject({ userId: USER_ID, status: "ACCEPTED", platform: "THREADS" });
   });
 
   it("uses a correct N-day-ago cutoff", async () => {
     const before = Date.now();
-    await getAcceptedProposalsInternal(USER_ID, 14, "X");
+    await getAcceptedProposals(USER_ID, 14, "X");
     const after = Date.now();
     const where = prismaMock.planProposal.findMany.mock.calls[0]![0].where;
     const cutoff = (where.reviewedAt.gte as Date).getTime();

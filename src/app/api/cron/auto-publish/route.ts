@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
+import { getXApiTokenForUser } from "@/lib/server/x-token";
 import { postTweet, uploadMediaToX } from "@/lib/x-api";
-import { getMediaForConversationInternal } from "@/app/actions/media";
+import { getMediaForConversation } from "@/lib/server/media";
 import { slotToUtcDate } from "@/lib/date-utils";
 import type { CronJobStatus, Prisma } from "@/generated/prisma";
 
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
 
     // --- Post to X ---
     try {
-      const credentials = await getXApiTokenForUserInternal(user.id);
+      const credentials = await getXApiTokenForUser(user.id);
       if (!credentials) {
         details.push({ slotId: slot.id, userId: user.id, error: "No X credentials" });
         errors++;
@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
       // Upload media if conversation has images
       let mediaIds: string[] | undefined;
       if (slot.conversationId) {
-        const media = await getMediaForConversationInternal(slot.conversationId, user.id);
+        const media = await getMediaForConversation(slot.conversationId, user.id);
         if (media.length > 0) {
           mediaIds = [];
           for (const item of media) {

@@ -4,29 +4,23 @@ import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
 import { tavily } from "@tavily/core";
 import { getStrategistPrompt, buildStrategistUserMessage } from "@/prompts/strategist";
+import { getAnalyticsSummary, getAnalyticsDateRange } from "@/lib/server/analytics";
 import {
-  getAnalyticsSummaryInternal,
-  getAnalyticsDateRangeInternal,
-} from "@/app/actions/analytics";
-import {
-  getSocialAnalyticsSummaryInternal,
-  getSocialAnalyticsDateRangeInternal,
-} from "@/app/actions/social-analytics";
-import { getFollowersHistoryInternal } from "@/app/actions/followers";
-import { getLatestTrendsInternal } from "@/app/actions/trends";
-import { getScheduleConfigInternal } from "@/app/actions/schedule";
-import { getRecentResearchNotesInternal } from "@/app/actions/research";
-import { saveAnalysisInternal, getAnalysesInternal } from "@/app/actions/strategist";
-import {
-  savePlanProposalInternal,
-  getAcceptedProposalsInternal,
-} from "@/app/actions/plan-proposal";
-import { getConnectedPlatformsInternal } from "@/app/actions/platforms";
-import { getBenchmarksInternal } from "@/app/actions/benchmarks";
-import { getOutputLanguageInternal } from "@/app/actions/user-settings";
+  getSocialAnalyticsSummary,
+  getSocialAnalyticsDateRange,
+} from "@/lib/server/social-analytics";
+import { getFollowersHistory } from "@/lib/server/followers";
+import { getLatestTrends } from "@/lib/server/trends";
+import { getScheduleConfig } from "@/lib/server/schedule";
+import { getRecentResearchNotes } from "@/lib/server/research";
+import { saveAnalysis, getAnalyses } from "@/lib/server/strategist";
+import { savePlanProposal, getAcceptedProposals } from "@/lib/server/plan-proposal";
+import { getConnectedPlatforms } from "@/lib/server/platforms";
+import { getBenchmarks } from "@/lib/server/benchmarks";
+import { getOutputLanguage } from "@/lib/server/user-settings";
 import { prisma } from "@/lib/prisma";
 import { fetchUserData } from "@/lib/x-api";
-import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
+import { getXApiTokenForUser } from "@/lib/server/x-token";
 import { withCronLogging } from "@/lib/cron-helpers";
 import { reserveQuota, completeReservation, failReservation } from "@/lib/ai-quota";
 import { PLANS } from "@/lib/plans";
@@ -83,7 +77,7 @@ async function buildPlatformContext(
     // (reply stats, trends, profile). Post-1b the underlying tables are
     // Social*, but this path stays because it carries X-only signals the
     // plain social summary doesn't expose.
-    const dateRange = await getAnalyticsDateRangeInternal(userId);
+    const dateRange = await getAnalyticsDateRange(userId);
     if (!dateRange) return null;
 
     const thirtyDaysAgo = new Date(dateRange.to);
@@ -91,15 +85,15 @@ async function buildPlatformContext(
     const from30 = new Date(Math.max(thirtyDaysAgo.getTime(), dateRange.from.getTime()));
 
     const [summary, followersHistory, trends] = await Promise.all([
-      getAnalyticsSummaryInternal(userId, from30, dateRange.to),
-      getFollowersHistoryInternal(userId, 30),
-      getLatestTrendsInternal(userId),
+      getAnalyticsSummary(userId, from30, dateRange.to),
+      getFollowersHistory(userId, 30),
+      getLatestTrends(userId),
     ]);
 
     // X profile (non-fatal if API unavailable).
     let profile: XProfile | undefined;
     try {
-      const credentials = await getXApiTokenForUserInternal(userId);
+      const credentials = await getXApiTokenForUser(userId);
       if (credentials) {
         const userData = await fetchUserData(credentials);
         profile = {
@@ -122,19 +116,14 @@ async function buildPlatformContext(
   // LinkedIn / Threads path: reads from SocialPost / SocialDailyStats /
   // SocialFollowersSnapshot. No X trends, no X profile — those are
   // platform-specific signals we don't synthesize.
-  const dateRange = await getSocialAnalyticsDateRangeInternal(userId, platform);
+  const dateRange = await getSocialAnalyticsDateRange(userId, platform);
   if (!dateRange) return null;
 
   const thirtyDaysAgo = new Date(dateRange.to);
   thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - 30);
   const from30 = new Date(Math.max(thirtyDaysAgo.getTime(), dateRange.from.getTime()));
 
-  const socialSummary = await getSocialAnalyticsSummaryInternal(
-    userId,
-    platform,
-    from30,
-    dateRange.to
-  );
+  const socialSummary = await getSocialAnalyticsSummary(userId, platform, from30, dateRange.to);
 
   // Adapt SocialAnalyticsSummary → CsvSummary for the prompt. CsvSummary
   // is the simpler shape the prompt builder accepts; no synthetic
@@ -191,7 +180,7 @@ export const GET = withCronLogging("strategist", async () => {
   for (const user of users) {
     let connected;
     try {
-      connected = await getConnectedPlatformsInternal(user.id);
+      connected = await getConnectedPlatforms(user.id);
     } catch (err) {
       Sentry.captureException(err, { tags: { userId: user.id, area: "strategist-cron" } });
       results.push({ userId: user.id, error: "failed-to-load-platforms" });
@@ -202,10 +191,10 @@ export const GET = withCronLogging("strategist", async () => {
 
     // Pull user-scoped context once (language + research + schedule) —
     // these don't vary per platform so we don't re-query inside the loop.
-    const outputLanguage = (await getOutputLanguageInternal(user.id)) ?? DEFAULT_LANGUAGE;
+    const outputLanguage = (await getOutputLanguage(user.id)) ?? DEFAULT_LANGUAGE;
     const [researchNotes, scheduleConfig] = await Promise.all([
-      getRecentResearchNotesInternal(user.id, 3),
-      getScheduleConfigInternal(user.id),
+      getRecentResearchNotes(user.id, 3),
+      getScheduleConfig(user.id),
     ]);
 
     for (const platform of connected.platforms) {
@@ -226,9 +215,9 @@ export const GET = withCronLogging("strategist", async () => {
         }
 
         const [previousAnalyses, acceptedProposals, benchmarks] = await Promise.all([
-          getAnalysesInternal(user.id, platform),
-          getAcceptedProposalsInternal(user.id, 30, platform),
-          getBenchmarksInternal(platform, getAudienceSize(context.latestFollowersCount)),
+          getAnalyses(user.id, platform),
+          getAcceptedProposals(user.id, 30, platform),
+          getBenchmarks(platform, getAudienceSize(context.latestFollowersCount)),
         ]);
 
         const previousAnalysis = previousAnalyses[0]?.recommendation ?? undefined;
@@ -348,7 +337,7 @@ export const GET = withCronLogging("strategist", async () => {
               })),
             };
 
-        const saved = await saveAnalysisInternal(user.id, {
+        const saved = await saveAnalysis(user.id, {
           platform,
           csvSummary: savedCsvSummary,
           searchQueries,
@@ -372,7 +361,7 @@ export const GET = withCronLogging("strategist", async () => {
                 summaryMatch?.[1]?.trim().slice(0, 300) ??
                 `Schedule template updates (${changes.length}) for ${platform} — ${weekStart}`;
 
-              const proposal = await savePlanProposalInternal(user.id, {
+              const proposal = await savePlanProposal(user.id, {
                 platform,
                 changes,
                 summary: proposalSummary,

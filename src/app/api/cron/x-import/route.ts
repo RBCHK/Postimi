@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { fetchUserTweetsPaginated } from "@/lib/x-api";
-import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
+import { getXApiTokenForUser } from "@/lib/server/x-token";
 import { revalidatePath } from "next/cache";
 import { withCronLogging } from "@/lib/cron-helpers";
 
@@ -34,7 +34,7 @@ export const GET = withCronLogging("x-import", async (req) => {
   for (const user of users) {
     try {
       // Load per-user X credentials — skip users without connected X account
-      const credentials = await getXApiTokenForUserInternal(user.id);
+      const credentials = await getXApiTokenForUser(user.id);
       if (!credentials) {
         allResults.push({ userId: user.id, skipped: true });
         continue;

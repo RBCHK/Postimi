@@ -51,7 +51,7 @@ export const GET = withCronLogging("social-import", async () => {
     for (const entry of platforms) {
       const platform = entry.token.platform;
       try {
-        const creds = await entry.token.getForUserInternal(user.id);
+        const creds = await entry.token.getForUser(user.id);
         if (!creds) {
           results.push({ userId: user.id, platform, skipped: true, skipReason: "not_connected" });
           continue;

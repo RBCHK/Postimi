@@ -15,7 +15,7 @@ describe("registry — contract with fake clients", () => {
 
     const fakeToken: PlatformTokenClient<"X"> = {
       platform: "X",
-      async getForUserInternal() {
+      async getForUser() {
         return null;
       },
       async disconnect() {},
@@ -36,7 +36,7 @@ describe("registry — contract with fake clients", () => {
       registerPlatform({
         token: {
           platform: p,
-          async getForUserInternal() {
+          async getForUser() {
             return null;
           },
           async disconnect() {},
@@ -67,7 +67,7 @@ describe("registry — contract with fake clients", () => {
     registerPlatform({
       token: {
         platform: "X",
-        async getForUserInternal() {
+        async getForUser() {
           return null;
         },
         async disconnect() {},
@@ -77,7 +77,7 @@ describe("registry — contract with fake clients", () => {
     registerPlatform({
       token: {
         platform: "LINKEDIN",
-        async getForUserInternal() {
+        async getForUser() {
           return null;
         },
         async disconnect() {},
@@ -95,14 +95,14 @@ describe("registry — contract with fake clients", () => {
 
     const first: PlatformTokenClient<"X"> = {
       platform: "X",
-      async getForUserInternal() {
+      async getForUser() {
         return null;
       },
       async disconnect() {},
     };
     const second: PlatformTokenClient<"X"> = {
       platform: "X",
-      async getForUserInternal() {
+      async getForUser() {
         return { platform: "X", accessToken: "t", xUserId: "u", xUsername: "n" };
       },
       async disconnect() {},
@@ -110,7 +110,7 @@ describe("registry — contract with fake clients", () => {
     registerPlatform({ token: first });
     registerPlatform({ token: second });
 
-    const creds = await getPlatform("X")?.token.getForUserInternal("anyone");
+    const creds = await getPlatform("X")?.token.getForUser("anyone");
     expect(creds?.accessToken).toBe("t");
   });
 
@@ -138,15 +138,14 @@ describe("registry — real wiring via init", () => {
       encryptToken: (s: string) => s,
       decryptToken: (s: string) => s,
     }));
-    vi.doMock("@/app/actions/x-token", () => ({
-      getXApiTokenForUserInternal: vi.fn().mockResolvedValue(null),
-      disconnectXAccount: vi.fn().mockResolvedValue(undefined),
+    vi.doMock("@/lib/server/x-token", () => ({
+      getXApiTokenForUser: vi.fn().mockResolvedValue(null),
     }));
-    vi.doMock("@/app/actions/linkedin-token", () => ({
-      getLinkedInApiTokenForUserInternal: vi.fn().mockResolvedValue(null),
+    vi.doMock("@/lib/server/linkedin-token", () => ({
+      getLinkedInApiTokenForUser: vi.fn().mockResolvedValue(null),
     }));
-    vi.doMock("@/app/actions/threads-token", () => ({
-      getThreadsApiTokenForUserInternal: vi.fn().mockResolvedValue(null),
+    vi.doMock("@/lib/server/threads-token", () => ({
+      getThreadsApiTokenForUser: vi.fn().mockResolvedValue(null),
     }));
 
     await import("../init");

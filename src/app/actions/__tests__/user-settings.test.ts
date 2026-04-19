@@ -106,12 +106,12 @@ describe("getOutputLanguage", () => {
   });
 });
 
-describe("getOutputLanguageInternal (cron path)", () => {
+describe("getOutputLanguage (lib/server — cron path)", () => {
   it("skips auth and queries by the supplied userId", async () => {
     prismaMock.user.findUnique.mockResolvedValue({ outputLanguage: "FR" });
 
-    const { getOutputLanguageInternal } = await import("../user-settings");
-    const result = await getOutputLanguageInternal("cron-user-id");
+    const { getOutputLanguage } = await import("@/lib/server/user-settings");
+    const result = await getOutputLanguage("cron-user-id");
 
     expect(result).toBe("FR");
     expect(requireUserIdMock).not.toHaveBeenCalled();
@@ -124,7 +124,7 @@ describe("getOutputLanguageInternal (cron path)", () => {
   it("returns null for unknown user (legacy user with no row)", async () => {
     prismaMock.user.findUnique.mockResolvedValue(null);
 
-    const { getOutputLanguageInternal } = await import("../user-settings");
-    expect(await getOutputLanguageInternal("missing-user")).toBeNull();
+    const { getOutputLanguage } = await import("@/lib/server/user-settings");
+    expect(await getOutputLanguage("missing-user")).toBeNull();
   });
 });
