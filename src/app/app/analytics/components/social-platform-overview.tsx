@@ -22,6 +22,7 @@ import {
   getSocialAnalyticsSummary,
   type SocialAnalyticsSummary,
 } from "@/app/actions/social-analytics";
+import { useAnalytics } from "@/contexts/analytics-context";
 
 interface Props {
   platform: Platform;
@@ -44,6 +45,7 @@ function StatCard({ label, value, hint }: { label: string; value: string; hint?:
 const numberFmt = new Intl.NumberFormat("en-US");
 
 export function SocialPlatformOverview({ platform }: Props) {
+  const { socialRefreshToken } = useAnalytics();
   const [summary, setSummary] = useState<SocialAnalyticsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasData, setHasData] = useState<boolean | null>(null);
@@ -71,7 +73,7 @@ export function SocialPlatformOverview({ platform }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [platform]);
+  }, [platform, socialRefreshToken]);
 
   const label = PLATFORM_CONFIG[platform].label;
 
@@ -86,7 +88,7 @@ export function SocialPlatformOverview({ platform }: Props) {
   if (hasData === false || !summary) {
     const description =
       platform === "LINKEDIN"
-        ? "Upload a LinkedIn CSV export from Analytics → Content to see metrics here."
+        ? "Upload your LinkedIn xlsx export from Analytics → Content/Audience to see metrics here."
         : platform === "THREADS"
           ? "Connect Threads and run the weekly import to see metrics here."
           : "No data yet.";

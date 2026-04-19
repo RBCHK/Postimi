@@ -55,6 +55,13 @@ interface AnalyticsContextValue {
   setPreset: (preset: PeriodPreset) => void;
   setDateRange: (range: { from: Date; to: Date }) => void;
   refreshData: () => Promise<void>;
+
+  // Increments after a multi-platform import (LinkedIn xlsx, etc.) to
+  // signal `SocialPlatformOverview` (which owns its own fetch state) to
+  // refetch. Context `summary` is X-specific, so a plain `refreshData()`
+  // does not reach the Social* read path.
+  socialRefreshToken: number;
+  bumpSocialRefresh: () => void;
 }
 
 const AnalyticsContext = createContext<AnalyticsContextValue | null>(null);
@@ -93,6 +100,11 @@ export function AnalyticsProvider({
   const [importError, setImportError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [lastImportResult, setLastImportResult] = useState<ImportResult | null>(null);
+  const [socialRefreshToken, setSocialRefreshToken] = useState(0);
+
+  const bumpSocialRefresh = useCallback(() => {
+    setSocialRefreshToken((n) => n + 1);
+  }, []);
 
   const handleCsvFile = useCallback((raw: string) => {
     setImportError(null);
@@ -229,6 +241,8 @@ export function AnalyticsProvider({
         setPreset,
         setDateRange: handleSetDateRange,
         refreshData,
+        socialRefreshToken,
+        bumpSocialRefresh,
       }}
     >
       {children}
