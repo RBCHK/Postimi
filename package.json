@@ -15,6 +15,7 @@
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
     "db:seed:benchmarks": "tsx prisma/seeds/platform-benchmarks.ts",
+    "db:seed:cron-configs": "tsx prisma/seeds/cron-job-configs.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
