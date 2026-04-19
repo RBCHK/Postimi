@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requireUserId } from "@/lib/auth";
-import { saveThreadsApiToken } from "@/app/actions/threads-token";
+import { saveThreadsApiToken } from "@/lib/server/threads-token";
 
 const COOKIE_NAME = "threads_oauth_state";
 

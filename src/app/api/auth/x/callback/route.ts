@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requireUserId } from "@/lib/auth";
-import { saveXApiToken } from "@/app/actions/x-token";
+import { saveXApiToken } from "@/lib/server/x-token";
 
 const COOKIE_NAME = "x_oauth_state";
 

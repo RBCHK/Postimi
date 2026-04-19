@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth";
 import { fetchUserTweets, XApiNoTokenError } from "@/lib/x-api";
-import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
+import { getXApiTokenForUser } from "@/lib/server/x-token";
 
 // Phase 1b: this manual "Import from X" button now writes to SocialPost
 // with `platform: "X"`. The cron version in src/app/api/cron/x-import
@@ -18,7 +18,7 @@ export async function importFromXApi(
   maxResults: number = 100
 ): Promise<{ imported: number; updated: number; total: number }> {
   const userId = await requireUserId();
-  const credentials = await getXApiTokenForUserInternal(userId);
+  const credentials = await getXApiTokenForUser(userId);
   if (!credentials) {
     throw new XApiNoTokenError(userId);
   }

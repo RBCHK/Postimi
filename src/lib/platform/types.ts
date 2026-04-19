@@ -43,7 +43,7 @@ export type CredentialsFor<P extends Platform> = Extract<PlatformCredentials, { 
 export interface PlatformTokenClient<P extends Platform = Platform> {
   readonly platform: P;
   /** Fetch valid credentials for the user, auto-refreshing if needed. Null = not connected. */
-  getForUserInternal(userId: string): Promise<CredentialsFor<P> | null>;
+  getForUser(userId: string): Promise<CredentialsFor<P> | null>;
   /** Disconnect: delete the stored token. Idempotent. */
   disconnect(userId: string): Promise<void>;
 }

@@ -50,7 +50,7 @@ type MockPlatform = "X" | "LINKEDIN" | "THREADS";
 interface MockEntry {
   token: {
     platform: MockPlatform;
-    getForUserInternal: ReturnType<typeof vi.fn>;
+    getForUser: ReturnType<typeof vi.fn>;
     disconnect: ReturnType<typeof vi.fn>;
   };
   importer?: {
@@ -135,7 +135,7 @@ function registerThreads(
   registryEntries.push({
     token: {
       platform: "THREADS",
-      getForUserInternal: vi.fn().mockResolvedValue({
+      getForUser: vi.fn().mockResolvedValue({
         platform: "THREADS",
         accessToken: "t",
         threadsUserId: "tid",
@@ -176,7 +176,7 @@ describe("social-import cron", () => {
     registryEntries.push({
       token: {
         platform: "THREADS",
-        getForUserInternal: vi.fn().mockResolvedValue(null),
+        getForUser: vi.fn().mockResolvedValue(null),
         disconnect: vi.fn(),
       },
       importer: {
@@ -244,7 +244,7 @@ describe("social-import cron", () => {
     registryEntries.push({
       token: {
         platform: "THREADS",
-        getForUserInternal: getCreds,
+        getForUser: getCreds,
         disconnect: vi.fn(),
       },
       importer: {

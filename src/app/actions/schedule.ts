@@ -13,6 +13,12 @@ import {
   addUTCDays,
   nowInTimezone,
 } from "@/lib/date-utils";
+import {
+  getScheduleConfig as _getScheduleConfig,
+  type ScheduleConfig,
+  type ContentSchedule,
+  type DayKey,
+} from "@/lib/server/schedule";
 
 const slotStatusFromPrisma = (v: string): SlotStatus => v.toLowerCase() as SlotStatus;
 
@@ -25,26 +31,6 @@ const slotTypeFromPrisma = (v: PrismaSlotType): SlotType => {
     QUOTE: "Quote",
   };
   return map[v];
-};
-
-// ─── Schedule types ───────────────────────────────────────
-
-export type DayKey = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
-
-export type SlotRow = {
-  id: string;
-  time: string; // "HH:MM" 24h
-  days: Record<DayKey, boolean>;
-};
-
-export type ContentSchedule = { slots: SlotRow[] };
-
-export type ScheduleConfig = {
-  replies: ContentSchedule;
-  posts: ContentSchedule;
-  threads: ContentSchedule;
-  articles: ContentSchedule;
-  quotes: ContentSchedule;
 };
 
 // ─── Lookup tables ────────────────────────────────────────
@@ -77,21 +63,9 @@ const SLOT_TYPE_TO_SECTION: Record<PrismaSlotType, keyof ScheduleConfig> = {
 
 // ─── Config helpers ───────────────────────────────────────
 
-/** Internal: get schedule config for a known userId (no auth call) */
-async function getScheduleConfigInternal(userId: string): Promise<ScheduleConfig | null> {
-  const row = await prisma.strategyConfig.findFirst({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-  });
-  if (!row || !row.scheduleConfig) return null;
-  return row.scheduleConfig as ScheduleConfig;
-}
-
-export { getScheduleConfigInternal };
-
 export async function getScheduleConfig(): Promise<ScheduleConfig | null> {
   const userId = await requireUserId();
-  return getScheduleConfigInternal(userId);
+  return _getScheduleConfig(userId);
 }
 
 export async function saveScheduleConfig(data: ScheduleConfig): Promise<void> {
@@ -245,7 +219,7 @@ export async function getScheduledSlots(options?: { from?: string; days?: number
     rows.map((r) => `${calendarDateStr(r.date)}_${r.timeSlot}_${r.slotType}`)
   );
 
-  const config = await getScheduleConfigInternal(userId);
+  const config = await _getScheduleConfig(userId);
   const virtualSlots = config
     ? computeVirtualSlots(config, userId, fromDate, days, timezone, occupiedKeys)
     : [];
@@ -260,7 +234,7 @@ export async function getScheduledSlots(options?: { from?: string; days?: number
 /** Returns true if the user has at least one future available slot of the given type */
 export async function hasEmptySlots(slotType: PrismaSlotType): Promise<boolean> {
   const { id: userId, timezone } = await requireUser();
-  const config = await getScheduleConfigInternal(userId);
+  const config = await _getScheduleConfig(userId);
   if (!config) return false;
 
   const schedule = config[SLOT_TYPE_TO_SECTION[slotType]];
@@ -371,9 +345,9 @@ export async function publishPost(
   tweetUrl?: string;
 }> {
   const { id: userId, timezone } = await requireUser();
-  const { getXApiTokenForUserInternal } = await import("@/app/actions/x-token");
+  const { getXApiTokenForUser } = await import("@/lib/server/x-token");
   const { postTweet, uploadMediaToX } = await import("@/lib/x-api");
-  const { getMediaForConversationInternal } = await import("@/app/actions/media");
+  const { getMediaForConversation } = await import("@/lib/server/media");
 
   // Resolve per-platform text
   const platformText =
@@ -392,9 +366,9 @@ export async function publishPost(
   const targets = targetPlatforms ? new Set(targetPlatforms.map((p) => p.toUpperCase())) : null;
 
   // Load media once for all platforms
-  let media: Awaited<ReturnType<typeof getMediaForConversationInternal>> = [];
+  let media: Awaited<ReturnType<typeof getMediaForConversation>> = [];
   try {
-    media = await getMediaForConversationInternal(conversationId, userId);
+    media = await getMediaForConversation(conversationId, userId);
   } catch {
     // Media fetch failed — continue without images
   }
@@ -408,7 +382,7 @@ export async function publishPost(
       } else if (!tokenRow.scopes.includes("tweet.write")) {
         errors.X = "Missing write permission. Reconnect X in Settings.";
       } else {
-        const credentials = await getXApiTokenForUserInternal(userId);
+        const credentials = await getXApiTokenForUser(userId);
         if (!credentials) {
           errors.X = "Failed to get X token. Try reconnecting in Settings.";
         } else {
@@ -451,8 +425,8 @@ export async function publishPost(
     try {
       const threadsToken = await prisma.threadsApiToken.findUnique({ where: { userId } });
       if (threadsToken) {
-        const { getThreadsApiTokenForUserInternal } = await import("@/app/actions/threads-token");
-        const credentials = await getThreadsApiTokenForUserInternal(userId);
+        const { getThreadsApiTokenForUser } = await import("@/lib/server/threads-token");
+        const credentials = await getThreadsApiTokenForUser(userId);
         if (!credentials) {
           errors.THREADS = "Failed to get Threads token. Try reconnecting in Settings.";
         } else {
@@ -482,8 +456,8 @@ export async function publishPost(
     try {
       const linkedInToken = await prisma.linkedInApiToken.findUnique({ where: { userId } });
       if (linkedInToken) {
-        const { getLinkedInApiTokenForUserInternal } = await import("@/app/actions/linkedin-token");
-        const credentials = await getLinkedInApiTokenForUserInternal(userId);
+        const { getLinkedInApiTokenForUser } = await import("@/lib/server/linkedin-token");
+        const credentials = await getLinkedInApiTokenForUser(userId);
         if (!credentials) {
           errors.LINKEDIN = "Failed to get LinkedIn token. Try reconnecting in Settings.";
         } else {
@@ -559,7 +533,7 @@ export async function addToQueue(
   slotType: PrismaSlotType = "POST"
 ) {
   const { id: userId, timezone } = await requireUser();
-  const config = await getScheduleConfigInternal(userId);
+  const config = await _getScheduleConfig(userId);
   if (!config) return null;
 
   const schedule = config[SLOT_TYPE_TO_SECTION[slotType]];

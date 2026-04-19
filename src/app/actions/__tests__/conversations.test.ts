@@ -16,8 +16,8 @@ vi.mock("@/lib/auth", () => ({
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 vi.mock("@/lib/x-api", () => ({ fetchTweetById: vi.fn() }));
-vi.mock("@/app/actions/x-token", () => ({
-  getXApiTokenForUserInternal: vi.fn().mockResolvedValue(null),
+vi.mock("@/lib/server/x-token", () => ({
+  getXApiTokenForUser: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/generated/prisma", () => ({

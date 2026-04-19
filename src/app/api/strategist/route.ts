@@ -5,10 +5,10 @@ import { streamText, tool, stepCountIs } from "ai";
 import { z } from "zod";
 import { tavily } from "@tavily/core";
 import { getStrategistPrompt, buildStrategistUserMessage } from "@/prompts/strategist";
-import { getScheduleConfig } from "@/app/actions/schedule";
-import { getAcceptedProposals } from "@/app/actions/plan-proposal";
-import { getBenchmarksInternal } from "@/app/actions/benchmarks";
-import { getOutputLanguageInternal } from "@/app/actions/user-settings";
+import { getScheduleConfig } from "@/lib/server/schedule";
+import { getAcceptedProposals } from "@/lib/server/plan-proposal";
+import { getBenchmarks } from "@/lib/server/benchmarks";
+import { getOutputLanguage } from "@/lib/server/user-settings";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import {
@@ -115,10 +115,10 @@ export async function POST(req: NextRequest) {
   const audienceSize = getAudienceSize(followerCountGuess);
 
   const [scheduleConfig, acceptedProposals, benchmarks, outputLanguageRaw] = await Promise.all([
-    getScheduleConfig(),
-    getAcceptedProposals(30, platform),
-    getBenchmarksInternal(platform, audienceSize),
-    getOutputLanguageInternal(dbUser.id),
+    getScheduleConfig(dbUser.id),
+    getAcceptedProposals(dbUser.id, 30, platform),
+    getBenchmarks(platform, audienceSize),
+    getOutputLanguage(dbUser.id),
   ]);
   const outputLanguage = outputLanguageRaw ?? DEFAULT_LANGUAGE;
 

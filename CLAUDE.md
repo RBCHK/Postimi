@@ -43,7 +43,12 @@ IMPORTANT: xREBA is multi-user on Vercel (UTC). Never assume server TZ = user TZ
 - **All server actions** must call `const userId = await requireUserId()` as their first line and include `userId` in every Prisma where/create.
 - **API routes** use `const { userId: clerkId } = await auth()` from `@clerk/nextjs/server`.
 - **Cron routes** use Bearer token only (`CRON_SECRET`), loop over all users via `prisma.user.findMany()`.
-- **Cron-compatible actions** export both `doThing()` (auth-checked) and `doThingInternal(userId, ...)` (for cron).
+- **Cron-compatible logic**: split by **file**, not by naming convention.
+  - Private helpers live in `src/lib/server/*.ts` (NO `"use server"` directive). They accept `userId: string` and do the work. The browser cannot call them.
+  - Public Server Actions in `src/app/actions/*.ts` (with `"use server"`) start with `const userId = await requireUserId()` and then call into `@/lib/server/*`.
+  - Cron routes and webhooks import from `@/lib/server/*`, never from `@/app/actions/*`.
+  - **ANTI-PATTERN (forbidden)**: exporting `functionInternal(userId: string, ...)` from a `"use server"` file. In Next.js 15 App Router every exported async function from such a file is a callable Server Action — the browser can POST with an attacker-controlled `userId` and read/write another user's data. "Internal" is a naming convention, not enforcement. See `.claude/skills/gotchas/nextjs/server-action-exports-are-public.md`.
+  - **Grep guard** (any match = security bug): `rg -l '^"use server"' src/app/actions/ | xargs rg 'export async function \w+\(\s*userId:\s*string' -n` — pre-commit or CI should fail on non-empty output.
 - **User sync**: Clerk webhook at `/api/webhooks/clerk` upserts Prisma `User` via `svix` signature verification.
 - **Social network OAuth** (X, LinkedIn, Threads) is separate from auth — per-user tokens stored in DB.
 
@@ -139,3 +144,4 @@ IMPORTANT: Use Plan Mode (Shift+Tab) for any change touching 3+ files.
 IMPORTANT: Start a fresh session (`/clear`) for each new task.
 IMPORTANT: After implementing, verify with **both** `npx tsc --noEmit` AND `npm run lint` before committing. Running only tsc is not enough — ESLint catches a different class of errors (unused vars, setState in effects, component-in-render, etc.) that accumulate silently across PRs.
 IMPORTANT: If your changes touch **behavior** (conversation flow, AI auto-start, auth, server actions used by e2e tests) — also run `npx playwright test` before pushing. Type-checking and lint cannot detect behavioral regressions like "AI now responds to a message it didn't before". Skipping this wastes 30+ min debugging CI failures on the PR.
+IMPORTANT: Do not defer work. If something can be done in this session — do it now. No "we'll fix it later", no "follow-up PR for cleanup", no "ship and polish afterwards". Claude is fast and cheap; deferring creates drift, dead code, and TODOs that rot. The only valid reason to defer is a dependency that genuinely blocks (waiting on a user decision, a merge, a deploy). "I could fix this but I'll leave it for another PR" is not deferral — it's incomplete work.

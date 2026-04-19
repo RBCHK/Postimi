@@ -10,8 +10,8 @@ import { getPostPrompt } from "@/prompts/analyst-post";
 import { getQuotePrompt } from "@/prompts/analyst-quote";
 import { fetchTweetFromText, extractTweetUrl } from "@/lib/parse-tweet";
 import { fetchTweetById } from "@/lib/x-api";
-import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
-import { getLatestTrendsInternal } from "@/app/actions/trends";
+import { getXApiTokenForUser } from "@/lib/server/x-token";
+import { getLatestTrends } from "@/lib/server/trends";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import {
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
   // Look up Prisma user and X credentials for tweet fetching
   const dbUser = await prisma.user.findUnique({ where: { clerkId }, select: { id: true } });
-  const xCredentials = dbUser ? await getXApiTokenForUserInternal(dbUser.id) : null;
+  const xCredentials = dbUser ? await getXApiTokenForUser(dbUser.id) : null;
 
   if (!dbUser) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
     const [voiceBankEntries, recentModes, trends, topPosts] = await Promise.all([
       getVoiceBankEntries(contentType === "Reply" ? "REPLY" : "POST", 25),
       contentType === "Reply" ? getRecentUsedModes(conversationId, 5) : Promise.resolve([]),
-      getLatestTrendsInternal(dbUser!.id),
+      getLatestTrends(dbUser!.id),
       prisma.socialPost.findMany({
         where: {
           userId: dbUser!.id,

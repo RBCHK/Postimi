@@ -3,9 +3,9 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { generateText } from "ai";
 import { getDailyInsightPrompt, buildDailyInsightUserMessage } from "@/prompts/daily-insight";
 import { prisma } from "@/lib/prisma";
-import { saveDailyInsightInternal } from "@/app/actions/daily-insight";
-import { getLatestTrendsInternal } from "@/app/actions/trends";
-import { getLatestFollowersSnapshotInternal } from "@/app/actions/followers";
+import { saveDailyInsight } from "@/lib/server/daily-insight";
+import { getLatestTrends } from "@/lib/server/trends";
+import { getLatestFollowersSnapshot } from "@/lib/server/followers";
 import { withCronLogging } from "@/lib/cron-helpers";
 import {
   reserveQuota,
@@ -62,8 +62,8 @@ export const GET = withCronLogging("daily-insight", async () => {
 
       // 4. Latest trends and followers snapshot
       const [trends, latestFollowers] = await Promise.all([
-        getLatestTrendsInternal(user.id),
-        getLatestFollowersSnapshotInternal(user.id),
+        getLatestTrends(user.id),
+        getLatestFollowersSnapshot(user.id),
       ]);
 
       // 5. Generate insights with Haiku
@@ -129,7 +129,7 @@ export const GET = withCronLogging("daily-insight", async () => {
         daysOfStats: recentStats.length,
       };
 
-      const saved = await saveDailyInsightInternal(user.id, {
+      const saved = await saveDailyInsight(user.id, {
         date: new Date(),
         insights,
         context,

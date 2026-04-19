@@ -1,15 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
-import { requireUserId } from "@/lib/auth";
+import { isAdminClerkId } from "@/lib/auth";
 import { fetchTweetMetrics } from "@/lib/x-api";
-import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
+import { getXApiTokenForUser } from "@/lib/server/x-token";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const userId = await requireUserId();
+  const { userId: clerkId } = await auth();
+  if (!isAdminClerkId(clerkId)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  const user = await prisma.user.findUnique({ where: { clerkId: clerkId! }, select: { id: true } });
+  if (!user) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+  const userId = user.id;
   const { id: tweetId } = await params;
 
   try {
-    const credentials = await getXApiTokenForUserInternal(userId);
+    const credentials = await getXApiTokenForUser(userId);
     if (!credentials) {
       return NextResponse.json({ error: "No X account connected" }, { status: 400 });
     }
