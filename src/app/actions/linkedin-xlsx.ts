@@ -13,6 +13,7 @@ import {
   type FollowersRow,
 } from "@/lib/xlsx/linkedin";
 import type { LinkedInPostMetadata } from "@/lib/platform/types";
+import { LinkedInXlsxImportUserError, type LinkedInXlsxImportResult } from "./linkedin-xlsx-types";
 
 // ADR-008 Phase 3.1: LinkedIn xlsx import (replaces the dead CSV path).
 //
@@ -38,27 +39,6 @@ import type { LinkedInPostMetadata } from "@/lib/platform/types";
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const MAX_DAILY_ROWS = 10_000;
 const MAX_POST_ROWS = 200;
-
-export interface LinkedInXlsxImportResult {
-  postsImported: number;
-  postsUpdated: number;
-  dailyStatsUpserted: number;
-  followerSnapshotsUpserted: number;
-  windowStart: string;
-  windowEnd: string;
-  totalFollowers: number;
-}
-
-export class LinkedInXlsxImportUserError extends Error {
-  constructor(
-    public readonly code: "too_large" | "too_many_rows" | "malformed" | "not_xlsx" | "missing_file",
-    message: string,
-    public readonly details?: Record<string, unknown>
-  ) {
-    super(message);
-    this.name = "LinkedInXlsxImportUserError";
-  }
-}
 
 function assertXlsxMagicBytes(buf: ArrayBuffer): void {
   // xlsx is a zip; zips start with the local-file-header magic "PK\x03\x04".
