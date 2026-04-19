@@ -43,6 +43,21 @@ export class ThreadsScopeError extends Error {
   }
 }
 
+// Meta returns scope/permission denials with error code 10 ("Application
+// does not have permission for this action"). Observed HTTP status varies
+// — sometimes 403, sometimes 500 — so we rely on the body code rather
+// than the status alone.
+function isScopeDenial(body: string): boolean {
+  try {
+    const parsed = JSON.parse(body) as { error?: { code?: number; message?: string } };
+    if (parsed?.error?.code === 10) return true;
+    if (parsed?.error?.message?.toLowerCase().includes("scope")) return true;
+  } catch {
+    if (body.toLowerCase().includes("scope")) return true;
+  }
+  return false;
+}
+
 const THREADS_MEDIA_TYPES = [
   "TEXT_POST",
   "IMAGE",
@@ -182,13 +197,17 @@ export async function fetchThreadInsights(
   const res = await threadsGet(url);
   if (res.status === 401 || res.status === 403) {
     const body = await res.text();
-    if (body.toLowerCase().includes("scope") || body.includes("10") /* Meta scope errors */) {
+    if (isScopeDenial(body)) {
       throw new ThreadsScopeError("threads_manage_insights", res.status, body);
     }
     throw new ThreadsAuthError(`Threads auth failed ${res.status}: ${body}`, res.status);
   }
   if (!res.ok) {
-    throw new Error(`Threads fetchInsights failed ${res.status}: ${await res.text()}`);
+    const body = await res.text();
+    if (isScopeDenial(body)) {
+      throw new ThreadsScopeError("threads_manage_insights", res.status, body);
+    }
+    throw new Error(`Threads fetchInsights failed ${res.status}: ${body}`);
   }
 
   const page = (await res.json()) as {
@@ -234,10 +253,17 @@ export async function fetchThreadsUserInsights(
   const res = await threadsGet(url);
   if (res.status === 401 || res.status === 403) {
     const body = await res.text();
+    if (isScopeDenial(body)) {
+      throw new ThreadsScopeError("threads_manage_insights", res.status, body);
+    }
     throw new ThreadsAuthError(`Threads auth failed ${res.status}: ${body}`, res.status);
   }
   if (!res.ok) {
-    throw new Error(`Threads fetchUserInsights failed ${res.status}: ${await res.text()}`);
+    const body = await res.text();
+    if (isScopeDenial(body)) {
+      throw new ThreadsScopeError("threads_manage_insights", res.status, body);
+    }
+    throw new Error(`Threads fetchUserInsights failed ${res.status}: ${body}`);
   }
 
   const page = (await res.json()) as {

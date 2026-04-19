@@ -45,3 +45,4 @@ Immediately after verifying a fix works (tsc + lint clean):
 - `eslint/` — lint rules, disable patterns, false positives
 - `prisma/` — schema, queries, migrations
 - `ai-sdk/` — useChat, transport, streaming
+- `external-apis/` — third-party API quirks (Threads, LinkedIn, X)
