@@ -20,13 +20,8 @@ import {
   addVoiceBankEntry,
   removeVoiceBankEntry,
 } from "@/app/actions/voice-bank";
-import {
-  getScheduleConfig,
-  saveScheduleConfig,
-  type DayKey,
-  type SlotRow,
-  type ScheduleConfig,
-} from "@/app/actions/schedule";
+import { getScheduleConfig, saveScheduleConfig } from "@/app/actions/schedule";
+import type { DayKey, SlotRow, ScheduleConfig } from "@/lib/server/schedule";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage, type LanguageSettings } from "@/lib/types";
 import { getStoredLanguageSettings, LANGUAGE_STORAGE_KEY } from "@/lib/language";
 import { type ThemePreference, applyTheme, saveTheme, getStoredTheme } from "@/lib/theme";

@@ -13,8 +13,8 @@ import {
 // through `requireUserId()` first. Private helpers (userId-taking) live
 // in `@/lib/server/threads-token` and are NOT exported from a "use server"
 // file. Cron routes and webhooks import from `@/lib/server/threads-token`.
-
-export type { ThreadsApiCredentials };
+// Types are NOT re-exported — Next.js 15 RSC compiler rejects non-runtime
+// exports from "use server" files. Consumers import from @/lib/server/*.
 
 export async function getThreadsApiTokenForUser(): Promise<ThreadsApiCredentials | null> {
   const userId = await requireUserId();

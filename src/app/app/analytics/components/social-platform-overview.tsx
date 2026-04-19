@@ -20,8 +20,8 @@ import { PLATFORM_CONFIG, type Platform } from "@/lib/types";
 import {
   getSocialAnalyticsDateRange,
   getSocialAnalyticsSummary,
-  type SocialAnalyticsSummary,
 } from "@/app/actions/social-analytics";
+import type { SocialAnalyticsSummary } from "@/lib/server/social-analytics";
 import { useAnalytics } from "@/contexts/analytics-context";
 
 interface Props {

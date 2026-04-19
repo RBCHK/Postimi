@@ -17,11 +17,8 @@ import {
   getScheduleConfig as _getScheduleConfig,
   type ScheduleConfig,
   type ContentSchedule,
-  type SlotRow,
   type DayKey,
 } from "@/lib/server/schedule";
-
-export type { ScheduleConfig, ContentSchedule, SlotRow, DayKey };
 
 const slotStatusFromPrisma = (v: string): SlotStatus => v.toLowerCase() as SlotStatus;
 

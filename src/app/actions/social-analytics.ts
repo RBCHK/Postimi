@@ -8,7 +8,9 @@ import {
   type SocialAnalyticsSummary,
 } from "@/lib/server/social-analytics";
 
-export type { SocialAnalyticsSummary };
+// Types are NOT re-exported — Next.js 15 RSC compiler rejects non-runtime
+// exports from "use server" files. Consumers import SocialAnalyticsSummary
+// from @/lib/server/social-analytics directly.
 
 export async function getSocialAnalyticsDateRange(
   platform: Platform

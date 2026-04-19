@@ -7,14 +7,14 @@ import {
   getBenchmarks as _getBenchmarks,
   mapBenchmarkRow,
   type BenchmarkRow,
-  type BenchmarkThresholds,
 } from "@/lib/server/benchmarks";
 
 // PlatformBenchmark is global (no userId). We still gate the public
 // read on auth so the endpoint isn't reachable anonymously — anyone
 // authenticated can read; writers are admin-only.
-
-export type { BenchmarkRow, BenchmarkThresholds };
+// Types are NOT re-exported — Next.js 15 RSC compiler rejects non-runtime
+// exports from "use server" files. Consumers import BenchmarkRow /
+// BenchmarkThresholds from @/lib/server/benchmarks directly.
 
 export async function getBenchmarks(
   platform: Platform,

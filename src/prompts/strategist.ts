@@ -8,8 +8,8 @@ import type {
   XProfile,
 } from "../lib/types";
 import type { Platform, Language } from "@/generated/prisma";
-import type { ScheduleConfig } from "../app/actions/schedule";
-import type { BenchmarkRow } from "@/app/actions/benchmarks";
+import type { ScheduleConfig } from "@/lib/server/schedule";
+import type { BenchmarkRow } from "@/lib/server/benchmarks";
 import { languageName } from "@/lib/i18n/language-names";
 
 // ADR-008 Phase 6: Strategist is now platform-aware and language-aware.

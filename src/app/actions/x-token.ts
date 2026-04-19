@@ -14,8 +14,8 @@ import {
 // through `requireUserId()` first. Private helpers (userId-taking) live
 // in `@/lib/server/x-token` and are NOT exported from a "use server"
 // file. Cron routes and webhooks import from `@/lib/server/x-token`.
-
-export type { XApiCredentials };
+// Types are NOT re-exported — Next.js 15 RSC compiler rejects non-runtime
+// exports from "use server" files. Consumers import from @/lib/server/*.
 
 export async function getXApiTokenForUser(): Promise<XApiCredentials | null> {
   const userId = await requireUserId();

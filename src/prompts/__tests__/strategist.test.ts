@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { getStrategistPrompt, buildStrategistUserMessage } from "../strategist";
 import type { AnalyticsSummary, ContentCsvRow } from "../../lib/types";
-import type { BenchmarkRow } from "@/app/actions/benchmarks";
+import type { BenchmarkRow } from "@/lib/server/benchmarks";
 
 function makeTopPost(text: string, impressions: number): ContentCsvRow {
   return {
