@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Upload, X, FileText, Check, Loader2, RefreshCw } from "lucide-react";
+import { Upload, X, FileText, Check, Loader2, RefreshCw, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,7 +12,11 @@ import {
 } from "@/components/ui/dialog";
 import { useAnalytics } from "@/contexts/analytics-context";
 import { importFromXApi } from "@/app/actions/x-import";
-import { importLinkedInCsv } from "@/app/actions/linkedin-csv";
+import { importLinkedInXlsx } from "@/app/actions/linkedin-xlsx";
+
+// Where the user exports the xlsx that this panel accepts.
+const LINKEDIN_CONTENT_ANALYTICS_URL = "https://www.linkedin.com/analytics/creator/content/";
+const LINKEDIN_AUDIENCE_ANALYTICS_URL = "https://www.linkedin.com/analytics/creator/audience/";
 
 function FileDropZone({
   label,
@@ -80,10 +84,13 @@ function FileDropZone({
 type Tab = "csv" | "api" | "linkedin";
 
 interface LinkedInResult {
-  kind: "content" | "followers";
-  imported: number;
-  updated: number;
-  rowsParsed: number;
+  postsImported: number;
+  postsUpdated: number;
+  dailyStatsUpserted: number;
+  followerSnapshotsUpserted: number;
+  windowStart: string;
+  windowEnd: string;
+  totalFollowers: number;
 }
 
 export function ImportPanel() {
@@ -148,7 +155,7 @@ export function ImportPanel() {
     try {
       const fd = new FormData();
       fd.set("file", file);
-      const result = await importLinkedInCsv(fd);
+      const result = await importLinkedInXlsx(fd);
       setLinkedInResult(result);
       await refreshData();
       setTimeout(() => setOpen(false), 2000);
@@ -202,7 +209,7 @@ export function ImportPanel() {
             }`}
             onClick={() => setTab("linkedin")}
           >
-            LinkedIn CSV
+            LinkedIn
           </button>
         </div>
 
@@ -312,35 +319,58 @@ export function ImportPanel() {
 
         {tab === "linkedin" && (
           <div className="space-y-3">
-            <div className="rounded-lg border border-border p-4 space-y-1">
-              <p className="text-sm font-medium">Upload LinkedIn CSV</p>
+            <div className="rounded-lg border border-border p-4 space-y-2">
+              <p className="text-sm font-medium">Upload LinkedIn Analytics export</p>
               <p className="text-xs text-muted-foreground">
-                Export from LinkedIn → Analytics → Content, then drop either the Content or
-                Followers CSV here. LinkedIn&apos;s analytics API is gated for new apps, so CSV is
-                the only available path.
+                LinkedIn&apos;s analytics API is gated for new apps, so xlsx export is the only
+                path. Open one of the pages below, click <span className="font-medium">Export</span>
+                , pick a date range, then drop the downloaded xlsx here.
               </p>
+              <div className="flex flex-col gap-1.5 pt-1">
+                <a
+                  href={LINKEDIN_CONTENT_ANALYTICS_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Content analytics
+                </a>
+                <a
+                  href={LINKEDIN_AUDIENCE_ANALYTICS_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Audience analytics
+                </a>
+              </div>
             </div>
 
             {linkedInError && <p className="text-sm text-destructive">{linkedInError}</p>}
 
             {linkedInResult && (
-              <div className="rounded-md bg-muted p-3 text-xs">
+              <div className="rounded-md bg-muted p-3 text-xs space-y-0.5">
                 <p className="text-green-600 font-medium flex items-center gap-1">
                   <Check className="h-3.5 w-3.5" />
                   Done
                 </p>
                 <p>
-                  {linkedInResult.kind === "content" ? "Content" : "Followers"}:{" "}
-                  {linkedInResult.rowsParsed} rows parsed · {linkedInResult.imported} new ·{" "}
-                  {linkedInResult.updated} updated
+                  Posts: {linkedInResult.postsImported} new · {linkedInResult.postsUpdated} updated
                 </p>
+                <p>
+                  Daily stats: {linkedInResult.dailyStatsUpserted} days · Follower snapshots:{" "}
+                  {linkedInResult.followerSnapshotsUpserted}
+                </p>
+                <p>Total followers: {linkedInResult.totalFollowers.toLocaleString()}</p>
               </div>
             )}
 
             <input
               ref={linkedInInputRef}
               type="file"
-              accept=".csv,text/csv"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               className="hidden"
               onChange={handleLinkedInFile}
             />
@@ -353,12 +383,12 @@ export function ImportPanel() {
               {linkedInLoading ? (
                 <>
                   <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  Parsing CSV...
+                  Parsing xlsx...
                 </>
               ) : (
                 <>
                   <Upload className="mr-1.5 h-3.5 w-3.5" />
-                  Choose LinkedIn CSV
+                  Upload xlsx
                 </>
               )}
             </Button>
