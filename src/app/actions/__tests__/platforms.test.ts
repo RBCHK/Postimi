@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ADR-008 Phase 4: connected-platforms detection.
 //
 // A platform is "connected" iff the user has signal for it:
-//   - X: has XApiToken, has legacy XPost rows, or has SocialPost(platform=X)
+//   - X: has XApiToken or SocialPost(platform=X)
 //   - LinkedIn: has SocialPost(platform=LINKEDIN) (CSV-only, no token path)
 //   - Threads: has ThreadsApiToken or SocialPost(platform=THREADS)
 
@@ -12,7 +12,6 @@ vi.mock("@/lib/auth", () => ({ requireUserId: vi.fn() }));
 const prismaMock = vi.hoisted(() => ({
   xApiToken: { findUnique: vi.fn() },
   threadsApiToken: { findUnique: vi.fn() },
-  xPost: { count: vi.fn() },
   socialPost: { groupBy: vi.fn() },
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
@@ -33,7 +32,6 @@ describe("getConnectedPlatforms", () => {
   it("returns empty list + null primary for a brand-new user", async () => {
     prismaMock.xApiToken.findUnique.mockResolvedValue(null);
     prismaMock.threadsApiToken.findUnique.mockResolvedValue(null);
-    prismaMock.xPost.count.mockResolvedValue(0);
     prismaMock.socialPost.groupBy
       .mockResolvedValueOnce([]) // count by platform
       .mockResolvedValueOnce([]); // max postedAt per platform
@@ -46,7 +44,6 @@ describe("getConnectedPlatforms", () => {
   it("detects X from XApiToken alone (no posts yet)", async () => {
     prismaMock.xApiToken.findUnique.mockResolvedValue({ userId: USER_ID });
     prismaMock.threadsApiToken.findUnique.mockResolvedValue(null);
-    prismaMock.xPost.count.mockResolvedValue(0);
     prismaMock.socialPost.groupBy.mockResolvedValueOnce([]);
 
     const result = await getConnectedPlatforms();
@@ -54,20 +51,9 @@ describe("getConnectedPlatforms", () => {
     expect(result.primary).toBe("X");
   });
 
-  it("detects X from legacy XPost rows even without token (pre-Phase 1a data)", async () => {
-    prismaMock.xApiToken.findUnique.mockResolvedValue(null);
-    prismaMock.threadsApiToken.findUnique.mockResolvedValue(null);
-    prismaMock.xPost.count.mockResolvedValue(25);
-    prismaMock.socialPost.groupBy.mockResolvedValueOnce([]);
-
-    const result = await getConnectedPlatforms();
-    expect(result.platforms).toEqual(["X"]);
-  });
-
   it("detects LinkedIn via SocialPost rows only (CSV-imported, no token path)", async () => {
     prismaMock.xApiToken.findUnique.mockResolvedValue(null);
     prismaMock.threadsApiToken.findUnique.mockResolvedValue(null);
-    prismaMock.xPost.count.mockResolvedValue(0);
     prismaMock.socialPost.groupBy
       .mockResolvedValueOnce([{ platform: "LINKEDIN", _count: { platform: 12 } }])
       .mockResolvedValueOnce([
@@ -82,7 +68,6 @@ describe("getConnectedPlatforms", () => {
   it("returns all three when the user has signal for each, picks primary by latest postedAt", async () => {
     prismaMock.xApiToken.findUnique.mockResolvedValue({ userId: USER_ID });
     prismaMock.threadsApiToken.findUnique.mockResolvedValue({ userId: USER_ID });
-    prismaMock.xPost.count.mockResolvedValue(50);
     prismaMock.socialPost.groupBy
       .mockResolvedValueOnce([
         { platform: "X", _count: { platform: 50 } },
@@ -105,7 +90,6 @@ describe("getConnectedPlatforms", () => {
   it("never returns a platform for another user (enforces per-user isolation in where clause)", async () => {
     prismaMock.xApiToken.findUnique.mockResolvedValue(null);
     prismaMock.threadsApiToken.findUnique.mockResolvedValue(null);
-    prismaMock.xPost.count.mockResolvedValue(0);
     prismaMock.socialPost.groupBy.mockResolvedValueOnce([]);
 
     await getConnectedPlatforms();
@@ -115,9 +99,6 @@ describe("getConnectedPlatforms", () => {
       expect.objectContaining({ where: { userId: USER_ID } })
     );
     expect(prismaMock.threadsApiToken.findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { userId: USER_ID } })
-    );
-    expect(prismaMock.xPost.count).toHaveBeenCalledWith(
       expect.objectContaining({ where: { userId: USER_ID } })
     );
     expect(prismaMock.socialPost.groupBy).toHaveBeenCalledWith(

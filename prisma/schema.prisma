@@ -31,13 +31,9 @@ model User {
   voiceBankEntries              VoiceBankEntry[]
   scheduledSlots                ScheduledSlot[]
   strategyConfigs               StrategyConfig[]
-  xPosts                        XPost[]
-  dailyAccountStats             DailyAccountStats[]
   strategyAnalyses              StrategyAnalysis[]
   researchNotes                 ResearchNote[]
   dailyInsights                 DailyInsight[]
-  followersSnapshots            FollowersSnapshot[]
-  postEngagementSnapshots       PostEngagementSnapshot[]
   planProposals                 PlanProposal[]
   xApiCallLogs                  XApiCallLog[]
   xApiToken                     XApiToken?
@@ -45,7 +41,7 @@ model User {
   linkedInApiToken              LinkedInApiToken?
   trendSnapshots                TrendSnapshot[]
   media                         Media[]
-  // ADR-008: platform-agnostic data models (Phase 1a additive, dual-write)
+  // ADR-008: platform-agnostic data models (Phase 1b cutover complete)
   socialPosts                   SocialPost[]
   socialDailyStats              SocialDailyStats[]
   socialFollowersSnapshots      SocialFollowersSnapshot[]
@@ -271,11 +267,6 @@ enum VoiceBankType {
   POST
 }
 
-enum XPostType {
-  POST
-  REPLY
-}
-
 enum DataSource {
   CSV
   API
@@ -421,11 +412,9 @@ model StrategyConfig {
 
 // ─── Social Analytics ────────────────────────────────────
 //
-// ADR-008: platform-agnostic analytics models. Replacing XPost /
-// DailyAccountStats / FollowersSnapshot / PostEngagementSnapshot with
-// these four. Cutover happens in two phases:
-//   Phase 1a: additive CREATE TABLEs + dual-write, old models kept.
-//   Phase 1b (≥1 week later): reads switch to Social*, DROP old tables.
+// ADR-008: platform-agnostic analytics models. The legacy X-only
+// tables (XPost / DailyAccountStats / FollowersSnapshot /
+// PostEngagementSnapshot) were dropped in Phase 1b (2026-04).
 // All queries MUST filter by `(userId, platform)` — the composite
 // indexes are tuned for that.
 
@@ -570,68 +559,6 @@ model PlatformBenchmark {
   @@index([platform])
 }
 
-// ─── X Analytics (legacy, to be dropped in Phase 1b) ─────
-
-model XPost {
-  id       String    @id @default(cuid())
-  userId   String
-  postId   String
-  date     DateTime
-  text     String
-  postLink String?
-  postType XPostType
-
-  // Core metrics (API owns these)
-  impressions   Int @default(0)
-  likes         Int @default(0)
-  engagements   Int @default(0)
-  bookmarks     Int @default(0)
-  replies       Int @default(0)
-  reposts       Int @default(0)
-  quoteCount    Int @default(0)
-  urlClicks     Int @default(0)
-  profileVisits Int @default(0)
-
-  // CSV-only enrichment (API doesn't provide these)
-  newFollowers  Int @default(0)
-  detailExpands Int @default(0)
-
-  // Source tracking
-  dataSource DataSource @default(CSV)
-  updatedAt  DateTime   @updatedAt
-  createdAt  DateTime   @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, postId])
-  @@index([userId])
-}
-
-model DailyAccountStats {
-  id            String   @id @default(cuid())
-  userId        String
-  date          DateTime
-  impressions   Int      @default(0)
-  likes         Int      @default(0)
-  engagements   Int      @default(0)
-  bookmarks     Int      @default(0)
-  shares        Int      @default(0)
-  newFollows    Int      @default(0)
-  unfollows     Int      @default(0)
-  replies       Int      @default(0)
-  reposts       Int      @default(0)
-  profileVisits Int      @default(0)
-  createPost    Int      @default(0)
-  videoViews    Int      @default(0)
-  mediaViews    Int      @default(0)
-  createdAt     DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, date])
-  @@index([userId])
-}
-
 // ─── AI Agents ───────────────────────────────────────────
 
 model StrategyAnalysis {
@@ -681,22 +608,6 @@ model DailyInsight {
   @@index([userId])
 }
 
-model FollowersSnapshot {
-  id             String   @id @default(cuid())
-  userId         String
-  date           DateTime // UTC midnight, one per day per user
-  followersCount Int
-  followingCount Int
-  deltaFollowers Int      @default(0) // today - yesterday
-  deltaFollowing Int      @default(0)
-  createdAt      DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, date])
-  @@index([userId])
-}
-
 // ─── Trends (per-user) ──────────────────────────────────
 //
 // ADR-008: TrendSnapshot is X-only by design. LinkedIn and Threads
@@ -719,31 +630,6 @@ model TrendSnapshot {
 
   @@unique([userId, date, fetchHour, trendName])
   @@index([userId, date, fetchHour])
-}
-
-// ─── Engagement Tracking ─────────────────────────────────
-
-model PostEngagementSnapshot {
-  id            String   @id @default(cuid())
-  userId        String
-  postId        String
-  snapshotDate  DateTime
-  impressions   Int      @default(0)
-  likes         Int      @default(0)
-  engagements   Int      @default(0)
-  bookmarks     Int      @default(0)
-  replies       Int      @default(0)
-  reposts       Int      @default(0)
-  quoteCount    Int      @default(0)
-  profileVisits Int      @default(0)
-  urlClicks     Int      @default(0)
-  createdAt     DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, postId, snapshotDate])
-  @@index([userId])
-  @@index([postId])
 }
 
 // ─── Plan Proposals ──────────────────────────────────────

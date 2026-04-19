@@ -4,13 +4,16 @@ import { fetchUserTweetsPaginated } from "@/lib/x-api";
 import { getXApiTokenForUserInternal } from "@/app/actions/x-token";
 import { revalidatePath } from "next/cache";
 import { withCronLogging } from "@/lib/cron-helpers";
-import type { XPostType as PrismaXPostType } from "@/generated/prisma";
+
+// Phase 1b: imports straight into SocialPost (`platform: "X"`). The
+// legacy dual-write to XPost / PostEngagementSnapshot was removed in
+// this PR along with the legacy tables themselves.
 
 export const maxDuration = 60;
 
 const REFRESH_DAYS = 7;
 
-function detectPostType(text: string): PrismaXPostType {
+function detectPostType(text: string): "POST" | "REPLY" {
   return text.startsWith("@") ? "REPLY" : "POST";
 }
 
@@ -45,13 +48,13 @@ export const GET = withCronLogging("x-import", async (req) => {
           startTime: startTime.toISOString(),
         });
       } else {
-        const latest = await prisma.xPost.findFirst({
-          where: { userId: user.id },
-          orderBy: { date: "desc" },
-          select: { postId: true },
+        const latest = await prisma.socialPost.findFirst({
+          where: { userId: user.id, platform: "X" },
+          orderBy: { postedAt: "desc" },
+          select: { externalPostId: true },
         });
         tweets = await fetchUserTweetsPaginated(credentials, {
-          sinceId: latest?.postId,
+          sinceId: latest?.externalPostId,
         });
       }
 
@@ -63,9 +66,15 @@ export const GET = withCronLogging("x-import", async (req) => {
       snapshotDate.setUTCHours(0, 0, 0, 0);
 
       for (const tweet of tweets) {
-        const existing = await prisma.xPost.findUnique({
-          where: { userId_postId: { userId: user.id, postId: tweet.postId } },
-          select: { createdAt: true },
+        const existing = await prisma.socialPost.findUnique({
+          where: {
+            userId_platform_externalPostId: {
+              userId: user.id,
+              platform: "X",
+              externalPostId: tweet.postId,
+            },
+          },
+          select: { id: true },
         });
 
         const apiMetrics = {
@@ -77,141 +86,66 @@ export const GET = withCronLogging("x-import", async (req) => {
           reposts: tweet.reposts,
           quoteCount: tweet.quoteCount,
           urlClicks: tweet.urlClicks,
+          profileVisits: tweet.profileVisits ?? 0,
         };
 
         const updateData: Record<string, unknown> = {
           ...apiMetrics,
           dataSource: "API",
         };
-        if (tweet.profileVisits !== undefined) {
-          updateData.profileVisits = tweet.profileVisits;
-        }
 
         const postType = detectPostType(tweet.text);
 
-        await prisma.xPost.upsert({
-          where: { userId_postId: { userId: user.id, postId: tweet.postId } },
+        const socialPost = await prisma.socialPost.upsert({
+          where: {
+            userId_platform_externalPostId: {
+              userId: user.id,
+              platform: "X",
+              externalPostId: tweet.postId,
+            },
+          },
           create: {
             userId: user.id,
-            postId: tweet.postId,
-            date: tweet.createdAt,
+            platform: "X",
+            externalPostId: tweet.postId,
+            postedAt: tweet.createdAt,
             text: tweet.text,
-            postLink: tweet.postLink,
+            postUrl: tweet.postLink,
             postType,
+            platformMetadata: { platform: "X", postType },
             ...apiMetrics,
-            profileVisits: tweet.profileVisits ?? 0,
             dataSource: "API",
           },
           update: updateData,
+          select: { id: true },
         });
 
         if (existing) updated++;
         else imported++;
 
-        // ADR-008 Phase 1a: dual-write to platform-agnostic SocialPost.
-        // Wrapped in its own try/catch so a schema/Zod regression on the
-        // new table never rolls back the legacy XPost write. The Phase 1b
-        // cutover removes the legacy branch and this `.catch` safety net.
-        let socialPostId: string | null = null;
-        try {
-          const socialMetrics = {
-            ...apiMetrics,
-            profileVisits: tweet.profileVisits ?? 0,
-          };
-          const socialPost = await prisma.socialPost.upsert({
+        // Save engagement snapshot for velocity tracking (only while the
+        // post is still "young" — older posts don't change meaningfully).
+        const postAgeDays = (Date.now() - tweet.createdAt.getTime()) / (1000 * 60 * 60 * 24);
+        if (postAgeDays < REFRESH_DAYS) {
+          await prisma.socialPostEngagementSnapshot.upsert({
             where: {
-              userId_platform_externalPostId: {
+              userId_platform_postId_snapshotDate: {
                 userId: user.id,
                 platform: "X",
-                externalPostId: tweet.postId,
+                postId: socialPost.id,
+                snapshotDate,
               },
             },
             create: {
               userId: user.id,
               platform: "X",
-              externalPostId: tweet.postId,
-              postedAt: tweet.createdAt,
-              text: tweet.text,
-              postUrl: tweet.postLink,
-              postType,
-              platformMetadata: { platform: "X", postType },
-              ...socialMetrics,
-              dataSource: "API",
+              postId: socialPost.id,
+              snapshotDate,
+              ...apiMetrics,
             },
-            update: {
-              ...socialMetrics,
-              dataSource: "API",
-            },
-            select: { id: true },
-          });
-          socialPostId = socialPost.id;
-        } catch (socialErr) {
-          Sentry.captureException(socialErr, {
-            tags: { phase: "1a-dual-write", model: "SocialPost", platform: "X" },
-            extra: { userId: user.id, externalPostId: tweet.postId },
-          });
-        }
-
-        // Save engagement snapshot for velocity tracking
-        const postAgeDays = (Date.now() - tweet.createdAt.getTime()) / (1000 * 60 * 60 * 24);
-        if (postAgeDays < REFRESH_DAYS) {
-          const snapshotMetrics = {
-            ...apiMetrics,
-            profileVisits: tweet.profileVisits ?? 0,
-          };
-
-          await prisma.postEngagementSnapshot.upsert({
-            where: {
-              userId_postId_snapshotDate: {
-                userId: user.id,
-                postId: tweet.postId,
-                snapshotDate: snapshotDate,
-              },
-            },
-            create: {
-              userId: user.id,
-              postId: tweet.postId,
-              snapshotDate: snapshotDate,
-              ...snapshotMetrics,
-            },
-            update: snapshotMetrics,
+            update: apiMetrics,
           });
           snapshots++;
-
-          // ADR-008 Phase 1a: dual-write engagement snapshot. Requires
-          // SocialPost to have been created first (FK on postId). Skip
-          // if the SocialPost write above failed — Sentry already captured.
-          if (socialPostId) {
-            try {
-              await prisma.socialPostEngagementSnapshot.upsert({
-                where: {
-                  userId_platform_postId_snapshotDate: {
-                    userId: user.id,
-                    platform: "X",
-                    postId: socialPostId,
-                    snapshotDate,
-                  },
-                },
-                create: {
-                  userId: user.id,
-                  platform: "X",
-                  postId: socialPostId,
-                  snapshotDate,
-                  ...snapshotMetrics,
-                },
-                update: snapshotMetrics,
-              });
-            } catch (snapErr) {
-              Sentry.captureException(snapErr, {
-                tags: {
-                  phase: "1a-dual-write",
-                  model: "SocialPostEngagementSnapshot",
-                  platform: "X",
-                },
-                extra: { userId: user.id, externalPostId: tweet.postId },
-              });
-            }
-          }
         }
       }
 

@@ -50,11 +50,13 @@ export const GET = withCronLogging("daily-insight", async () => {
         take: 3,
       });
 
-      // 3. Last 7 days of DailyAccountStats
+      // 3. Last 7 days of daily stats (X-platform only — daily-insight
+      //    is X-specific today. Phase 1b moved this off the legacy
+      //    DailyAccountStats onto SocialDailyStats.)
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 7);
-      const recentStats = await prisma.dailyAccountStats.findMany({
-        where: { userId: user.id, date: { gte: sevenDaysAgo } },
+      const recentStats = await prisma.socialDailyStats.findMany({
+        where: { userId: user.id, platform: "X", date: { gte: sevenDaysAgo } },
         orderBy: { date: "desc" },
       });
 

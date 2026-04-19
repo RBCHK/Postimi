@@ -4,17 +4,14 @@ import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth";
 import { PLATFORMS, type Platform } from "@/lib/types";
 
-// ADR-008 Phase 4: which platforms does the user have signal for?
+// Phase 4 + 1b: which platforms does the user have signal for?
 //
 // "Connected" is a stronger word than "has token" for LinkedIn, because
 // the LinkedIn token only grants publishing — analytics come from CSV
 // upload. So a user with zero LinkedIn tokens but LinkedIn CSV imports
-// should still see a LinkedIn tab. Threads and X are "connected" iff
-// a token exists (they both use API-based ingestion).
-//
-// X is special: the legacy XPost table still exists in Phase 1a. A
-// user who imported X data pre-Phase-1a and has no token should still
-// see the X tab. We check either token OR presence of data.
+// should still see a LinkedIn tab. Threads and X are "connected" iff a
+// token exists (they both use API-based ingestion) OR the user has
+// historical SocialPost data for that platform.
 
 export interface ConnectedPlatforms {
   platforms: Platform[];
@@ -22,10 +19,9 @@ export interface ConnectedPlatforms {
 }
 
 async function _getConnectedPlatforms(userId: string): Promise<ConnectedPlatforms> {
-  const [xToken, threadsToken, xPostCount, socialPostCounts] = await Promise.all([
+  const [xToken, threadsToken, socialPostCounts] = await Promise.all([
     prisma.xApiToken.findUnique({ where: { userId }, select: { userId: true } }),
     prisma.threadsApiToken.findUnique({ where: { userId }, select: { userId: true } }),
-    prisma.xPost.count({ where: { userId } }),
     prisma.socialPost.groupBy({
       by: ["platform"],
       where: { userId },
@@ -38,7 +34,7 @@ async function _getConnectedPlatforms(userId: string): Promise<ConnectedPlatform
   );
 
   const connected = new Set<Platform>();
-  if (xToken || xPostCount > 0 || (socialByPlatform.get("X") ?? 0) > 0) {
+  if (xToken || (socialByPlatform.get("X") ?? 0) > 0) {
     connected.add("X");
   }
   if ((socialByPlatform.get("LINKEDIN") ?? 0) > 0) {

@@ -153,11 +153,6 @@ export const X_POST_TYPE_MAP: Record<string, XPostType> = {
   REPLY: "Reply",
 };
 
-export const X_POST_TYPE_TO_PRISMA: Record<XPostType, string> = {
-  Post: "POST",
-  Reply: "REPLY",
-};
-
 export interface ContentCsvRow {
   postId: string;
   date: string;

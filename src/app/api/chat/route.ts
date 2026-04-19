@@ -89,8 +89,13 @@ export async function POST(req: NextRequest) {
       getVoiceBankEntries(contentType === "Reply" ? "REPLY" : "POST", 25),
       contentType === "Reply" ? getRecentUsedModes(conversationId, 5) : Promise.resolve([]),
       getLatestTrendsInternal(dbUser!.id),
-      prisma.xPost.findMany({
-        where: { date: { gte: thirtyDaysAgo }, postType: "POST" },
+      prisma.socialPost.findMany({
+        where: {
+          userId: dbUser!.id,
+          platform: "X",
+          postedAt: { gte: thirtyDaysAgo },
+          postType: "POST",
+        },
         orderBy: { engagements: "desc" },
         take: 10,
         select: { text: true, engagements: true },
