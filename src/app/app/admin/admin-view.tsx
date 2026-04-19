@@ -37,6 +37,7 @@ import {
   getCronRuns,
   getApiCostSummary,
   getApiCostDaily,
+  runCronJob,
 } from "@/app/actions/admin";
 import {
   MODEL_OPTIONS,
@@ -229,15 +230,15 @@ export function AdminView({ initialConfigs, initialRuns, initialWaitlist }: Admi
 
   async function handleRun(jobName: string) {
     if (running) return;
-    const cronPath = CRON_PATHS[jobName];
-    if (!cronPath) return;
+    if (!CRON_PATHS[jobName]) return;
     setRunning(jobName);
     try {
-      const res = await fetch(cronPath);
-      const data = await res.json();
-      if (data.ok) {
+      // Server Action proxies the fetch with Bearer ${CRON_SECRET} —
+      // doing the fetch from the client would return 401 and would also
+      // require exposing CRON_SECRET to the browser.
+      const result = await runCronJob(jobName);
+      if (result.ok) {
         toast.success(`${jobName} completed`);
-        // Refresh data
         const [newConfigs, newRuns] = await Promise.all([
           getCronConfigs(),
           getCronRuns({ limit: 50 }),
@@ -245,7 +246,7 @@ export function AdminView({ initialConfigs, initialRuns, initialWaitlist }: Admi
         setConfigs(newConfigs);
         setRuns(newRuns);
       } else {
-        toast.error(`${jobName} failed: ${data.error ?? `HTTP ${res.status}`}`);
+        toast.error(`${jobName} failed: ${result.error ?? "unknown error"}`);
       }
     } catch (err) {
       toast.error(`${jobName} failed: ${err instanceof Error ? err.message : String(err)}`);
