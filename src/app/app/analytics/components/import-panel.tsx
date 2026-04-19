@@ -14,11 +14,7 @@ import {
 import { useAnalytics } from "@/contexts/analytics-context";
 import { importFromXApi } from "@/app/actions/x-import";
 import { importLinkedInXlsx } from "@/app/actions/linkedin-xlsx";
-import {
-  EMPTY_LI_RESULT,
-  mergeLinkedInResult,
-  type LinkedInAggregatedResult,
-} from "./linkedin-aggregate";
+import type { LinkedInXlsxImportResult } from "@/app/actions/linkedin-xlsx-types";
 import { XlsxDropZone } from "./xlsx-drop-zone";
 
 // Where the user exports the xlsx that this panel accepts.
@@ -113,10 +109,9 @@ export function ImportPanel() {
     total: number;
   } | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
-  const [linkedInContentFile, setLinkedInContentFile] = useState<File | null>(null);
-  const [linkedInAudienceFile, setLinkedInAudienceFile] = useState<File | null>(null);
+  const [linkedInFile, setLinkedInFile] = useState<File | null>(null);
   const [linkedInLoading, setLinkedInLoading] = useState(false);
-  const [linkedInResult, setLinkedInResult] = useState<LinkedInAggregatedResult | null>(null);
+  const [linkedInResult, setLinkedInResult] = useState<LinkedInXlsxImportResult | null>(null);
   const [linkedInError, setLinkedInError] = useState<string | null>(null);
 
   const hasAnyData = !!contentCsv || !!overviewCsv;
@@ -144,48 +139,28 @@ export function ImportPanel() {
   }
 
   async function handleLinkedInImport() {
-    const files = [linkedInContentFile, linkedInAudienceFile].filter((f): f is File => f !== null);
-    if (files.length === 0) return;
+    if (!linkedInFile) return;
 
     setLinkedInLoading(true);
     setLinkedInError(null);
-    setLinkedInResult(EMPTY_LI_RESULT);
+    setLinkedInResult(null);
 
-    let agg: LinkedInAggregatedResult = EMPTY_LI_RESULT;
-    const failures: { name: string; error: string }[] = [];
-
-    // Sequential, not parallel: the server action holds the workbook in
-    // memory and runs Prisma upserts; serialising is safer for a 2-file
-    // flow and keeps partial-failure reporting simple.
-    for (const file of files) {
-      try {
-        const fd = new FormData();
-        fd.set("file", file);
-        const result = await importLinkedInXlsx(fd);
-        agg = mergeLinkedInResult(agg, result);
-        setLinkedInResult(agg);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Import failed";
-        failures.push({ name: file.name, error: message });
-        agg = { ...agg, filesFailed: [...agg.filesFailed, file.name] };
-        setLinkedInResult(agg);
-      }
+    try {
+      const fd = new FormData();
+      fd.set("file", linkedInFile);
+      const result = await importLinkedInXlsx(fd);
+      setLinkedInResult(result);
+      setLinkedInFile(null);
+      // Refresh both layers: `bumpSocialRefresh` nudges client-side fetches
+      // in `SocialPlatformOverview`; `router.refresh()` re-runs the server
+      // page so connected-platform state picks up the new data.
+      bumpSocialRefresh();
+      router.refresh();
+    } catch (err) {
+      setLinkedInError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setLinkedInLoading(false);
     }
-
-    if (failures.length > 0) {
-      setLinkedInError(failures.map((f) => `${f.name}: ${f.error}`).join(" · "));
-    }
-
-    // Clear slots once imported so the next visit starts fresh.
-    setLinkedInContentFile(null);
-    setLinkedInAudienceFile(null);
-
-    // Refresh both layers: `bumpSocialRefresh` nudges client-side fetches in
-    // `SocialPlatformOverview`; `router.refresh()` re-runs the server page so
-    // date range / connected-platform state picks up the new data.
-    bumpSocialRefresh();
-    router.refresh();
-    setLinkedInLoading(false);
   }
 
   return (
@@ -342,11 +317,13 @@ export function ImportPanel() {
         {tab === "linkedin" && (
           <div className="space-y-3">
             <div className="rounded-lg border border-border p-4 space-y-2">
-              <p className="text-sm font-medium">Upload LinkedIn Analytics exports</p>
+              <p className="text-sm font-medium">Upload LinkedIn Analytics export</p>
               <p className="text-xs text-muted-foreground">
                 LinkedIn&apos;s analytics API is gated for new apps, so xlsx export is the only
-                path. Open each page, click <span className="font-medium">Export</span>, pick a date
-                range, then drop both xlsx files below.
+                path. Open either analytics page below, click{" "}
+                <span className="font-medium">Export</span>, pick a date range, then drop the file
+                here. Both pages produce the same file — one upload covers content, followers, and
+                demographics.
               </p>
               <div className="flex flex-col gap-1.5 pt-1">
                 <a
@@ -371,34 +348,21 @@ export function ImportPanel() {
             </div>
 
             <XlsxDropZone
-              label="Content export"
-              hint="Posts + engagement + top posts"
-              file={linkedInContentFile}
-              onFile={setLinkedInContentFile}
-              onClear={() => setLinkedInContentFile(null)}
-              disabled={linkedInLoading}
-            />
-
-            <XlsxDropZone
-              label="Audience export"
-              hint="Followers + demographics"
-              file={linkedInAudienceFile}
-              onFile={setLinkedInAudienceFile}
-              onClear={() => setLinkedInAudienceFile(null)}
+              label="Analytics export"
+              hint="Posts, engagement, followers, demographics"
+              file={linkedInFile}
+              onFile={setLinkedInFile}
+              onClear={() => setLinkedInFile(null)}
               disabled={linkedInLoading}
             />
 
             {linkedInError && <p className="text-sm text-destructive">{linkedInError}</p>}
 
-            {linkedInResult && linkedInResult.filesProcessed > 0 && (
+            {linkedInResult && (
               <div className="rounded-md bg-muted p-3 text-xs space-y-0.5">
                 <p className="text-green-600 font-medium flex items-center gap-1">
                   <Check className="h-3.5 w-3.5" />
-                  {linkedInResult.filesProcessed === 1
-                    ? "1 file imported"
-                    : `${linkedInResult.filesProcessed} files imported`}
-                  {linkedInResult.filesFailed.length > 0 &&
-                    ` · ${linkedInResult.filesFailed.length} failed`}
+                  File imported
                 </p>
                 <p>
                   Posts: {linkedInResult.postsImported} new · {linkedInResult.postsUpdated} updated
@@ -407,13 +371,13 @@ export function ImportPanel() {
                   Daily stats: {linkedInResult.dailyStatsUpserted} days · Follower snapshots:{" "}
                   {linkedInResult.followerSnapshotsUpserted}
                 </p>
-                {linkedInResult.latestTotalFollowers > 0 && (
-                  <p>Total followers: {linkedInResult.latestTotalFollowers.toLocaleString()}</p>
+                {linkedInResult.totalFollowers > 0 && (
+                  <p>Total followers: {linkedInResult.totalFollowers.toLocaleString()}</p>
                 )}
-                {linkedInResult.earliestWindowStart && linkedInResult.latestWindowEnd && (
+                {linkedInResult.windowStart && linkedInResult.windowEnd && (
                   <p className="text-muted-foreground">
-                    Window: {linkedInResult.earliestWindowStart.slice(0, 10)} →{" "}
-                    {linkedInResult.latestWindowEnd.slice(0, 10)}
+                    Window: {linkedInResult.windowStart.slice(0, 10)} →{" "}
+                    {linkedInResult.windowEnd.slice(0, 10)}
                   </p>
                 )}
               </div>
@@ -421,7 +385,7 @@ export function ImportPanel() {
 
             <Button
               className="w-full"
-              disabled={linkedInLoading || (!linkedInContentFile && !linkedInAudienceFile)}
+              disabled={linkedInLoading || !linkedInFile}
               onClick={handleLinkedInImport}
             >
               {linkedInLoading ? (
