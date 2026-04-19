@@ -11,15 +11,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAnalytics } from "@/contexts/analytics-context";
 import { importFromXApi } from "@/app/actions/x-import";
 import { importLinkedInXlsx } from "@/app/actions/linkedin-xlsx";
 import type { LinkedInXlsxImportResult } from "@/app/actions/linkedin-xlsx-types";
 import { XlsxDropZone } from "./xlsx-drop-zone";
 
-// Where the user exports the xlsx that this panel accepts.
-const LINKEDIN_CONTENT_ANALYTICS_URL = "https://www.linkedin.com/analytics/creator/content/";
-const LINKEDIN_AUDIENCE_ANALYTICS_URL = "https://www.linkedin.com/analytics/creator/audience/";
+// LinkedIn exposes two analytics pages (Content + Audience) but both export
+// the same xlsx. We link only one to avoid "which button do I click?" confusion.
+const LINKEDIN_ANALYTICS_URL = "https://www.linkedin.com/analytics/creator/content/";
 
 function FileDropZone({
   label,
@@ -116,6 +117,8 @@ export function ImportPanel() {
 
   const hasAnyData = !!contentCsv || !!overviewCsv;
 
+  const dialogTitle = tab === "linkedin" ? "Import LinkedIn Analytics" : "Import X Analytics";
+
   async function handleCsvImport() {
     const success = await runImport();
     if (success) {
@@ -171,47 +174,19 @@ export function ImportPanel() {
           Import Data
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent>
         <DialogHeader>
-          <DialogTitle>Import X Analytics Data</DialogTitle>
+          <DialogTitle>{dialogTitle}</DialogTitle>
         </DialogHeader>
 
-        {/* Tabs */}
-        <div className="flex rounded-lg border border-border overflow-hidden text-sm">
-          <button
-            className={`flex-1 px-3 py-2 text-center transition-colors ${
-              tab === "csv"
-                ? "bg-primary text-primary-foreground font-medium"
-                : "text-muted-foreground hover:bg-muted"
-            }`}
-            onClick={() => setTab("csv")}
-          >
-            X CSV
-          </button>
-          <button
-            className={`flex-1 px-3 py-2 text-center transition-colors ${
-              tab === "api"
-                ? "bg-primary text-primary-foreground font-medium"
-                : "text-muted-foreground hover:bg-muted"
-            }`}
-            onClick={() => setTab("api")}
-          >
-            X API
-          </button>
-          <button
-            className={`flex-1 px-3 py-2 text-center transition-colors ${
-              tab === "linkedin"
-                ? "bg-primary text-primary-foreground font-medium"
-                : "text-muted-foreground hover:bg-muted"
-            }`}
-            onClick={() => setTab("linkedin")}
-          >
-            LinkedIn
-          </button>
-        </div>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
+          <TabsList className="w-full">
+            <TabsTrigger value="csv">X CSV</TabsTrigger>
+            <TabsTrigger value="api">X API</TabsTrigger>
+            <TabsTrigger value="linkedin">LinkedIn</TabsTrigger>
+          </TabsList>
 
-        {tab === "csv" && (
-          <div className="space-y-3">
+          <TabsContent value="csv" className="space-y-3">
             <FileDropZone
               label="Content CSV"
               hint="Posts & Replies with metrics"
@@ -267,11 +242,9 @@ export function ImportPanel() {
                 "Import to Database"
               )}
             </Button>
-          </div>
-        )}
+          </TabsContent>
 
-        {tab === "api" && (
-          <div className="space-y-3">
+          <TabsContent value="api" className="space-y-3">
             <div className="rounded-lg border border-border p-4 space-y-1">
               <p className="text-sm font-medium">Fetch from X API</p>
               <p className="text-xs text-muted-foreground">
@@ -311,44 +284,26 @@ export function ImportPanel() {
                 </>
               )}
             </Button>
-          </div>
-        )}
+          </TabsContent>
 
-        {tab === "linkedin" && (
-          <div className="space-y-3">
-            <div className="rounded-lg border border-border p-4 space-y-2">
-              <p className="text-sm font-medium">Upload LinkedIn Analytics export</p>
-              <p className="text-xs text-muted-foreground">
-                LinkedIn&apos;s analytics API is gated for new apps, so xlsx export is the only
-                path. Open either analytics page below, click{" "}
-                <span className="font-medium">Export</span>, pick a date range, then drop the file
-                here. Both pages produce the same file — one upload covers content, followers, and
-                demographics.
-              </p>
-              <div className="flex flex-col gap-1.5 pt-1">
-                <a
-                  href={LINKEDIN_CONTENT_ANALYTICS_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Content analytics
-                </a>
-                <a
-                  href={LINKEDIN_AUDIENCE_ANALYTICS_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Audience analytics
-                </a>
-              </div>
-            </div>
+          <TabsContent value="linkedin" className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              LinkedIn&apos;s analytics API is gated for new apps, so xlsx export is the only path.
+              Open LinkedIn Analytics, click <span className="font-medium">Export</span>, pick a
+              date range, then drop the file here.
+            </p>
+            <a
+              href={LINKEDIN_ANALYTICS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Open LinkedIn Analytics
+            </a>
 
             <XlsxDropZone
-              label="Analytics export"
+              label="Drop xlsx here"
               hint="Posts, engagement, followers, demographics"
               file={linkedInFile}
               onFile={setLinkedInFile}
@@ -400,8 +355,8 @@ export function ImportPanel() {
                 </>
               )}
             </Button>
-          </div>
-        )}
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );

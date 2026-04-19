@@ -37,3 +37,16 @@
 **Tried:** `text-2xl font-bold` for card values, `text-lg font-semibold` for sub-headings
 **Broke:** Typography had no consistent scale — sizes ranged from text-xs to text-2xl with no system.
 **Fix:** Strict scale: page title `text-xl font-semibold` (via PageHeader), section content `text-base`, card title `text-sm font-medium`, body `text-sm`, caption `text-xs`. Never use `text-2xl`, `text-lg`, or `font-bold` in page content.
+
+### Custom tab buttons with `rounded-lg overflow-hidden` parent
+
+**Tried:** `<div className="flex rounded-lg border overflow-hidden">` wrapping `<button>`s with `bg-primary` for the active tab.
+**Broke:** `overflow-hidden` does not always clip child backgrounds at rounded corners — bg-primary on the rightmost (or leftmost) active tab bleeds past the rounded corner. Visible as a small colored patch outside the border.
+**Fix:** Use shadcn `<Tabs>` from `@/components/ui/tabs` — Radix handles clipping correctly with per-trigger rounded corners, no overflow hack needed. Also gives you controlled/uncontrolled state, keyboard nav, ARIA for free.
+**Watch out:** `<TabsList className="w-full">` to make triggers span container; triggers already have `flex-1`.
+
+### Static dialog title across multi-tab modals
+
+**Tried:** `<DialogTitle>Import X Analytics Data</DialogTitle>` on a modal whose tabs cover X + LinkedIn.
+**Broke:** Title stays "X" even on LinkedIn tab — user thinks each tab spawns a different modal.
+**Fix:** Derive the title from the active tab: `const dialogTitle = tab === "linkedin" ? "Import LinkedIn Analytics" : "Import X Analytics"`. Render `<DialogTitle>{dialogTitle}</DialogTitle>`.
