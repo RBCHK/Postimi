@@ -14,14 +14,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "No X account connected" }, { status: 400 });
     }
 
-    const [apiRaw, dbRecord, snapshots] = await Promise.all([
+    const [apiRaw, dbRecord] = await Promise.all([
       fetchTweetMetrics(credentials, tweetId),
-      prisma.xPost.findFirst({ where: { userId, postId: tweetId } }),
-      prisma.postEngagementSnapshot.findMany({
-        where: { userId, postId: tweetId },
-        orderBy: { snapshotDate: "desc" },
+      prisma.socialPost.findFirst({
+        where: { userId, platform: "X", externalPostId: tweetId },
       }),
     ]);
+
+    const snapshots = dbRecord
+      ? await prisma.socialPostEngagementSnapshot.findMany({
+          where: { userId, platform: "X", postId: dbRecord.id },
+          orderBy: { snapshotDate: "desc" },
+        })
+      : [];
 
     if (!apiRaw) {
       return NextResponse.json({ error: "Tweet not found via X API" }, { status: 404 });

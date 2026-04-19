@@ -79,9 +79,10 @@ async function buildPlatformContext(
   platform: Platform
 ): Promise<PlatformContext | null> {
   if (platform === "X") {
-    // Legacy X path: reads from XPost / DailyAccountStats / FollowersSnapshot.
-    // Preserves full fidelity (trends, profile, reply stats) until Phase 1b
-    // cutover unifies everything under SocialPost.
+    // X-specific path: still uses the richer AnalyticsSummary shape
+    // (reply stats, trends, profile). Post-1b the underlying tables are
+    // Social*, but this path stays because it carries X-only signals the
+    // plain social summary doesn't expose.
     const dateRange = await getAnalyticsDateRangeInternal(userId);
     if (!dateRange) return null;
 

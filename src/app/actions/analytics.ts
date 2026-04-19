@@ -1,6 +1,5 @@
 "use server";
 
-import * as Sentry from "@sentry/nextjs";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth";
@@ -13,6 +12,17 @@ import type {
   PostVelocityData,
 } from "@/lib/types";
 import { X_POST_TYPE_MAP } from "@/lib/types";
+
+// Phase 1b: all X-specific analytics now live on the platform-agnostic
+// Social* tables (filtered by `platform: "X"`). The legacy XPost /
+// DailyAccountStats / FollowersSnapshot / PostEngagementSnapshot tables
+// were dropped in this PR.
+//
+// We keep this module (rather than folding it into social-analytics.ts)
+// because it exposes an X-rich `AnalyticsSummary` shape (totalReplies,
+// topReplies, heatmap, per-post velocity) that the Analytics UI and the
+// Strategist X path both depend on. social-analytics.ts returns a
+// simpler cross-platform shape.
 
 // --- Import ---
 
@@ -27,8 +37,14 @@ export async function importContentData(
     const date = new Date(row.date);
     if (isNaN(date.getTime())) continue;
 
-    const existing = await prisma.xPost.findUnique({
-      where: { userId_postId: { userId, postId: row.postId } },
+    const existing = await prisma.socialPost.findUnique({
+      where: {
+        userId_platform_externalPostId: {
+          userId,
+          platform: "X",
+          externalPostId: row.postId,
+        },
+      },
       select: { id: true },
     });
 
@@ -38,33 +54,15 @@ export async function importContentData(
       continue;
     }
 
-    // Enrich with CSV-exclusive fields only
-    await prisma.xPost.update({
-      where: { userId_postId: { userId, postId: row.postId } },
+    // Enrich with CSV-exclusive fields only (newFollowers / detailExpands
+    // aren't provided by the X API, only the user-exported CSV).
+    await prisma.socialPost.update({
+      where: { id: existing.id },
       data: {
         newFollowers: row.newFollowers,
         detailExpands: row.detailExpands,
       },
     });
-
-    // ADR-008 Phase 1a: dual-write CSV enrichment to SocialPost.
-    // updateMany (not update) so a missing SocialPost row — possible for
-    // XPosts created before Phase 1a dual-write landed — is a no-op
-    // instead of a thrown P2025. Phase 1b removes this branch.
-    try {
-      await prisma.socialPost.updateMany({
-        where: { userId, platform: "X", externalPostId: row.postId },
-        data: {
-          newFollowers: row.newFollowers,
-          detailExpands: row.detailExpands,
-        },
-      });
-    } catch (err) {
-      Sentry.captureException(err, {
-        tags: { phase: "1a-dual-write", model: "SocialPost", platform: "X" },
-        extra: { userId, externalPostId: row.postId, source: "importContentData" },
-      });
-    }
 
     enriched++;
   }
@@ -87,8 +85,10 @@ export async function importDailyStats(
     // Normalize to start of day UTC
     const dayStart = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
 
-    const existing = await prisma.dailyAccountStats.findUnique({
-      where: { userId_date: { userId, date: dayStart } },
+    const existing = await prisma.socialDailyStats.findUnique({
+      where: {
+        userId_platform_date: { userId, platform: "X", date: dayStart },
+      },
     });
 
     const statsData = {
@@ -107,36 +107,18 @@ export async function importDailyStats(
       mediaViews: row.mediaViews,
     };
 
-    await prisma.dailyAccountStats.upsert({
-      where: { userId_date: { userId, date: dayStart } },
+    await prisma.socialDailyStats.upsert({
+      where: {
+        userId_platform_date: { userId, platform: "X", date: dayStart },
+      },
       create: {
-        date: dayStart,
         userId,
+        platform: "X",
+        date: dayStart,
         ...statsData,
       },
       update: statsData,
     });
-
-    // ADR-008 Phase 1a: dual-write to SocialDailyStats with platform="X".
-    try {
-      await prisma.socialDailyStats.upsert({
-        where: {
-          userId_platform_date: { userId, platform: "X", date: dayStart },
-        },
-        create: {
-          userId,
-          platform: "X",
-          date: dayStart,
-          ...statsData,
-        },
-        update: statsData,
-      });
-    } catch (err) {
-      Sentry.captureException(err, {
-        tags: { phase: "1a-dual-write", model: "SocialDailyStats", platform: "X" },
-        extra: { userId, date: dayStart.toISOString(), source: "importDailyStats" },
-      });
-    }
 
     if (existing) updated++;
     else imported++;
@@ -161,17 +143,21 @@ export async function getAnalyticsDateRangeInternal(
 
 async function _getAnalyticsDateRange(userId: string): Promise<{ from: Date; to: Date } | null> {
   const [postRange, statsRange] = await Promise.all([
-    prisma.xPost.aggregate({ where: { userId }, _min: { date: true }, _max: { date: true } }),
-    prisma.dailyAccountStats.aggregate({
-      where: { userId },
+    prisma.socialPost.aggregate({
+      where: { userId, platform: "X" },
+      _min: { postedAt: true },
+      _max: { postedAt: true },
+    }),
+    prisma.socialDailyStats.aggregate({
+      where: { userId, platform: "X" },
       _min: { date: true },
       _max: { date: true },
     }),
   ]);
 
   const dates = [
-    postRange._min.date,
-    postRange._max.date,
+    postRange._min.postedAt,
+    postRange._max.postedAt,
     statsRange._min.date,
     statsRange._max.date,
   ].filter((d): d is Date => d !== null);
@@ -186,17 +172,17 @@ async function _getAnalyticsDateRange(userId: string): Promise<{ from: Date; to:
 
 export async function getDailyStatsForPeriod(from: Date, to: Date) {
   const userId = await requireUserId();
-  return prisma.dailyAccountStats.findMany({
-    where: { userId, date: { gte: from, lte: to } },
+  return prisma.socialDailyStats.findMany({
+    where: { userId, platform: "X", date: { gte: from, lte: to } },
     orderBy: { date: "asc" },
   });
 }
 
 export async function getPostsForPeriod(from: Date, to: Date) {
   const userId = await requireUserId();
-  return prisma.xPost.findMany({
-    where: { userId, date: { gte: from, lte: to } },
-    orderBy: { date: "desc" },
+  return prisma.socialPost.findMany({
+    where: { userId, platform: "X", postedAt: { gte: from, lte: to } },
+    orderBy: { postedAt: "desc" },
   });
 }
 
@@ -219,12 +205,12 @@ async function _getAnalyticsSummary(
   to: Date
 ): Promise<AnalyticsSummary> {
   const [posts, dailyStats] = await Promise.all([
-    prisma.xPost.findMany({
-      where: { userId, date: { gte: from, lte: to } },
+    prisma.socialPost.findMany({
+      where: { userId, platform: "X", postedAt: { gte: from, lte: to } },
       orderBy: { impressions: "desc" },
     }),
-    prisma.dailyAccountStats.findMany({
-      where: { userId, date: { gte: from, lte: to } },
+    prisma.socialDailyStats.findMany({
+      where: { userId, platform: "X", date: { gte: from, lte: to } },
       orderBy: { date: "asc" },
     }),
   ]);
@@ -246,10 +232,10 @@ async function _getAnalyticsSummary(
   const formatDate = (d: Date) => d.toISOString().split("T")[0]!;
 
   const topPosts: ContentCsvRow[] = originalPosts.slice(0, 5).map((p) => ({
-    postId: p.postId,
-    date: formatDate(p.date),
+    postId: p.externalPostId,
+    date: formatDate(p.postedAt),
     text: p.text.slice(0, 200),
-    postLink: p.postLink ?? "",
+    postLink: p.postUrl ?? "",
     postType: X_POST_TYPE_MAP[p.postType] ?? "Post",
     impressions: p.impressions,
     likes: p.likes,
@@ -265,10 +251,10 @@ async function _getAnalyticsSummary(
   }));
 
   const topReplies: ContentCsvRow[] = replies.slice(0, 5).map((p) => ({
-    postId: p.postId,
-    date: formatDate(p.date),
+    postId: p.externalPostId,
+    date: formatDate(p.postedAt),
     text: p.text.slice(0, 200),
-    postLink: p.postLink ?? "",
+    postLink: p.postUrl ?? "",
     postType: X_POST_TYPE_MAP[p.postType] ?? "Reply",
     impressions: p.impressions,
     likes: p.likes,
@@ -286,7 +272,7 @@ async function _getAnalyticsSummary(
   // Aggregate posts by day for the frequency chart
   const postsByDayMap = new Map<string, { posts: number; replies: number }>();
   for (const p of posts) {
-    const day = formatDate(p.date);
+    const day = formatDate(p.postedAt);
     const entry = postsByDayMap.get(day) ?? { posts: 0, replies: 0 };
     if (p.postType === "POST") entry.posts++;
     else entry.replies++;
@@ -332,18 +318,23 @@ async function _getAnalyticsSummary(
 
 export async function getEngagementHeatmap(from: Date, to: Date): Promise<HeatmapCell[]> {
   const userId = await requireUserId();
-  const posts = await prisma.xPost.findMany({
-    where: { userId, date: { gte: from, lte: to }, impressions: { gt: 0 } },
-    select: { date: true, engagements: true, impressions: true },
+  const posts = await prisma.socialPost.findMany({
+    where: {
+      userId,
+      platform: "X",
+      postedAt: { gte: from, lte: to },
+      impressions: { gt: 0 },
+    },
+    select: { postedAt: true, engagements: true, impressions: true },
   });
 
   // Map: "dayOfWeek-hour" → { totalRate, count }
   const map = new Map<string, { totalRate: number; count: number }>();
 
   for (const post of posts) {
-    const jsDay = post.date.getUTCDay(); // 0=Sun, 1=Mon...
+    const jsDay = post.postedAt.getUTCDay(); // 0=Sun, 1=Mon...
     const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1; // 0=Mon, 6=Sun
-    const hour = post.date.getUTCHours();
+    const hour = post.postedAt.getUTCHours();
     const rate = post.engagements / post.impressions;
     const key = `${dayOfWeek}-${hour}`;
     const entry = map.get(key) ?? { totalRate: 0, count: 0 };
@@ -370,10 +361,12 @@ export async function getRecentPostsWithSnapshots(
 ): Promise<PostWithSnapshotSummary[]> {
   const userId = await requireUserId();
 
-  // Get postIds that have snapshots, ordered by most recent snapshot
-  const snapshotGroups = await prisma.postEngagementSnapshot.groupBy({
+  // Get SocialPost.id values that have snapshots, ordered by most recent
+  // snapshot. Unlike the legacy `postId` (tweet external id), this is
+  // now the internal cuid — callers echo it back into `getPostVelocity`.
+  const snapshotGroups = await prisma.socialPostEngagementSnapshot.groupBy({
     by: ["postId"],
-    where: { userId },
+    where: { userId, platform: "X" },
     _count: { postId: true },
     _max: { impressions: true },
     orderBy: { _max: { snapshotDate: "desc" } },
@@ -383,12 +376,12 @@ export async function getRecentPostsWithSnapshots(
   if (snapshotGroups.length === 0) return [];
 
   const postIds = snapshotGroups.map((g) => g.postId);
-  const posts = await prisma.xPost.findMany({
-    where: { userId, postId: { in: postIds } },
-    select: { postId: true, text: true, date: true },
+  const posts = await prisma.socialPost.findMany({
+    where: { userId, platform: "X", id: { in: postIds } },
+    select: { id: true, text: true, postedAt: true },
   });
 
-  const postMap = new Map(posts.map((p) => [p.postId, p]));
+  const postMap = new Map(posts.map((p) => [p.id, p]));
 
   return snapshotGroups
     .map((g) => {
@@ -397,7 +390,7 @@ export async function getRecentPostsWithSnapshots(
       return {
         postId: g.postId,
         text: post.text.slice(0, 120),
-        date: post.date.toISOString().split("T")[0],
+        date: post.postedAt.toISOString().split("T")[0],
         snapshotCount: g._count.postId,
         latestImpressions: g._max.impressions ?? 0,
       };
@@ -408,23 +401,26 @@ export async function getRecentPostsWithSnapshots(
 export async function getPostVelocity(postId: string): Promise<PostVelocityData | null> {
   const userId = await requireUserId();
 
-  const post = await prisma.xPost.findUnique({
-    where: { userId_postId: { userId, postId } },
-    select: { postId: true, text: true, date: true },
+  // `postId` here is SocialPost.id (cuid) — the opaque key we returned
+  // from getRecentPostsWithSnapshots. Still filter by userId + platform
+  // as defence-in-depth even though id is globally unique.
+  const post = await prisma.socialPost.findFirst({
+    where: { id: postId, userId, platform: "X" },
+    select: { id: true, externalPostId: true, text: true, postedAt: true },
   });
   if (!post) return null;
 
-  const snapshots = await prisma.postEngagementSnapshot.findMany({
-    where: { userId, postId },
+  const snapshots = await prisma.socialPostEngagementSnapshot.findMany({
+    where: { userId, platform: "X", postId },
     orderBy: { snapshotDate: "asc" },
   });
 
-  const postTime = post.date.getTime();
+  const postTime = post.postedAt.getTime();
 
   return {
-    postId: post.postId,
+    postId: post.externalPostId,
     postText: post.text.slice(0, 200),
-    postDate: post.date.toISOString().split("T")[0],
+    postDate: post.postedAt.toISOString().split("T")[0],
     snapshots: snapshots.map((s) => ({
       daysSincePost: Math.round((s.snapshotDate.getTime() - postTime) / (1000 * 60 * 60 * 24)),
       snapshotDate: s.snapshotDate.toISOString().split("T")[0],

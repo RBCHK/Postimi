@@ -14,7 +14,6 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/generated/prisma", () => ({
   ContentType: {},
   ConversationStatus: {},
-  XPostType: {},
   SlotType: {},
 }));
 
@@ -35,12 +34,13 @@ vi.mock("@/lib/date-utils", () => ({
 
 // Prisma mock with spies
 const prismaMock = {
-  xPost: {
+  socialPost: {
     findMany: vi.fn().mockResolvedValue([]),
+    findFirst: vi.fn().mockResolvedValue(null),
     findUnique: vi.fn().mockResolvedValue(null),
-    aggregate: vi.fn().mockResolvedValue({ _min: { date: null }, _max: { date: null } }),
+    aggregate: vi.fn().mockResolvedValue({ _min: { postedAt: null }, _max: { postedAt: null } }),
   },
-  dailyAccountStats: {
+  socialDailyStats: {
     findMany: vi.fn().mockResolvedValue([]),
     aggregate: vi.fn().mockResolvedValue({ _min: { date: null }, _max: { date: null } }),
   },
@@ -66,7 +66,7 @@ const prismaMock = {
     findFirst: vi.fn().mockResolvedValue(null),
     deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
   },
-  postEngagementSnapshot: {
+  socialPostEngagementSnapshot: {
     groupBy: vi.fn().mockResolvedValue([]),
     findMany: vi.fn().mockResolvedValue([]),
   },
@@ -104,70 +104,72 @@ beforeEach(() => {
 // ─── Tests ───────────────────────────────────────────────
 
 describe("userId isolation — analytics", () => {
-  it("getPostsForPeriod filters by userId", async () => {
+  it("getPostsForPeriod filters by userId + platform=X", async () => {
     const { getPostsForPeriod } = await import("../analytics");
     const from = new Date("2026-01-01");
     const to = new Date("2026-01-31");
 
     await getPostsForPeriod(from, to);
 
-    expect(prismaMock.xPost.findMany).toHaveBeenCalledWith(
+    expect(prismaMock.socialPost.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ userId: TEST_USER_ID }),
+        where: expect.objectContaining({ userId: TEST_USER_ID, platform: "X" }),
       })
     );
   });
 
-  it("getDailyStatsForPeriod filters by userId", async () => {
+  it("getDailyStatsForPeriod filters by userId + platform=X", async () => {
     const { getDailyStatsForPeriod } = await import("../analytics");
     const from = new Date("2026-01-01");
     const to = new Date("2026-01-31");
 
     await getDailyStatsForPeriod(from, to);
 
-    expect(prismaMock.dailyAccountStats.findMany).toHaveBeenCalledWith(
+    expect(prismaMock.socialDailyStats.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ userId: TEST_USER_ID }),
+        where: expect.objectContaining({ userId: TEST_USER_ID, platform: "X" }),
       })
     );
   });
 
-  it("getRecentPostsWithSnapshots filters by userId", async () => {
+  it("getRecentPostsWithSnapshots filters by userId + platform=X", async () => {
     const { getRecentPostsWithSnapshots } = await import("../analytics");
 
     await getRecentPostsWithSnapshots();
 
-    expect(prismaMock.postEngagementSnapshot.groupBy).toHaveBeenCalledWith(
+    expect(prismaMock.socialPostEngagementSnapshot.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ userId: TEST_USER_ID }),
+        where: expect.objectContaining({ userId: TEST_USER_ID, platform: "X" }),
       })
     );
   });
 
-  it("getPostVelocity filters by userId", async () => {
+  it("getPostVelocity filters by userId + platform=X", async () => {
     const { getPostVelocity } = await import("../analytics");
 
     await getPostVelocity("post-123");
 
-    expect(prismaMock.xPost.findUnique).toHaveBeenCalledWith(
+    expect(prismaMock.socialPost.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          userId_postId: { userId: TEST_USER_ID, postId: "post-123" },
+          id: "post-123",
+          userId: TEST_USER_ID,
+          platform: "X",
         }),
       })
     );
   });
 
-  it("getEngagementHeatmap filters by userId", async () => {
+  it("getEngagementHeatmap filters by userId + platform=X", async () => {
     const { getEngagementHeatmap } = await import("../analytics");
     const from = new Date("2026-01-01");
     const to = new Date("2026-01-31");
 
     await getEngagementHeatmap(from, to);
 
-    expect(prismaMock.xPost.findMany).toHaveBeenCalledWith(
+    expect(prismaMock.socialPost.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ userId: TEST_USER_ID }),
+        where: expect.objectContaining({ userId: TEST_USER_ID, platform: "X" }),
       })
     );
   });

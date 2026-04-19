@@ -7,10 +7,8 @@ import type { Platform } from "@/lib/types";
 // ADR-008 Phase 4: platform-agnostic analytics reads.
 //
 // Reads from SocialPost / SocialDailyStats / SocialFollowersSnapshot.
-// The legacy XPost path (src/app/actions/analytics.ts) is kept around
-// for the existing X-only Analytics tab until Phase 1b cutover; this
-// module handles LinkedIn and Threads today and will absorb X once the
-// old tables are dropped.
+// Handles LinkedIn and Threads; analytics.ts handles X (post 1b cutover
+// both read the same underlying Social* tables).
 
 export interface SocialAnalyticsSummary {
   platform: Platform;
