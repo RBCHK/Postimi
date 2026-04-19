@@ -108,6 +108,7 @@ const CRON_PATHS: Record<string, string> = {
   "trend-snapshot": "/api/cron/trend-snapshot",
   "daily-insight": "/api/cron/daily-insight",
   "x-import": "/api/cron/x-import",
+  "social-import": "/api/cron/social-import",
   researcher: "/api/cron/researcher",
   strategist: "/api/cron/strategist",
 };
@@ -123,6 +124,10 @@ const JOB_SCHEDULES: Record<string, string[]> = {
   ],
   "daily-insight": ["Daily 16:30 UTC (08:30 PST)"],
   "x-import": ["Mon 04:00 UTC (Sun 20:00 PST) — full", "Daily 12:00 UTC (04:00 PST) — refresh"],
+  "social-import": [
+    "Mon 04:15 UTC (Sun 20:15 PST) — full",
+    "Daily 12:15 UTC (04:15 PST) — refresh",
+  ],
   researcher: ["Mon 04:30 UTC (Sun 20:30 PST)"],
   strategist: ["Mon 14:00 UTC (06:00 PST)"],
 };
