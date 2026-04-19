@@ -4,6 +4,23 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 
 /**
+ * Whitelist of cron paths the admin "Run now" button is allowed to hit.
+ * Lives server-side so the client can never coerce us into fetching an
+ * arbitrary URL with CRON_SECRET attached. Keep in sync with
+ * `CRON_PATHS` in admin-view.tsx — that one is a UI map, this one is
+ * the security boundary.
+ */
+const ALLOWED_CRON_PATHS: Record<string, string> = {
+  "followers-snapshot": "/api/cron/followers-snapshot",
+  "trend-snapshot": "/api/cron/trend-snapshot",
+  "daily-insight": "/api/cron/daily-insight",
+  "x-import": "/api/cron/x-import",
+  "social-import": "/api/cron/social-import",
+  researcher: "/api/cron/researcher",
+  strategist: "/api/cron/strategist",
+};
+
+/**
  * Wrapper that structurally guarantees requireAdmin() is called
  * before any admin action. Impossible to forget auth check.
  */
@@ -45,6 +62,67 @@ export const getCronConfigs = adminAction(async () => {
     updatedAt: c.updatedAt,
     lastRun: lastRunMap.get(c.jobName) ?? null,
   }));
+});
+
+/**
+ * Trigger a cron job on demand from the admin panel.
+ *
+ * Why a Server Action and not a direct client-side fetch: the cron
+ * routes authenticate via `Bearer ${CRON_SECRET}`, which must never
+ * reach the browser. We proxy the call server-side so the secret
+ * stays in env, then surface the same response shape the UI expects.
+ *
+ * The path is resolved against a server-side whitelist — the client
+ * passes only a `jobName`, never a URL.
+ */
+export const runCronJob = adminAction(async (_adminUserId: string, jobName: string) => {
+  const path = ALLOWED_CRON_PATHS[jobName];
+  if (!path) {
+    return { ok: false, error: `Unknown job: ${jobName}` } as const;
+  }
+
+  const secret = process.env.CRON_SECRET;
+  if (!secret) {
+    return { ok: false, error: "CRON_SECRET is not configured" } as const;
+  }
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!appUrl) {
+    return { ok: false, error: "NEXT_PUBLIC_APP_URL is not configured" } as const;
+  }
+
+  const url = new URL(path, appUrl).toString();
+
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${secret}` },
+      // Cron handlers may do DB work + external API calls; don't cache.
+      cache: "no-store",
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      error?: string;
+      status?: string;
+    };
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: data.error ?? `HTTP ${res.status}`,
+      } as const;
+    }
+
+    return {
+      ok: data.ok !== false,
+      status: data.status,
+      error: data.error,
+    } as const;
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    } as const;
+  }
 });
 
 export const toggleCronJob = adminAction(
