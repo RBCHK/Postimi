@@ -154,6 +154,22 @@ describe("fetchThreadInsights", () => {
     await expect(fetchThreadInsights(creds, "t-1")).rejects.toBeInstanceOf(ThreadsScopeError);
   });
 
+  it("throws ThreadsScopeError when Meta returns 500 with error code 10", async () => {
+    // Observed in prod (Sentry issue 7422796902): Meta returns HTTP 500
+    // with `code:10` when the app lacks permission. We must classify it
+    // as a scope denial, not a generic error.
+    mockFetch.mockResolvedValueOnce(
+      response(
+        {},
+        {
+          status: 500,
+          text: '{"error":{"message":"Application does not have permission for this action","type":"THApiException","code":10,"fbtrace_id":"A_teeOpMVJNeoabpK5OZLGL"}}',
+        }
+      )
+    );
+    await expect(fetchThreadInsights(creds, "t-1")).rejects.toBeInstanceOf(ThreadsScopeError);
+  });
+
   it("throws ThreadsAuthError when 401 has no scope hint", async () => {
     mockFetch.mockResolvedValueOnce(response({}, { status: 401, text: "session expired" }));
     await expect(fetchThreadInsights(creds, "t-1")).rejects.toBeInstanceOf(ThreadsAuthError);
@@ -192,5 +208,48 @@ describe("fetchThreadsUserInsights", () => {
     expect(rows[0]!.views).toBe(100);
     expect(rows[1]!.followersCount).toBe(1010);
     expect(rows[0]!.date.getTime()).toBeLessThan(rows[1]!.date.getTime());
+  });
+
+  it("throws ThreadsScopeError when Meta returns 500 with error code 10", async () => {
+    // Same Sentry-observed shape as fetchThreadInsights — account-level
+    // insights also require threads_manage_insights, and Meta signals
+    // denial the same way.
+    mockFetch.mockResolvedValueOnce(
+      response(
+        {},
+        {
+          status: 500,
+          text: '{"error":{"message":"Application does not have permission for this action","type":"THApiException","code":10,"fbtrace_id":"A_teeOpMVJNeoabpK5OZLGL"}}',
+        }
+      )
+    );
+    await expect(
+      fetchThreadsUserInsights(creds, {
+        since: new Date("2026-04-10T00:00:00Z"),
+        until: new Date("2026-04-11T23:59:59Z"),
+      })
+    ).rejects.toBeInstanceOf(ThreadsScopeError);
+  });
+
+  it("throws ThreadsScopeError on 403 with scope language", async () => {
+    mockFetch.mockResolvedValueOnce(
+      response({}, { status: 403, text: '{"error":{"message":"scope not granted"}}' })
+    );
+    await expect(
+      fetchThreadsUserInsights(creds, {
+        since: new Date("2026-04-10T00:00:00Z"),
+        until: new Date("2026-04-11T23:59:59Z"),
+      })
+    ).rejects.toBeInstanceOf(ThreadsScopeError);
+  });
+
+  it("throws ThreadsAuthError when 401 has no scope hint", async () => {
+    mockFetch.mockResolvedValueOnce(response({}, { status: 401, text: "session expired" }));
+    await expect(
+      fetchThreadsUserInsights(creds, {
+        since: new Date("2026-04-10T00:00:00Z"),
+        until: new Date("2026-04-11T23:59:59Z"),
+      })
+    ).rejects.toBeInstanceOf(ThreadsAuthError);
   });
 });
