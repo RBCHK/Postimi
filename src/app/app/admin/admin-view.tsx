@@ -250,6 +250,8 @@ export function AdminView({ initialConfigs, initialRuns, initialWaitlist }: Admi
         ]);
         setConfigs(newConfigs);
         setRuns(newRuns);
+      } else if ("skipped" in result && result.skipped) {
+        toast.info(`${jobName} skipped: ${result.reason}`);
       } else {
         toast.error(`${jobName} failed: ${result.error ?? "unknown error"}`);
       }

@@ -30,13 +30,21 @@ export function withCronLogging(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 2. Check if job is enabled (missing row = enabled)
+    // 2. Check if job is enabled (missing row = enabled).
+    //
+    // Admin-triggered manual runs (via runCronJob → `?manual=1`) bypass the
+    // toggle. The toggle gates Vercel's scheduled invocations — when an admin
+    // explicitly hits ▷ Run now on a disabled cron, that's deliberate intent
+    // (e.g. triggering a backfill while the schedule is paused). Bearer auth
+    // above already restricts this to authenticated callers.
+    const isManual = new URL(req.url).searchParams.get("manual") === "1";
+
     const config = await prisma.cronJobConfig.findUnique({
       where: { jobName },
       select: { enabled: true },
     });
 
-    if (config && !config.enabled) {
+    if (!isManual && config && !config.enabled) {
       after(async () => {
         try {
           await prisma.cronJobRun.create({

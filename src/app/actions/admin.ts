@@ -91,10 +91,16 @@ export const runCronJob = adminAction(async (_adminUserId: string, jobName: stri
     return { ok: false, error: "NEXT_PUBLIC_APP_URL is not configured" } as const;
   }
 
-  const url = new URL(path, appUrl).toString();
+  // `?manual=1` tells withCronLogging this is admin-intended, not a scheduled
+  // Vercel invocation, and bypasses the enabled toggle. Admins pause the
+  // schedule with the toggle; deliberate ▷ Run now should still fire. Without
+  // this, a disabled cron returns ok:false with reason "Job disabled" and
+  // the admin sees "unknown error" in the toast.
+  const url = new URL(path, appUrl);
+  url.searchParams.set("manual", "1");
 
   try {
-    const res = await fetch(url, {
+    const res = await fetch(url.toString(), {
       headers: { Authorization: `Bearer ${secret}` },
       // Cron handlers may do DB work + external API calls; don't cache.
       cache: "no-store",
@@ -103,12 +109,25 @@ export const runCronJob = adminAction(async (_adminUserId: string, jobName: stri
       ok?: boolean;
       error?: string;
       status?: string;
+      reason?: string;
+      skipped?: boolean;
     };
 
     if (!res.ok) {
       return {
         ok: false,
         error: data.error ?? `HTTP ${res.status}`,
+      } as const;
+    }
+
+    // Defense-in-depth: if any future skip path in withCronLogging fires
+    // despite manual=1, surface the reason so the UI can show it instead
+    // of falling through to "unknown error".
+    if (data.skipped) {
+      return {
+        ok: false,
+        skipped: true,
+        reason: data.reason ?? "Skipped (no reason given)",
       } as const;
     }
 

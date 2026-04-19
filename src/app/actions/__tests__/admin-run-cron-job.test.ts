@@ -45,14 +45,17 @@ describe("runCronJob", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("attaches Authorization: Bearer ${CRON_SECRET}", async () => {
+  it("attaches Authorization: Bearer ${CRON_SECRET} and ?manual=1", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true, status: "SUCCESS" }));
     const { runCronJob } = await import("../admin");
     const result = await runCronJob("x-import");
     expect(result.ok).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe("https://app.example.com/api/cron/x-import");
+    // `?manual=1` signals withCronLogging to bypass the enabled toggle for
+    // admin-triggered runs. Without it, a paused cron returns "Job disabled"
+    // and the UI shows "unknown error".
+    expect(url).toBe("https://app.example.com/api/cron/x-import?manual=1");
     expect((init as RequestInit).headers).toMatchObject({
       Authorization: "Bearer test-secret",
     });
@@ -72,7 +75,22 @@ describe("runCronJob", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }));
     const { runCronJob } = await import("../admin");
     await runCronJob("social-import");
-    expect(fetchMock.mock.calls[0]![0]).toBe("https://prod.example.com/api/cron/social-import");
+    expect(fetchMock.mock.calls[0]![0]).toBe(
+      "https://prod.example.com/api/cron/social-import?manual=1"
+    );
+  });
+
+  it("surfaces skipped reason instead of falling through to 'unknown error'", async () => {
+    // With manual=1, withCronLogging should NOT skip — but this tests the
+    // defense-in-depth path for any future skip conditions the runtime adds.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ ok: false, skipped: true, reason: "Job disabled" }, 200)
+    );
+    const { runCronJob } = await import("../admin");
+    const result = await runCronJob("x-import");
+    expect(result.ok).toBe(false);
+    expect("skipped" in result && result.skipped).toBe(true);
+    expect("reason" in result && result.reason).toBe("Job disabled");
   });
 
   it("returns ok:false when the cron route returns non-2xx", async () => {
