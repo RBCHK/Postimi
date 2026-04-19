@@ -19,6 +19,7 @@ import {
   mergeLinkedInResult,
   type LinkedInAggregatedResult,
 } from "./linkedin-aggregate";
+import { XlsxDropZone } from "./xlsx-drop-zone";
 
 // Where the user exports the xlsx that this panel accepts.
 const LINKEDIN_CONTENT_ANALYTICS_URL = "https://www.linkedin.com/analytics/creator/content/";
@@ -112,7 +113,8 @@ export function ImportPanel() {
     total: number;
   } | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
-  const linkedInInputRef = useRef<HTMLInputElement>(null);
+  const [linkedInContentFile, setLinkedInContentFile] = useState<File | null>(null);
+  const [linkedInAudienceFile, setLinkedInAudienceFile] = useState<File | null>(null);
   const [linkedInLoading, setLinkedInLoading] = useState(false);
   const [linkedInResult, setLinkedInResult] = useState<LinkedInAggregatedResult | null>(null);
   const [linkedInError, setLinkedInError] = useState<string | null>(null);
@@ -141,11 +143,8 @@ export function ImportPanel() {
     }
   }
 
-  async function handleLinkedInFiles(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []);
-    // Clear the input immediately so selecting the same file twice in a row
-    // still fires onChange.
-    if (linkedInInputRef.current) linkedInInputRef.current.value = "";
+  async function handleLinkedInImport() {
+    const files = [linkedInContentFile, linkedInAudienceFile].filter((f): f is File => f !== null);
     if (files.length === 0) return;
 
     setLinkedInLoading(true);
@@ -155,9 +154,9 @@ export function ImportPanel() {
     let agg: LinkedInAggregatedResult = EMPTY_LI_RESULT;
     const failures: { name: string; error: string }[] = [];
 
-    // Sequential, not parallel: the server action runs through Prisma upserts
-    // and the parser holds the whole workbook in memory; serialising is
-    // safer for a 2-file flow and keeps partial-failure reporting simple.
+    // Sequential, not parallel: the server action holds the workbook in
+    // memory and runs Prisma upserts; serialising is safer for a 2-file
+    // flow and keeps partial-failure reporting simple.
     for (const file of files) {
       try {
         const fd = new FormData();
@@ -176,6 +175,10 @@ export function ImportPanel() {
     if (failures.length > 0) {
       setLinkedInError(failures.map((f) => `${f.name}: ${f.error}`).join(" · "));
     }
+
+    // Clear slots once imported so the next visit starts fresh.
+    setLinkedInContentFile(null);
+    setLinkedInAudienceFile(null);
 
     // Refresh both layers: `bumpSocialRefresh` nudges client-side fetches in
     // `SocialPlatformOverview`; `router.refresh()` re-runs the server page so
@@ -339,12 +342,11 @@ export function ImportPanel() {
         {tab === "linkedin" && (
           <div className="space-y-3">
             <div className="rounded-lg border border-border p-4 space-y-2">
-              <p className="text-sm font-medium">Upload LinkedIn Analytics export</p>
+              <p className="text-sm font-medium">Upload LinkedIn Analytics exports</p>
               <p className="text-xs text-muted-foreground">
                 LinkedIn&apos;s analytics API is gated for new apps, so xlsx export is the only
-                path. Open the pages below, click <span className="font-medium">Export</span> on
-                each, pick a date range, then upload both xlsx files together (you can select them
-                in a single picker).
+                path. Open each page, click <span className="font-medium">Export</span>, pick a date
+                range, then drop both xlsx files below.
               </p>
               <div className="flex flex-col gap-1.5 pt-1">
                 <a
@@ -367,6 +369,24 @@ export function ImportPanel() {
                 </a>
               </div>
             </div>
+
+            <XlsxDropZone
+              label="Content export"
+              hint="Posts + engagement + top posts"
+              file={linkedInContentFile}
+              onFile={setLinkedInContentFile}
+              onClear={() => setLinkedInContentFile(null)}
+              disabled={linkedInLoading}
+            />
+
+            <XlsxDropZone
+              label="Audience export"
+              hint="Followers + demographics"
+              file={linkedInAudienceFile}
+              onFile={setLinkedInAudienceFile}
+              onClear={() => setLinkedInAudienceFile(null)}
+              disabled={linkedInLoading}
+            />
 
             {linkedInError && <p className="text-sm text-destructive">{linkedInError}</p>}
 
@@ -399,19 +419,10 @@ export function ImportPanel() {
               </div>
             )}
 
-            <input
-              ref={linkedInInputRef}
-              type="file"
-              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              multiple
-              className="hidden"
-              onChange={handleLinkedInFiles}
-            />
-
             <Button
               className="w-full"
-              disabled={linkedInLoading}
-              onClick={() => linkedInInputRef.current?.click()}
+              disabled={linkedInLoading || (!linkedInContentFile && !linkedInAudienceFile)}
+              onClick={handleLinkedInImport}
             >
               {linkedInLoading ? (
                 <>
@@ -421,7 +432,7 @@ export function ImportPanel() {
               ) : (
                 <>
                   <Upload className="mr-1.5 h-3.5 w-3.5" />
-                  Upload xlsx files
+                  Import
                 </>
               )}
             </Button>
