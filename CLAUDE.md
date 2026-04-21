@@ -134,6 +134,15 @@ IMPORTANT: Never commit directly to `main`. Branch protection is enabled.
 
 **After PR merge**: `git checkout main && git pull --rebase` to sync local main before starting next task.
 
+**Commit and PR content — code-only, no meta**: commit messages and PR descriptions describe _what the code change does_, as a human developer would write. Forbidden:
+
+- `Co-Authored-By: Claude …` trailers (disabled globally via `attribution: {commit: "", pr: ""}` in `.claude/settings.json`)
+- `🤖 Generated with Claude Code` / any mention of Claude, Anthropic, or AI
+- Meta-commentary about the author process: "I learned that…", "Why now", "while researching…", references to model names or versions, explanations of how the solution was arrived at
+- Citations of skills, gotchas, or the Claude Code source mirror as motivation
+
+Write only: what changed, why the change matters _in code terms_ (not process terms), and the test plan. If the rationale is valuable but meta, it belongs in memory or the skill library, not in git history.
+
 ## Workflow Rules
 
 IMPORTANT: Before executing any task, check `.claude/skills/` for a relevant skill and use it.
