@@ -4,4 +4,6 @@ if [ "$branch" = "main" ]; then
   exit 1
 fi
 
+bash scripts/check-server-actions.sh || exit 1
+
 npx lint-staged
