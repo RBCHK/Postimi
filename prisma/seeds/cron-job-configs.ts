@@ -67,7 +67,7 @@ const SEEDS: CronConfigSeed[] = [
     jobName: "auto-publish",
     description:
       "Publishes SCHEDULED slots whose time has passed. Runs hourly (Vercel Pro plan enforces >=1h cron intervals).",
-    schedule: "0 * * * *",
+    schedule: "30 * * * *",
   },
 ];
 
