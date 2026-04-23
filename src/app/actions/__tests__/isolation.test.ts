@@ -65,6 +65,7 @@ const prismaMock = {
     findMany: vi.fn().mockResolvedValue([]),
     findFirst: vi.fn().mockResolvedValue(null),
     deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    updateMany: vi.fn().mockResolvedValue({ count: 0 }),
   },
   socialPostEngagementSnapshot: {
     groupBy: vi.fn().mockResolvedValue([]),
@@ -244,6 +245,70 @@ describe("userId isolation — schedule", () => {
         data: expect.objectContaining({ userId: TEST_USER_ID, status: "SCHEDULED" }),
       })
     );
+  });
+
+  // ─── Regression: cross-tenant Conversation.update via Server Action parameter ───
+
+  it("addToQueue rejects a conversationId owned by another user", async () => {
+    // Victim's conversationId, attacker's userId → findFirst returns null → throw
+    prismaMock.conversation.findFirst.mockResolvedValueOnce(null);
+
+    const { addToQueue } = await import("../schedule");
+
+    await expect(addToQueue("attack", "victim-conv-id", "POST")).rejects.toThrow(
+      "Conversation not found"
+    );
+
+    // Must NOT have reached the slot-creation or conversation-update code paths
+    expect(prismaMock.scheduledSlot.create).not.toHaveBeenCalled();
+    expect(prismaMock.conversation.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("addToQueue scopes Conversation.updateMany by userId (defense-in-depth)", async () => {
+    // Conversation exists for the current user (ownership check passes)
+    prismaMock.conversation.findFirst.mockResolvedValueOnce({ id: "own-conv" });
+    prismaMock.strategyConfig.findFirst.mockResolvedValueOnce({
+      scheduleConfig: {
+        posts: {
+          slots: [
+            {
+              id: "s1",
+              time: "09:00",
+              days: { Mon: true, Tue: true, Wed: true, Thu: true, Fri: true, Sat: true, Sun: true },
+            },
+          ],
+        },
+        replies: { slots: [] },
+        threads: { slots: [] },
+        articles: { slots: [] },
+        quotes: { slots: [] },
+      },
+    });
+
+    const { addToQueue } = await import("../schedule");
+    await addToQueue("test content", "own-conv", "POST");
+
+    // The atomic update must carry userId in the WHERE clause
+    expect(prismaMock.conversation.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: "own-conv", userId: TEST_USER_ID }),
+        data: expect.objectContaining({ status: "SCHEDULED" }),
+      })
+    );
+  });
+
+  it("publishPost rejects a conversationId owned by another user", async () => {
+    prismaMock.conversation.findFirst.mockResolvedValueOnce(null);
+
+    const { publishPost } = await import("../schedule");
+
+    await expect(publishPost("victim-conv-id", "attack-text")).rejects.toThrow(
+      "Conversation not found"
+    );
+
+    // Must abort before any platform post, slot creation, or conversation update
+    expect(prismaMock.scheduledSlot.create).not.toHaveBeenCalled();
+    expect(prismaMock.conversation.updateMany).not.toHaveBeenCalled();
   });
 });
 

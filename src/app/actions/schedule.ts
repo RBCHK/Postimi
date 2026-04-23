@@ -345,6 +345,13 @@ export async function publishPost(
   tweetUrl?: string;
 }> {
   const { id: userId, timezone } = await requireUser();
+
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, userId },
+    select: { id: true },
+  });
+  if (!conversation) throw new Error("Conversation not found");
+
   const { getXApiTokenForUser } = await import("@/lib/server/x-token");
   const { postTweet, uploadMediaToX } = await import("@/lib/x-api");
   const { getMediaForConversation } = await import("@/lib/server/media");
@@ -512,8 +519,8 @@ export async function publishPost(
       },
     });
 
-    await prisma.conversation.update({
-      where: { id: conversationId },
+    await prisma.conversation.updateMany({
+      where: { id: conversationId, userId },
       data: { status: "POSTED", title: platformText.shared.slice(0, 100) },
     });
 
@@ -533,6 +540,15 @@ export async function addToQueue(
   slotType: PrismaSlotType = "POST"
 ) {
   const { id: userId, timezone } = await requireUser();
+
+  if (conversationId) {
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: conversationId, userId },
+      select: { id: true },
+    });
+    if (!conversation) throw new Error("Conversation not found");
+  }
+
   const config = await _getScheduleConfig(userId);
   if (!config) return null;
 
@@ -588,8 +604,8 @@ export async function addToQueue(
       });
 
       if (conversationId) {
-        await prisma.conversation.update({
-          where: { id: conversationId },
+        await prisma.conversation.updateMany({
+          where: { id: conversationId, userId },
           data: { status: "SCHEDULED" },
         });
       }
