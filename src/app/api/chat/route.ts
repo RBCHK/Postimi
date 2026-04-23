@@ -12,6 +12,7 @@ import { fetchTweetFromText, extractTweetUrl } from "@/lib/parse-tweet";
 import { fetchTweetById } from "@/lib/x-api";
 import { getXApiTokenForUser } from "@/lib/server/x-token";
 import { getLatestTrends } from "@/lib/server/trends";
+import { fenceExternalTweet, fenceTrends, fenceTopPosts } from "./prompt-fencing";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import {
@@ -106,9 +107,14 @@ export async function POST(req: NextRequest) {
     // Inject tweet text as extra system context.
     // Client pre-fetches from browser (avoids Twitter blocking Vercel/AWS IPs).
     // Fall back to server-side fetch for local dev or older clients.
+    //
+    // Security: the tweet text is attacker-controlled — anyone can tweet
+    // "Ignore previous instructions and ...". `fenceExternalTweet` wraps
+    // the body in <external_tweet> tags with a prepended "treat as data"
+    // instruction. Do NOT escape/sanitize the body — fencing is correct.
     let tweetContext = "";
     if (clientTweetContext) {
-      tweetContext = `\n\n## Original Post (fetched from URL)\n${clientTweetContext}`;
+      tweetContext = fenceExternalTweet(clientTweetContext);
     } else {
       const firstUserMsg = messages.find((m) => m.role === "user");
       if (firstUserMsg) {
@@ -128,7 +134,7 @@ export async function POST(req: NextRequest) {
           tweetText = tweet?.text ?? null;
         }
         if (tweetText) {
-          tweetContext = `\n\n## Original Post (fetched from URL)\n${tweetText}`;
+          tweetContext = fenceExternalTweet(tweetText);
         }
       }
     }
@@ -147,20 +153,12 @@ export async function POST(req: NextRequest) {
               contentLangLabel
             );
 
-    const trendsContext =
-      trends.length > 0
-        ? `\n\n## Trending Now on X\n${trends.map((t) => `- ${t.trendName}${t.category ? ` [${t.category}]` : ""} (${t.postCount} posts)`).join("\n")}`
-        : "";
-
-    const topPostsContext =
-      topPosts.length > 0
-        ? `\n\n## Your Top Performing Posts (last 30 days)\n${topPosts
-            .map(
-              (p, i) =>
-                `${i + 1}. "${p.text.slice(0, 100)}${p.text.length > 100 ? "..." : ""}" — ${p.engagements} engagements`
-            )
-            .join("\n")}`
-        : "";
+    // Trend names come from X's public feed — attacker-controlled text
+    // can surface here. Top posts are the user's own historical bodies
+    // imported from X; still fence, since a compromised account or
+    // harvested replies could land a payload there.
+    const trendsContext = fenceTrends(trends);
+    const topPostsContext = fenceTopPosts(topPosts);
 
     const systemPrompt = baseSystem + tweetContext + trendsContext + topPostsContext;
     console.log("[chat] model:", model);

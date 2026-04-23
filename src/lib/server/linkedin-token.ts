@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { encryptToken, decryptToken } from "@/lib/token-encryption";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 export interface LinkedInApiCredentials {
   accessToken: string;
@@ -108,7 +109,7 @@ async function exchangeRefreshToken(
   clientId: string,
   clientSecret: string
 ): Promise<LinkedInTokenResponse> {
-  const res = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
+  const res = await fetchWithTimeout("https://www.linkedin.com/oauth/v2/accessToken", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({

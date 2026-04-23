@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requireUserId } from "@/lib/auth";
 import { saveXApiToken } from "@/lib/server/x-token";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 const COOKIE_NAME = "x_oauth_state";
 
@@ -89,7 +90,7 @@ export async function GET(req: NextRequest) {
   const redirectUri = `${appUrl}/api/auth/x/callback`;
   let tokenData: XTokenResponse;
   try {
-    const tokenRes = await fetch("https://api.twitter.com/2/oauth2/token", {
+    const tokenRes = await fetchWithTimeout("https://api.twitter.com/2/oauth2/token", {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -122,9 +123,12 @@ export async function GET(req: NextRequest) {
   try {
     const fields =
       "username,name,description,profile_image_url,location,url,verified,verified_type,public_metrics,created_at";
-    const profileRes = await fetch(`https://api.twitter.com/2/users/me?user.fields=${fields}`, {
-      headers: { Authorization: `Bearer ${tokenData.access_token}` },
-    });
+    const profileRes = await fetchWithTimeout(
+      `https://api.twitter.com/2/users/me?user.fields=${fields}`,
+      {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      }
+    );
 
     if (!profileRes.ok) {
       const body = await profileRes.text();

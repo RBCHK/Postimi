@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requireUserId } from "@/lib/auth";
 import { saveLinkedInApiToken } from "@/lib/server/linkedin-token";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 const COOKIE_NAME = "linkedin_oauth_state";
 
@@ -79,7 +80,7 @@ export async function GET(req: NextRequest) {
   // Step 1: Exchange code for tokens
   let tokenData: LinkedInTokenResponse;
   try {
-    const tokenRes = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
+    const tokenRes = await fetchWithTimeout("https://www.linkedin.com/oauth/v2/accessToken", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -108,7 +109,7 @@ export async function GET(req: NextRequest) {
   // Step 2: Fetch user profile (OpenID Connect userinfo)
   let profile: LinkedInUserInfoResponse;
   try {
-    const profileRes = await fetch("https://api.linkedin.com/v2/userinfo", {
+    const profileRes = await fetchWithTimeout("https://api.linkedin.com/v2/userinfo", {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
 
