@@ -5,6 +5,7 @@ import { getXApiTokenForUser } from "@/lib/server/x-token";
 import { postTweet, uploadMediaToX } from "@/lib/x-api";
 import { getMediaForConversation } from "@/lib/server/media";
 import { slotToUtcDate } from "@/lib/date-utils";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 export const maxDuration = 60;
 
@@ -49,7 +50,9 @@ export const GET = withCronLogging("auto-publish", async () => {
         if (media.length > 0) {
           mediaIds = [];
           for (const item of media) {
-            const imageRes = await fetch(item.url);
+            // Media lives in our own storage (Supabase); 30s default is
+            // generous enough for any image we let users upload.
+            const imageRes = await fetchWithTimeout(item.url);
             const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
             const xMediaId = await uploadMediaToX(credentials, imageBuffer, item.mimeType, {
               callerJob: "auto-publish",

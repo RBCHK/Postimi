@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { encryptToken, decryptToken } from "@/lib/token-encryption";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 export interface XApiCredentials {
   accessToken: string;
@@ -109,7 +110,7 @@ async function exchangeRefreshToken(
   clientId: string,
   clientSecret: string
 ): Promise<XOAuthTokenResponse> {
-  const res = await fetch("https://api.twitter.com/2/oauth2/token", {
+  const res = await fetchWithTimeout("https://api.twitter.com/2/oauth2/token", {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

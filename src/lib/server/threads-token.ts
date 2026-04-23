@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { encryptToken, decryptToken } from "@/lib/token-encryption";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 export interface ThreadsApiCredentials {
   accessToken: string;
@@ -109,7 +110,9 @@ async function exchangeForRefreshedToken(accessToken: string): Promise<ThreadsTo
     access_token: accessToken,
   });
 
-  const res = await fetch(`https://graph.threads.net/refresh_access_token?${params.toString()}`);
+  const res = await fetchWithTimeout(
+    `https://graph.threads.net/refresh_access_token?${params.toString()}`
+  );
 
   if (!res.ok) {
     const body = await res.text();

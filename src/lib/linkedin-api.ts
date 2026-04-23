@@ -3,6 +3,8 @@
  * All functions require LinkedInApiCredentials (OAuth 2.0 per-user tokens from DB).
  */
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+
 const REST_BASE = "https://api.linkedin.com/rest";
 const LINKEDIN_VERSION = "202504";
 
@@ -34,7 +36,7 @@ export async function postToLinkedIn(
     distribution: { feedDistribution: "MAIN_FEED" },
   };
 
-  const res = await fetch(`${REST_BASE}/posts`, {
+  const res = await fetchWithTimeout(`${REST_BASE}/posts`, {
     method: "POST",
     headers: linkedInHeaders(credentials.accessToken),
     body: JSON.stringify(body),
@@ -61,7 +63,7 @@ export async function uploadImageToLinkedIn(
   mimeType: string
 ): Promise<string> {
   // Step 1: Initialize upload
-  const initRes = await fetch(`${REST_BASE}/images?action=initializeUpload`, {
+  const initRes = await fetchWithTimeout(`${REST_BASE}/images?action=initializeUpload`, {
     method: "POST",
     headers: linkedInHeaders(credentials.accessToken),
     body: JSON.stringify({
@@ -81,14 +83,16 @@ export async function uploadImageToLinkedIn(
   };
   const { uploadUrl, image: imageUrn } = initData.value;
 
-  // Step 2: Upload binary
-  const uploadRes = await fetch(uploadUrl, {
+  // Step 2: Upload binary — image uploads can take longer than the 30s
+  // default, especially on slow connections, so give it more headroom.
+  const uploadRes = await fetchWithTimeout(uploadUrl, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${credentials.accessToken}`,
       "Content-Type": mimeType,
     },
     body: new Uint8Array(imageBuffer),
+    timeoutMs: 60_000,
   });
 
   if (!uploadRes.ok) {
@@ -121,7 +125,7 @@ export async function postToLinkedInWithImage(
     },
   };
 
-  const res = await fetch(`${REST_BASE}/posts`, {
+  const res = await fetchWithTimeout(`${REST_BASE}/posts`, {
     method: "POST",
     headers: linkedInHeaders(credentials.accessToken),
     body: JSON.stringify(body),
@@ -159,7 +163,7 @@ export async function postToLinkedInWithImages(
     },
   };
 
-  const res = await fetch(`${REST_BASE}/posts`, {
+  const res = await fetchWithTimeout(`${REST_BASE}/posts`, {
     method: "POST",
     headers: linkedInHeaders(credentials.accessToken),
     body: JSON.stringify(body),

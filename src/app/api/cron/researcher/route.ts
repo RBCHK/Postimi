@@ -70,6 +70,7 @@ export const GET = withCronLogging("researcher", async () => {
               const response = await tavilyClient.search(query, {
                 maxResults: 5,
                 searchDepth: "basic",
+                timeout: 30,
               });
               const searchResults = response.results.map((r) => ({
                 title: r.title,

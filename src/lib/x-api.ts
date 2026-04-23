@@ -4,6 +4,7 @@
  */
 
 import { logXApiCall } from "@/lib/x-api-logger";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 const BASE_URL = "https://api.twitter.com/2";
 
@@ -92,7 +93,7 @@ async function xFetch<T>(
   const url = `${BASE_URL}${endpoint}`;
   const qs = new URLSearchParams(params).toString();
 
-  const res = await fetch(`${url}?${qs}`, {
+  const res = await fetchWithTimeout(`${url}?${qs}`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
@@ -116,7 +117,7 @@ async function xPost<T>(
   endpoint: string,
   body: Record<string, unknown>
 ): Promise<T> {
-  const res = await fetch(`${BASE_URL}${endpoint}`, {
+  const res = await fetchWithTimeout(`${BASE_URL}${endpoint}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -154,7 +155,7 @@ export async function uploadMediaToX(
   const { accessToken } = credentials;
 
   // INIT
-  const initRes = await fetch(UPLOAD_BASE_URL, {
+  const initRes = await fetchWithTimeout(UPLOAD_BASE_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -183,10 +184,13 @@ export async function uploadMediaToX(
     formData.append("segment_index", i.toString());
     formData.append("media_data", new Blob([new Uint8Array(chunk)]));
 
-    const appendRes = await fetch(UPLOAD_BASE_URL, {
+    // APPEND uploads a 1MB binary chunk — give it a larger budget than
+    // the 30s default to tolerate slow client connections.
+    const appendRes = await fetchWithTimeout(UPLOAD_BASE_URL, {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
       body: formData,
+      timeoutMs: 60_000,
     });
     if (!appendRes.ok) {
       const body = await appendRes.text();
@@ -197,7 +201,7 @@ export async function uploadMediaToX(
   }
 
   // FINALIZE
-  const finalizeRes = await fetch(UPLOAD_BASE_URL, {
+  const finalizeRes = await fetchWithTimeout(UPLOAD_BASE_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,

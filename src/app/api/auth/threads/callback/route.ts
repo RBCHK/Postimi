@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requireUserId } from "@/lib/auth";
 import { saveThreadsApiToken } from "@/lib/server/threads-token";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 const COOKIE_NAME = "threads_oauth_state";
 
@@ -83,7 +84,7 @@ export async function GET(req: NextRequest) {
   // Step 1: Exchange code for short-lived token
   let shortLivedToken: ThreadsShortLivedTokenResponse;
   try {
-    const tokenRes = await fetch("https://graph.threads.net/oauth/access_token", {
+    const tokenRes = await fetchWithTimeout("https://graph.threads.net/oauth/access_token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -118,7 +119,9 @@ export async function GET(req: NextRequest) {
       access_token: shortLivedToken.access_token,
     });
 
-    const longRes = await fetch(`https://graph.threads.net/access_token?${params.toString()}`);
+    const longRes = await fetchWithTimeout(
+      `https://graph.threads.net/access_token?${params.toString()}`
+    );
 
     if (!longRes.ok) {
       const body = await longRes.text();
@@ -138,7 +141,7 @@ export async function GET(req: NextRequest) {
   let profile: ThreadsProfileResponse;
   try {
     const fields = "id,username,threads_profile_picture_url,threads_biography";
-    const profileRes = await fetch(
+    const profileRes = await fetchWithTimeout(
       `https://graph.threads.net/v1.0/me?fields=${fields}&access_token=${longLivedToken.access_token}`
     );
 

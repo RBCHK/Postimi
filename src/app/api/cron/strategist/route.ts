@@ -284,6 +284,7 @@ export const GET = withCronLogging("strategist", async () => {
                 const response = await tavilyClient.search(query, {
                   maxResults: 5,
                   searchDepth: "basic",
+                  timeout: 30,
                 });
                 return response.results.map((r) => ({
                   title: r.title,

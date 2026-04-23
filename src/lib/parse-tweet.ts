@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+
 const TWEET_URL_REGEX = /https?:\/\/(twitter\.com|x\.com)\/\S+/i;
 
 export function extractTweetUrl(text: string): string | null {
@@ -8,7 +10,7 @@ export function extractTweetUrl(text: string): string | null {
 export async function fetchTweetText(url: string): Promise<{ text: string } | { error: string }> {
   try {
     const oEmbedUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}&omit_script=true`;
-    const res = await fetch(oEmbedUrl, { next: { revalidate: 3600 } });
+    const res = await fetchWithTimeout(oEmbedUrl, { next: { revalidate: 3600 } });
 
     if (!res.ok) {
       return { error: "Не удалось загрузить. Вставьте текст вручную" };
