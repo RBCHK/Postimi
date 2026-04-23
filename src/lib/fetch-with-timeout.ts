@@ -25,8 +25,6 @@ export async function fetchWithTimeout(
 ): Promise<Response> {
   const { timeoutMs = DEFAULT_TIMEOUT_MS, signal: callerSignal, ...rest } = init;
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  const signal = callerSignal
-    ? AbortSignal.any([callerSignal, timeoutSignal])
-    : timeoutSignal;
+  const signal = callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal;
   return fetch(input, { ...rest, signal });
 }

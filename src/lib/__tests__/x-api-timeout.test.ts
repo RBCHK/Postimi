@@ -18,9 +18,7 @@ vi.mock("@/lib/fetch-with-timeout", async () => {
       const { signal: callerSignal, timeoutMs: _ignored, ...rest } = init ?? {};
       void _ignored;
       const shortSignal = AbortSignal.timeout(50);
-      const signal = callerSignal
-        ? AbortSignal.any([callerSignal, shortSignal])
-        : shortSignal;
+      const signal = callerSignal ? AbortSignal.any([callerSignal, shortSignal]) : shortSignal;
       return realFetch(input, { ...rest, signal });
     },
   };

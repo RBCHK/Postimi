@@ -307,18 +307,15 @@ export async function postToThreads(
   text: string
 ): Promise<{ threadId: string; threadUrl: string }> {
   // Step 1: Create media container
-  const containerRes = await fetchWithTimeout(
-    `${BASE_URL}/${credentials.threadsUserId}/threads`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        media_type: "TEXT",
-        text,
-        access_token: credentials.accessToken,
-      }),
-    }
-  );
+  const containerRes = await fetchWithTimeout(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      media_type: "TEXT",
+      text,
+      access_token: credentials.accessToken,
+    }),
+  });
 
   if (!containerRes.ok) {
     const body = await containerRes.text();
@@ -363,19 +360,16 @@ export async function postToThreadsWithImage(
   imageUrl: string
 ): Promise<{ threadId: string; threadUrl: string }> {
   // Step 1: Create image container
-  const containerRes = await fetchWithTimeout(
-    `${BASE_URL}/${credentials.threadsUserId}/threads`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        media_type: "IMAGE",
-        image_url: imageUrl,
-        text,
-        access_token: credentials.accessToken,
-      }),
-    }
-  );
+  const containerRes = await fetchWithTimeout(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      media_type: "IMAGE",
+      image_url: imageUrl,
+      text,
+      access_token: credentials.accessToken,
+    }),
+  });
 
   if (!containerRes.ok) {
     const body = await containerRes.text();
@@ -456,19 +450,16 @@ export async function postToThreadsWithImages(
   // Step 1: Create individual image item containers
   const childIds: string[] = [];
   for (const imageUrl of imageUrls) {
-    const itemRes = await fetchWithTimeout(
-      `${BASE_URL}/${credentials.threadsUserId}/threads`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          media_type: "IMAGE",
-          image_url: imageUrl,
-          is_carousel_item: "true",
-          access_token: credentials.accessToken,
-        }),
-      }
-    );
+    const itemRes = await fetchWithTimeout(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        media_type: "IMAGE",
+        image_url: imageUrl,
+        is_carousel_item: "true",
+        access_token: credentials.accessToken,
+      }),
+    });
 
     if (!itemRes.ok) {
       const body = await itemRes.text();
@@ -492,14 +483,11 @@ export async function postToThreadsWithImages(
     access_token: credentials.accessToken,
   });
 
-  const carouselRes = await fetchWithTimeout(
-    `${BASE_URL}/${credentials.threadsUserId}/threads`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: params,
-    }
-  );
+  const carouselRes = await fetchWithTimeout(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params,
+  });
 
   if (!carouselRes.ok) {
     const body = await carouselRes.text();

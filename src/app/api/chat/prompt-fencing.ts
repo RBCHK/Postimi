@@ -32,10 +32,7 @@ export interface TrendRow {
 export function fenceTrends(trends: TrendRow[]): string {
   if (trends.length === 0) return "";
   const body = trends
-    .map(
-      (t) =>
-        `- ${t.trendName}${t.category ? ` [${t.category}]` : ""} (${t.postCount} posts)`
-    )
+    .map((t) => `- ${t.trendName}${t.category ? ` [${t.category}]` : ""} (${t.postCount} posts)`)
     .join("\n");
   return (
     "\n\n## Trending Now on X\n" +
