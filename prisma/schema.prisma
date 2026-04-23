@@ -203,6 +203,22 @@ model AiUsage {
   @@index([operation])
 }
 
+// Idempotency ledger for Stripe webhook events. Stripe retries on any
+// 5xx/network failure — without dedup the handler would double-grant
+// subscriptions, re-apply plan changes, or double-refill usage credits.
+//
+// Insert first, process second: `create()` on a duplicate eventId throws
+// P2002 (unique violation), which the handler treats as "already
+// processed — skip" and returns 200. This is race-safe without explicit
+// locks: two concurrent webhooks for the same eventId only commit one row.
+model StripeWebhookEvent {
+  eventId     String   @id
+  type        String
+  processedAt DateTime @default(now())
+
+  @@index([processedAt])
+}
+
 // ─── Enums ───────────────────────────────────────────────
 
 // ADR-008: canonical platform tag for multi-platform data models

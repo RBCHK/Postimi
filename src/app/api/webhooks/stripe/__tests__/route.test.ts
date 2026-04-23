@@ -8,6 +8,10 @@ const prismaMock = {
     upsert: vi.fn(),
     updateMany: vi.fn(),
   },
+  stripeWebhookEvent: {
+    create: vi.fn(),
+    delete: vi.fn(),
+  },
 };
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
@@ -19,6 +23,11 @@ vi.mock("@/lib/stripe", () => ({
   },
 }));
 
+vi.mock("@sentry/nextjs", () => ({
+  captureException: vi.fn(),
+  captureMessage: vi.fn(),
+}));
+
 const ORIGINAL_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
 beforeEach(() => {
@@ -27,6 +36,8 @@ beforeEach(() => {
   process.env.STRIPE_WEBHOOK_SECRET = "whsec_test";
   prismaMock.subscription.upsert.mockResolvedValue({ id: "sub-1" });
   prismaMock.subscription.updateMany.mockResolvedValue({ count: 1 });
+  prismaMock.stripeWebhookEvent.create.mockResolvedValue({ eventId: "evt_1" });
+  prismaMock.stripeWebhookEvent.delete.mockResolvedValue({ eventId: "evt_1" });
 });
 
 afterEach(() => {
@@ -42,8 +53,9 @@ function makeRequest(body: string, signature = "sig_test"): Request {
   });
 }
 
-function makeSubscriptionEvent(type: string, sub: Record<string, unknown>) {
+function makeSubscriptionEvent(type: string, sub: Record<string, unknown>, id = "evt_test") {
   return {
+    id,
     type,
     data: { object: sub },
   };
@@ -190,7 +202,7 @@ describe("POST /api/webhooks/stripe", () => {
     expect(data.received).toBe(true);
   });
 
-  it("idempotent — duplicate events with same subscription ID use upsert", async () => {
+  it("second delivery with same event.id short-circuits (idempotency)", async () => {
     const sub = {
       id: "sub_stripe_1",
       status: "active",
@@ -211,14 +223,19 @@ describe("POST /api/webhooks/stripe", () => {
 
     constructEventMock.mockReturnValue(makeSubscriptionEvent("customer.subscription.created", sub));
 
+    // First claim succeeds, second raises P2002 (already-processed).
+    const uniqueErr = new Error("Unique constraint failed");
+    Object.assign(uniqueErr, { code: "P2002" });
+    prismaMock.stripeWebhookEvent.create
+      .mockResolvedValueOnce({ eventId: "evt_test" })
+      .mockRejectedValueOnce(uniqueErr);
+
     const { POST } = await import("../route");
-
-    // Send same event twice
     await POST(makeRequest("{}") as never);
     await POST(makeRequest("{}") as never);
 
-    // Both calls use upsert — no duplicate insert errors
-    expect(prismaMock.subscription.upsert).toHaveBeenCalledTimes(2);
+    // Downstream side-effect fires exactly once — retry is a no-op.
+    expect(prismaMock.subscription.upsert).toHaveBeenCalledTimes(1);
   });
 
   it("returns 500 when STRIPE_WEBHOOK_SECRET is not set", async () => {

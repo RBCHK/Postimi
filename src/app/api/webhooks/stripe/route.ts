@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { SubscriptionStatus } from "@/generated/prisma";
@@ -24,12 +25,51 @@ function mapStatus(stripeStatus: string): SubscriptionStatus {
 }
 
 /**
+ * Prisma error code for unique-constraint violation. Used here to detect
+ * that a webhook event has already been recorded — we treat that as
+ * "already processed, skip" and return 200.
+ */
+const PRISMA_UNIQUE_VIOLATION = "P2002";
+
+function isUniqueViolation(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  return (err as { code?: string }).code === PRISMA_UNIQUE_VIOLATION;
+}
+
+/**
+ * Records the webhook event id in the idempotency ledger BEFORE
+ * processing. Returns true when this is the first time we've seen the
+ * event and the caller should proceed to process it. Returns false when
+ * the event was already recorded by a prior (possibly concurrent)
+ * delivery — the caller must respond 200 and do nothing else.
+ *
+ * Race-safety: two concurrent requests for the same event.id race on
+ * the PK insert. Postgres guarantees only one commits; the other
+ * receives a unique-constraint violation (P2002).
+ */
+async function claimEvent(event: Stripe.Event): Promise<boolean> {
+  try {
+    await prisma.stripeWebhookEvent.create({
+      data: { eventId: event.id, type: event.type },
+    });
+    return true;
+  } catch (err) {
+    if (isUniqueViolation(err)) return false;
+    throw err;
+  }
+}
+
+/**
  * Upserts a Subscription record from a Stripe subscription object.
  * Idempotent — safe to call on retried webhook events.
  */
 async function upsertSubscription(sub: Stripe.Subscription): Promise<void> {
   const userId = sub.metadata.userId;
   if (!userId) {
+    Sentry.captureMessage("[stripe-webhook] subscription missing metadata.userId", {
+      level: "error",
+      tags: { route: "webhooks/stripe", subscriptionId: sub.id },
+    });
     console.error("[stripe-webhook] subscription missing metadata.userId:", sub.id);
     return;
   }
@@ -66,6 +106,10 @@ async function upsertSubscription(sub: Stripe.Subscription): Promise<void> {
 
 export async function POST(req: NextRequest) {
   if (!WEBHOOK_SECRET) {
+    Sentry.captureMessage("[stripe-webhook] STRIPE_WEBHOOK_SECRET not set", {
+      level: "error",
+      tags: { route: "webhooks/stripe" },
+    });
     console.error("[stripe-webhook] STRIPE_WEBHOOK_SECRET not set");
     return NextResponse.json({ error: "webhook_not_configured" }, { status: 500 });
   }
@@ -80,8 +124,29 @@ export async function POST(req: NextRequest) {
   try {
     event = stripe.webhooks.constructEvent(body, signature, WEBHOOK_SECRET);
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: "webhooks/stripe", step: "signature-verify" },
+    });
     console.error("[stripe-webhook] signature verification failed:", err);
     return NextResponse.json({ error: "invalid_signature" }, { status: 400 });
+  }
+
+  // Idempotency: claim the event before processing. If another delivery
+  // for the same event.id has already been processed (or is racing with
+  // us), bail out with 200. Stripe keeps retrying on 5xx, so we never
+  // surface a dedup hit as an error.
+  let claimed: boolean;
+  try {
+    claimed = await claimEvent(event);
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: "webhooks/stripe", step: "claim-event", event: event.type },
+    });
+    console.error("[stripe-webhook] claim-event failed:", event.type, err);
+    return NextResponse.json({ error: "claim_failed" }, { status: 500 });
+  }
+  if (!claimed) {
+    return NextResponse.json({ received: true, duplicate: true });
   }
 
   try {
@@ -105,6 +170,10 @@ export async function POST(req: NextRequest) {
       }
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice;
+        Sentry.captureMessage("[stripe-webhook] payment failed", {
+          level: "warning",
+          tags: { route: "webhooks/stripe", customer: String(invoice.customer ?? "unknown") },
+        });
         console.warn("[stripe-webhook] payment failed for customer:", invoice.customer);
         break;
       }
@@ -113,6 +182,19 @@ export async function POST(req: NextRequest) {
         break;
     }
   } catch (err) {
+    // Handler failed after claiming the event. Roll back the claim so
+    // Stripe's retry can pick up where we left off — otherwise the next
+    // delivery would short-circuit on duplicate and the side-effect
+    // stays lost forever.
+    await prisma.stripeWebhookEvent.delete({ where: { eventId: event.id } }).catch((delErr) => {
+      Sentry.captureException(delErr, {
+        tags: { route: "webhooks/stripe", step: "rollback-claim", event: event.type },
+      });
+    });
+
+    Sentry.captureException(err, {
+      tags: { route: "webhooks/stripe", step: "handler", event: event.type },
+    });
     console.error("[stripe-webhook] error handling event:", event.type, err);
     return NextResponse.json({ error: "handler_failed" }, { status: 500 });
   }

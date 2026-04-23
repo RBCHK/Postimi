@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { cookies } from "next/headers";
 import { requireUserId } from "@/lib/auth";
 import { saveThreadsApiToken } from "@/lib/server/threads-token";
@@ -98,6 +99,15 @@ export async function GET(req: NextRequest) {
 
     if (!tokenRes.ok) {
       const body = await tokenRes.text();
+      Sentry.captureMessage("[threads-oauth-callback] Short-lived token exchange failed", {
+        level: "error",
+        tags: {
+          route: "auth/threads/callback",
+          step: "short-lived-token",
+          status: String(tokenRes.status),
+        },
+        extra: { body },
+      });
       console.error("[threads-oauth-callback] Short-lived token exchange failed:", body);
       return NextResponse.redirect(
         `${appUrl}/settings?threads_error=${encodeURIComponent(`Token exchange failed: ${tokenRes.status}`)}`
@@ -106,6 +116,9 @@ export async function GET(req: NextRequest) {
 
     shortLivedToken = (await tokenRes.json()) as ThreadsShortLivedTokenResponse;
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: "auth/threads/callback", step: "short-lived-token" },
+    });
     console.error("[threads-oauth-callback] Short-lived token exchange error:", err);
     return NextResponse.redirect(`${appUrl}/settings?threads_error=Token+exchange+error`);
   }
@@ -125,6 +138,15 @@ export async function GET(req: NextRequest) {
 
     if (!longRes.ok) {
       const body = await longRes.text();
+      Sentry.captureMessage("[threads-oauth-callback] Long-lived token exchange failed", {
+        level: "error",
+        tags: {
+          route: "auth/threads/callback",
+          step: "long-lived-token",
+          status: String(longRes.status),
+        },
+        extra: { body },
+      });
       console.error("[threads-oauth-callback] Long-lived token exchange failed:", body);
       return NextResponse.redirect(
         `${appUrl}/settings?threads_error=Long-lived+token+exchange+failed`
@@ -133,6 +155,9 @@ export async function GET(req: NextRequest) {
 
     longLivedToken = (await longRes.json()) as ThreadsLongLivedTokenResponse;
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: "auth/threads/callback", step: "long-lived-token" },
+    });
     console.error("[threads-oauth-callback] Long-lived token exchange error:", err);
     return NextResponse.redirect(`${appUrl}/settings?threads_error=Token+exchange+error`);
   }
@@ -147,6 +172,15 @@ export async function GET(req: NextRequest) {
 
     if (!profileRes.ok) {
       const body = await profileRes.text();
+      Sentry.captureMessage("[threads-oauth-callback] Profile fetch failed", {
+        level: "error",
+        tags: {
+          route: "auth/threads/callback",
+          step: "profile-fetch",
+          status: String(profileRes.status),
+        },
+        extra: { body },
+      });
       console.error("[threads-oauth-callback] Profile fetch failed:", body);
       return NextResponse.redirect(
         `${appUrl}/settings?threads_error=Failed+to+fetch+Threads+profile`
@@ -155,6 +189,9 @@ export async function GET(req: NextRequest) {
 
     profile = (await profileRes.json()) as ThreadsProfileResponse;
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: "auth/threads/callback", step: "profile-fetch" },
+    });
     console.error("[threads-oauth-callback] Profile fetch error:", err);
     return NextResponse.redirect(`${appUrl}/settings?threads_error=Profile+fetch+error`);
   }
@@ -167,6 +204,9 @@ export async function GET(req: NextRequest) {
       profile
     );
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: "auth/threads/callback", step: "token-save", userId },
+    });
     console.error("[threads-oauth-callback] Token save error:", err);
     return NextResponse.redirect(`${appUrl}/settings?threads_error=Failed+to+save+tokens`);
   }

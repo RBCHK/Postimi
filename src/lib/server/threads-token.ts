@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { encryptToken, decryptToken } from "@/lib/token-encryption";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
@@ -81,7 +82,13 @@ async function refreshThreadsToken(
     await new Promise((resolve) => setTimeout(resolve, 1000));
     try {
       tokenData = await exchangeForRefreshedToken(accessToken);
-    } catch {
+    } catch (retryErr) {
+      // Terminal failure: silently dropping the token here means the
+      // user is disconnected from Threads without any UI signal.
+      Sentry.captureException(retryErr, {
+        tags: { area: "threads-token", step: "refresh-retry", userId },
+        extra: { firstError: err instanceof Error ? err.message : String(err) },
+      });
       console.error(`[threads-token] refresh failed for user ${userId}, deleting token:`, err);
       await prisma.threadsApiToken.delete({ where: { userId } }).catch(() => {});
       return null;

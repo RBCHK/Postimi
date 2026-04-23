@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { cookies } from "next/headers";
 import { requireUserId } from "@/lib/auth";
 import { saveXApiToken } from "@/lib/server/x-token";
@@ -106,6 +107,11 @@ export async function GET(req: NextRequest) {
 
     if (!tokenRes.ok) {
       const body = await tokenRes.text();
+      Sentry.captureMessage("[x-oauth-callback] Token exchange failed", {
+        level: "error",
+        tags: { route: "auth/x/callback", step: "token-exchange", status: String(tokenRes.status) },
+        extra: { body },
+      });
       console.error("[x-oauth-callback] Token exchange failed:", body);
       return NextResponse.redirect(
         `${appUrl}/settings?x_error=${encodeURIComponent(`Token exchange failed: ${tokenRes.status}`)}`
@@ -114,6 +120,9 @@ export async function GET(req: NextRequest) {
 
     tokenData = (await tokenRes.json()) as XTokenResponse;
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: "auth/x/callback", step: "token-exchange" },
+    });
     console.error("[x-oauth-callback] Token exchange error:", err);
     return NextResponse.redirect(`${appUrl}/settings?x_error=Token+exchange+error`);
   }
@@ -132,6 +141,15 @@ export async function GET(req: NextRequest) {
 
     if (!profileRes.ok) {
       const body = await profileRes.text();
+      Sentry.captureMessage("[x-oauth-callback] Profile fetch failed", {
+        level: "error",
+        tags: {
+          route: "auth/x/callback",
+          step: "profile-fetch",
+          status: String(profileRes.status),
+        },
+        extra: { body },
+      });
       console.error("[x-oauth-callback] Profile fetch failed:", body);
       return NextResponse.redirect(`${appUrl}/settings?x_error=Failed+to+fetch+X+profile`);
     }
@@ -139,6 +157,9 @@ export async function GET(req: NextRequest) {
     const profileData = (await profileRes.json()) as { data: XUserProfileResponse };
     profile = profileData.data;
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: "auth/x/callback", step: "profile-fetch" },
+    });
     console.error("[x-oauth-callback] Profile fetch error:", err);
     return NextResponse.redirect(`${appUrl}/settings?x_error=Profile+fetch+error`);
   }
@@ -147,6 +168,9 @@ export async function GET(req: NextRequest) {
   try {
     await saveXApiToken(userId, tokenData, profile);
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: "auth/x/callback", step: "token-save", userId },
+    });
     console.error("[x-oauth-callback] Token save error:", err);
     return NextResponse.redirect(`${appUrl}/settings?x_error=Failed+to+save+tokens`);
   }
