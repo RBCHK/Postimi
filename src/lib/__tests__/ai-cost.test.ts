@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { calculateCost } from "../ai-cost";
 
+vi.mock("@sentry/nextjs", () => ({
+  captureException: vi.fn(),
+  captureMessage: vi.fn(),
+}));
+
 describe("calculateCost", () => {
   it("calculates opus pricing (in=$15/M, out=$75/M)", () => {
     // 1M in + 1M out = 15 + 75 = 90
@@ -25,6 +30,22 @@ describe("calculateCost", () => {
     const cost = calculateCost("claude-future-99", 1_000_000, 1_000_000);
     expect(cost).toBeCloseTo(90, 5);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("unknown model"));
+    warnSpy.mockRestore();
+  });
+
+  it("reports unknown models to Sentry (billing safety)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const Sentry = await import("@sentry/nextjs");
+
+    calculateCost("claude-brand-new", 1000, 1000);
+
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining("unknown model"),
+      expect.objectContaining({
+        level: "warning",
+        tags: expect.objectContaining({ area: "ai-cost", model: "claude-brand-new" }),
+      })
+    );
     warnSpy.mockRestore();
   });
 

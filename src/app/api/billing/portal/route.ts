@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { auth } from "@clerk/nextjs/server";
 import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
@@ -24,6 +25,9 @@ export async function POST() {
 
     return NextResponse.json({ url: session.url });
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: "billing/portal" },
+    });
     console.error("[billing/portal]", err);
     return NextResponse.json({ error: "portal_failed" }, { status: 500 });
   }

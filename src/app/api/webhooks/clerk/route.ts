@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { Webhook } from "svix";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
@@ -33,6 +34,10 @@ export async function POST(req: Request) {
 
   const webhookSecret = process.env.CLERK_WEBHOOK_SECRET;
   if (!webhookSecret) {
+    Sentry.captureMessage("[clerk-webhook] CLERK_WEBHOOK_SECRET not configured", {
+      level: "error",
+      tags: { route: "webhooks/clerk" },
+    });
     console.error("[clerk-webhook] CLERK_WEBHOOK_SECRET not configured");
     return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
   }
@@ -45,7 +50,10 @@ export async function POST(req: Request) {
       "svix-timestamp": svixTimestamp,
       "svix-signature": svixSignature,
     });
-  } catch {
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: "webhooks/clerk", step: "signature-verify" },
+    });
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
@@ -91,6 +99,9 @@ export async function POST(req: Request) {
           data: { convertedUserId: user.id },
         });
       } catch (err) {
+        Sentry.captureException(err, {
+          tags: { route: "webhooks/clerk", step: "waitlist-conversion" },
+        });
         console.error("[clerk-webhook] waitlist conversion link failed:", err);
       }
     }

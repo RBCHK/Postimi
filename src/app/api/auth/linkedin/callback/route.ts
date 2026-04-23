@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { cookies } from "next/headers";
 import { requireUserId } from "@/lib/auth";
 import { saveLinkedInApiToken } from "@/lib/server/linkedin-token";
@@ -94,6 +95,15 @@ export async function GET(req: NextRequest) {
 
     if (!tokenRes.ok) {
       const body = await tokenRes.text();
+      Sentry.captureMessage("[linkedin-oauth-callback] Token exchange failed", {
+        level: "error",
+        tags: {
+          route: "auth/linkedin/callback",
+          step: "token-exchange",
+          status: String(tokenRes.status),
+        },
+        extra: { body },
+      });
       console.error("[linkedin-oauth-callback] Token exchange failed:", body);
       return NextResponse.redirect(
         `${appUrl}/settings?linkedin_error=${encodeURIComponent(`Token exchange failed: ${tokenRes.status}`)}`
@@ -102,6 +112,9 @@ export async function GET(req: NextRequest) {
 
     tokenData = (await tokenRes.json()) as LinkedInTokenResponse;
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: "auth/linkedin/callback", step: "token-exchange" },
+    });
     console.error("[linkedin-oauth-callback] Token exchange error:", err);
     return NextResponse.redirect(`${appUrl}/settings?linkedin_error=Token+exchange+error`);
   }
@@ -115,6 +128,15 @@ export async function GET(req: NextRequest) {
 
     if (!profileRes.ok) {
       const body = await profileRes.text();
+      Sentry.captureMessage("[linkedin-oauth-callback] Profile fetch failed", {
+        level: "error",
+        tags: {
+          route: "auth/linkedin/callback",
+          step: "profile-fetch",
+          status: String(profileRes.status),
+        },
+        extra: { body },
+      });
       console.error("[linkedin-oauth-callback] Profile fetch failed:", body);
       return NextResponse.redirect(
         `${appUrl}/settings?linkedin_error=Failed+to+fetch+LinkedIn+profile`
@@ -123,6 +145,9 @@ export async function GET(req: NextRequest) {
 
     profile = (await profileRes.json()) as LinkedInUserInfoResponse;
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: "auth/linkedin/callback", step: "profile-fetch" },
+    });
     console.error("[linkedin-oauth-callback] Profile fetch error:", err);
     return NextResponse.redirect(`${appUrl}/settings?linkedin_error=Profile+fetch+error`);
   }
@@ -131,6 +156,9 @@ export async function GET(req: NextRequest) {
   try {
     await saveLinkedInApiToken(userId, tokenData, profile);
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: "auth/linkedin/callback", step: "token-save", userId },
+    });
     console.error("[linkedin-oauth-callback] Token save error:", err);
     return NextResponse.redirect(`${appUrl}/settings?linkedin_error=Failed+to+save+tokens`);
   }

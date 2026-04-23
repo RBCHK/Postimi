@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { auth } from "@clerk/nextjs/server";
 import { stripe, STRIPE_PRICE_ID } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
@@ -29,6 +30,9 @@ export async function POST() {
 
     return NextResponse.json({ url: session.url });
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: "billing/checkout" },
+    });
     console.error("[billing/checkout]", err);
     return NextResponse.json({ error: "checkout_failed" }, { status: 500 });
   }
