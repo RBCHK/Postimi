@@ -63,6 +63,12 @@ const SEEDS: CronConfigSeed[] = [
     description: "Weekly multi-platform strategist analysis.",
     schedule: "0 14 * * 1",
   },
+  {
+    jobName: "auto-publish",
+    description:
+      "Publishes SCHEDULED slots whose time has passed. Runs every minute (Vercel Pro — per-minute precision).",
+    schedule: "* * * * *",
+  },
 ];
 
 async function main() {

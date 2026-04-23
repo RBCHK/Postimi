@@ -1,40 +1,27 @@
-import { NextRequest, NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
-import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { withCronLogging } from "@/lib/cron-helpers";
 import { getXApiTokenForUser } from "@/lib/server/x-token";
 import { postTweet, uploadMediaToX } from "@/lib/x-api";
 import { getMediaForConversation } from "@/lib/server/media";
 import { slotToUtcDate } from "@/lib/date-utils";
-import type { CronJobStatus, Prisma } from "@/generated/prisma";
 
 export const maxDuration = 60;
 
-export async function GET(req: NextRequest) {
-  // Auth: Bearer token
-  const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export const GET = withCronLogging("auto-publish", async () => {
   const now = new Date();
 
-  // Fetch all SCHEDULED slots with their user's timezone
   const slots = await prisma.scheduledSlot.findMany({
     where: { status: "SCHEDULED" },
     include: { user: { select: { id: true, timezone: true } } },
   });
 
-  // Filter to slots whose scheduled time has passed
   const dueSlots = slots.filter((s) => slotToUtcDate(s.date, s.timeSlot, s.user.timezone) <= now);
 
-  // Nothing to do — return immediately, no logging
   if (dueSlots.length === 0) {
-    return NextResponse.json({ ok: true, published: 0 });
+    return { status: "SUCCESS", data: { published: 0, due: 0 } };
   }
 
-  // There's work to do — log this run
-  const startedAt = Date.now();
   let published = 0;
   let errors = 0;
   const details: { slotId: string; userId: string; platform?: string; error?: string }[] = [];
@@ -48,7 +35,6 @@ export async function GET(req: NextRequest) {
       continue;
     }
 
-    // --- Post to X ---
     try {
       const credentials = await getXApiTokenForUser(user.id);
       if (!credentials) {
@@ -57,7 +43,6 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      // Upload media if conversation has images
       let mediaIds: string[] | undefined;
       if (slot.conversationId) {
         const media = await getMediaForConversation(slot.conversationId, user.id);
@@ -81,7 +66,6 @@ export async function GET(req: NextRequest) {
         mediaIds,
       });
 
-      // Mark as POSTED
       const postedAt = new Date();
       await prisma.scheduledSlot.update({
         where: { id: slot.id },
@@ -89,8 +73,8 @@ export async function GET(req: NextRequest) {
       });
 
       if (slot.conversationId) {
-        await prisma.conversation.update({
-          where: { id: slot.conversationId },
+        await prisma.conversation.updateMany({
+          where: { id: slot.conversationId, userId: user.id },
           data: { status: "POSTED" },
         });
       }
@@ -101,29 +85,14 @@ export async function GET(req: NextRequest) {
       const msg = err instanceof Error ? err.message : String(err);
       details.push({ slotId: slot.id, userId: user.id, error: msg });
       errors++;
-      Sentry.captureException(err);
+      Sentry.captureException(err, { tags: { job: "auto-publish", userId: user.id } });
     }
   }
 
-  const status: CronJobStatus =
-    errors > 0 && published > 0 ? "PARTIAL" : errors > 0 ? "FAILURE" : "SUCCESS";
+  const status = errors > 0 && published > 0 ? "PARTIAL" : errors > 0 ? "FAILURE" : "SUCCESS";
 
-  // Log only runs that had actual work
-  after(async () => {
-    try {
-      await prisma.cronJobRun.create({
-        data: {
-          jobName: "auto-publish",
-          status,
-          durationMs: Date.now() - startedAt,
-          resultJson: { published, errors, due: dueSlots.length, details } as Prisma.InputJsonValue,
-          startedAt: new Date(startedAt),
-        },
-      });
-    } catch (logErr) {
-      Sentry.captureException(logErr);
-    }
-  });
-
-  return NextResponse.json({ ok: status !== "FAILURE", status, published, errors });
-}
+  return {
+    status,
+    data: { published, errors, due: dueSlots.length, details },
+  };
+});

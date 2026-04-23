@@ -18,6 +18,7 @@ const ALLOWED_CRON_PATHS: Record<string, string> = {
   "social-import": "/api/cron/social-import",
   researcher: "/api/cron/researcher",
   strategist: "/api/cron/strategist",
+  "auto-publish": "/api/cron/auto-publish",
 };
 
 /**

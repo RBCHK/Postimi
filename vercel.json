@@ -12,6 +12,7 @@
     { "path": "/api/cron/social-import", "schedule": "15 4 * * 1" },
     { "path": "/api/cron/social-import", "schedule": "15 12 * * *" },
     { "path": "/api/cron/researcher", "schedule": "30 4 * * 1" },
-    { "path": "/api/cron/strategist", "schedule": "0 14 * * 1" }
+    { "path": "/api/cron/strategist", "schedule": "0 14 * * 1" },
+    { "path": "/api/cron/auto-publish", "schedule": "* * * * *" }
   ]
 }
