@@ -35,67 +35,78 @@ export async function importFromXApi(
   let imported = 0;
   let updated = 0;
 
-  for (const tweet of tweets) {
-    const existing = await prisma.socialPost.findUnique({
+  if (tweets.length > 0) {
+    // One findMany in place of N findUnique calls to classify new vs
+    // existing posts before the upsert batch runs.
+    const existingRows = await prisma.socialPost.findMany({
       where: {
-        userId_platform_externalPostId: {
-          userId,
-          platform: "X",
-          externalPostId: tweet.postId,
-        },
-      },
-      select: { createdAt: true },
-    });
-
-    const apiMetrics = {
-      impressions: tweet.impressions,
-      likes: tweet.likes,
-      engagements: tweet.engagements,
-      bookmarks: tweet.bookmarks,
-      replies: tweet.replies,
-      reposts: tweet.reposts,
-      quoteCount: tweet.quoteCount,
-      urlClicks: tweet.urlClicks,
-    };
-
-    const postType = detectPostType(tweet.text);
-
-    const updateData: Record<string, unknown> = {
-      ...apiMetrics,
-      dataSource: "API",
-    };
-    if (tweet.profileVisits !== undefined) {
-      updateData.profileVisits = tweet.profileVisits;
-    }
-
-    await prisma.socialPost.upsert({
-      where: {
-        userId_platform_externalPostId: {
-          userId,
-          platform: "X",
-          externalPostId: tweet.postId,
-        },
-      },
-      create: {
         userId,
         platform: "X",
-        externalPostId: tweet.postId,
-        postedAt: tweet.createdAt,
-        text: tweet.text,
-        postUrl: tweet.postLink,
-        postType,
-        platformMetadata: { platform: "X", postType },
-        ...apiMetrics,
-        profileVisits: tweet.profileVisits ?? 0,
-        dataSource: "API",
+        externalPostId: { in: tweets.map((t) => t.postId) },
       },
-      update: updateData,
+      select: { externalPostId: true },
     });
+    const existingSet = new Set(existingRows.map((r) => r.externalPostId));
 
-    if (existing) {
-      updated++;
-    } else {
-      imported++;
+    // 200 upserts/transaction stays well under Postgres' ~65k bound-param
+    // ceiling while collapsing N round-trips into ⌈N/200⌉.
+    const BATCH_SIZE = 200;
+
+    for (let start = 0; start < tweets.length; start += BATCH_SIZE) {
+      const chunk = tweets.slice(start, start + BATCH_SIZE);
+
+      await prisma.$transaction(
+        chunk.map((tweet) => {
+          const apiMetrics = {
+            impressions: tweet.impressions,
+            likes: tweet.likes,
+            engagements: tweet.engagements,
+            bookmarks: tweet.bookmarks,
+            replies: tweet.replies,
+            reposts: tweet.reposts,
+            quoteCount: tweet.quoteCount,
+            urlClicks: tweet.urlClicks,
+          };
+          const postType = detectPostType(tweet.text);
+          const updateData: Record<string, unknown> = {
+            ...apiMetrics,
+            dataSource: "API",
+          };
+          if (tweet.profileVisits !== undefined) {
+            updateData.profileVisits = tweet.profileVisits;
+          }
+          return prisma.socialPost.upsert({
+            where: {
+              userId_platform_externalPostId: {
+                userId,
+                platform: "X",
+                externalPostId: tweet.postId,
+              },
+            },
+            create: {
+              userId,
+              platform: "X",
+              externalPostId: tweet.postId,
+              postedAt: tweet.createdAt,
+              text: tweet.text,
+              postUrl: tweet.postLink,
+              postType,
+              platformMetadata: { platform: "X", postType },
+              ...apiMetrics,
+              profileVisits: tweet.profileVisits ?? 0,
+              dataSource: "API",
+            },
+            update: updateData,
+          });
+        })
+      );
+    }
+
+    // Classify using the pre-fetched existing set — the upsert result array
+    // isn't needed here because this action doesn't write snapshots.
+    for (const tweet of tweets) {
+      if (existingSet.has(tweet.postId)) updated++;
+      else imported++;
     }
   }
 

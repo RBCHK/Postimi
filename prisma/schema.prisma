@@ -334,6 +334,10 @@ model Conversation {
   media    Media[]
 
   @@index([userId])
+  // Sidebar / listing pages sort the user's conversations by recency.
+  // Without this, a user with many drafts forces a scan of the
+  // per-user range followed by an in-memory sort.
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 model Message {
@@ -345,6 +349,10 @@ model Message {
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   notes        Note[]
+
+  // Conversation view includes messages ordered by createdAt; without
+  // this Postgres uses the FK alone and re-sorts each time.
+  @@index([conversationId, createdAt])
 }
 
 model Note {
@@ -369,6 +377,8 @@ model VoiceBankEntry {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  // Voice bank listings always order by recency per user.
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 model Media {
@@ -412,6 +422,12 @@ model ScheduledSlot {
   conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+  // Schedule view: (userId, status, date range) for calendar/listing.
+  @@index([userId, status, date])
+  // Auto-publish cron scans SCHEDULED across all users by status only.
+  // `(status, date)` lets Postgres both filter by status and skip slots
+  // that aren't due yet in one index walk.
+  @@index([status, date])
 }
 
 model StrategyConfig {
@@ -594,6 +610,10 @@ model StrategyAnalysis {
 
   @@index([userId])
   @@index([userId, platform, weekStart])
+  // daily-insight cron fetches the user's most recent analysis by
+  // `orderBy: { createdAt: "desc" }`; without this the per-user range is
+  // scanned and re-sorted each run.
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 model ResearchNote {
@@ -608,6 +628,10 @@ model ResearchNote {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  // Strategist/daily-insight fetches recent notes per user ordered by
+  // createdAt DESC — the existing `[userId]` index can't satisfy the
+  // sort, forcing a per-user re-sort.
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 model DailyInsight {

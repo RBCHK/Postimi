@@ -23,7 +23,11 @@ export async function reorderMedia(conversationId: string, orderedIds: string[])
     throw new Error("Invalid media IDs for reorder");
   }
 
-  await Promise.all(
+  // One round-trip for all updates. `Promise.all` would still issue N
+  // separate queries against the connection pool; a `$transaction` array
+  // batches them and keeps them atomic (a mid-flight failure can't leave
+  // positions partially reordered).
+  await prisma.$transaction(
     orderedIds.map((id, index) =>
       prisma.media.update({
         where: { id },

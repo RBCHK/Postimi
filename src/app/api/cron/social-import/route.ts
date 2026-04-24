@@ -145,91 +145,151 @@ async function importForUser(args: {
     ? new Date(latest.postedAt.getTime() - 24 * 60 * 60 * 1000) // 1d overlap for insight refresh
     : undefined;
 
-  let imported = 0;
-  let updated = 0;
-  let snapshots = 0;
+  // Buffer the stream so we can batch DB writes in one transaction per
+  // chunk rather than issuing 3 round-trips per post (findUnique + upsert +
+  // snapshot upsert). See `BATCH_SIZE` below for chunking rationale.
+  const buffered: Array<{
+    externalPostId: string;
+    postedAt: Date;
+    text: string;
+    postUrl: string | null;
+    metadata: ReturnType<typeof parsePlatformMetadata>;
+    postType: string;
+    metrics: {
+      impressions: number;
+      likes: number;
+      replies: number;
+      reposts: number;
+      shares: number;
+      bookmarks: number;
+      views: number;
+    };
+  }> = [];
 
   for await (const post of importer.fetchPosts(creds, { since })) {
     // Validate Zod shape before writing — catches regressions in the
     // importer rather than letting malformed JSON land in the DB.
     const metadata = parsePlatformMetadata(post.metadata);
-
-    const existing = await prisma.socialPost.findUnique({
-      where: {
-        userId_platform_externalPostId: {
-          userId,
-          platform,
-          externalPostId: post.externalPostId,
-        },
+    buffered.push({
+      externalPostId: post.externalPostId,
+      postedAt: post.postedAt,
+      text: post.text,
+      postUrl: post.postUrl,
+      metadata,
+      postType: derivePostType(metadata),
+      metrics: {
+        impressions: post.metrics.impressions,
+        likes: post.metrics.likes,
+        replies: post.metrics.replies,
+        reposts: post.metrics.reposts,
+        shares: post.metrics.shares,
+        bookmarks: post.metrics.bookmarks,
+        views: post.metrics.impressions, // Threads exposes views as the headline metric
       },
-      select: { id: true },
     });
+  }
 
-    // Detect post type from metadata for write.
-    const postType = derivePostType(metadata);
+  let imported = 0;
+  let updated = 0;
+  let snapshots = 0;
 
-    const metrics = {
-      impressions: post.metrics.impressions,
-      likes: post.metrics.likes,
-      replies: post.metrics.replies,
-      reposts: post.metrics.reposts,
-      shares: post.metrics.shares,
-      bookmarks: post.metrics.bookmarks,
-      views: post.metrics.impressions, // Threads exposes views as the headline metric
-    };
-
-    const socialPost = await prisma.socialPost.upsert({
+  if (buffered.length === 0) {
+    // Skip the rest of the DB work for the post stream; followers still runs.
+  } else {
+    // One findMany replaces N findUnique calls to detect
+    // imported-vs-updated without a round-trip per post.
+    const existingRows = await prisma.socialPost.findMany({
       where: {
-        userId_platform_externalPostId: {
-          userId,
-          platform,
-          externalPostId: post.externalPostId,
-        },
-      },
-      create: {
         userId,
         platform,
-        externalPostId: post.externalPostId,
-        postedAt: post.postedAt,
-        text: post.text,
-        postUrl: post.postUrl,
-        postType,
-        platformMetadata: metadata,
-        ...metrics,
-        dataSource: "API",
+        externalPostId: { in: buffered.map((p) => p.externalPostId) },
       },
-      update: {
-        ...metrics,
-        platformMetadata: metadata,
-        dataSource: "API",
-      },
-      select: { id: true },
+      select: { externalPostId: true },
     });
+    const existingSet = new Set(existingRows.map((r) => r.externalPostId));
 
-    if (existing) updated++;
-    else imported++;
+    // Postgres caps bound parameters per query at ~65k. With ~10 columns per
+    // upsert create + update branch, 200 rows per transaction is well inside
+    // that limit and short enough to not block other writers.
+    const BATCH_SIZE = 200;
 
-    const ageDays = (Date.now() - post.postedAt.getTime()) / (1000 * 60 * 60 * 24);
-    if (ageDays < REFRESH_DAYS) {
-      await prisma.socialPostEngagementSnapshot.upsert({
-        where: {
-          userId_platform_postId_snapshotDate: {
-            userId,
-            platform,
-            postId: socialPost.id,
-            snapshotDate,
-          },
-        },
-        create: {
-          userId,
-          platform,
-          postId: socialPost.id,
-          snapshotDate,
-          ...metrics,
-        },
-        update: metrics,
-      });
-      snapshots++;
+    for (let start = 0; start < buffered.length; start += BATCH_SIZE) {
+      const chunk = buffered.slice(start, start + BATCH_SIZE);
+
+      // One transaction = one round-trip. Each upsert still runs as a
+      // separate statement inside Postgres, but we pay the network cost
+      // once per chunk instead of once per post.
+      const upserted = await prisma.$transaction(
+        chunk.map((p) =>
+          prisma.socialPost.upsert({
+            where: {
+              userId_platform_externalPostId: {
+                userId,
+                platform,
+                externalPostId: p.externalPostId,
+              },
+            },
+            create: {
+              userId,
+              platform,
+              externalPostId: p.externalPostId,
+              postedAt: p.postedAt,
+              text: p.text,
+              postUrl: p.postUrl,
+              postType: p.postType,
+              platformMetadata: p.metadata,
+              ...p.metrics,
+              dataSource: "API",
+            },
+            update: {
+              ...p.metrics,
+              platformMetadata: p.metadata,
+              dataSource: "API",
+            },
+            select: { id: true, externalPostId: true },
+          })
+        )
+      );
+
+      // Upsert results arrive in the same order as the input array, so we
+      // can pair them back to the buffered posts without a second lookup.
+      const snapshotOps: ReturnType<typeof prisma.socialPostEngagementSnapshot.upsert>[] = [];
+      for (let i = 0; i < chunk.length; i++) {
+        const p = chunk[i]!;
+        const sp = upserted[i]!;
+
+        if (existingSet.has(sp.externalPostId)) updated++;
+        else imported++;
+
+        const ageDays = (Date.now() - p.postedAt.getTime()) / (1000 * 60 * 60 * 24);
+        if (ageDays < REFRESH_DAYS) {
+          snapshotOps.push(
+            prisma.socialPostEngagementSnapshot.upsert({
+              where: {
+                userId_platform_postId_snapshotDate: {
+                  userId,
+                  platform,
+                  postId: sp.id,
+                  snapshotDate,
+                },
+              },
+              create: {
+                userId,
+                platform,
+                postId: sp.id,
+                snapshotDate,
+                ...p.metrics,
+              },
+              update: p.metrics,
+            })
+          );
+          snapshots++;
+        }
+      }
+
+      if (snapshotOps.length > 0) {
+        await prisma.$transaction(snapshotOps);
+      }
     }
   }
 

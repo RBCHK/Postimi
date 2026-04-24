@@ -28,11 +28,17 @@ vi.mock("@/lib/cron-helpers", () => ({
 // we can drive the registry directly from the test.
 vi.mock("@/lib/platform/init", () => ({}));
 
+// `$transaction([...])` returns results in the same order as input. The
+// route passes upsert calls (which are lazy Prisma query objects) into it
+// via `chunk.map(...)` — in the mocked world each such call returns
+// whatever `socialPost.upsert.mockResolvedValue(...)` is set to return, so
+// we simply resolve the input array as-is.
 const prismaMock = {
   user: { findMany: vi.fn() },
   socialPost: {
     findFirst: vi.fn(),
     findUnique: vi.fn(),
+    findMany: vi.fn(),
     upsert: vi.fn(),
   },
   socialPostEngagementSnapshot: { upsert: vi.fn() },
@@ -41,6 +47,7 @@ const prismaMock = {
     upsert: vi.fn(),
   },
   threadsApiToken: { update: vi.fn() },
+  $transaction: vi.fn(async (ops: unknown[]) => Promise.all(ops)),
 };
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
@@ -73,11 +80,13 @@ beforeEach(() => {
   prismaMock.user.findMany.mockResolvedValue([{ id: "user-1" }]);
   prismaMock.socialPost.findFirst.mockResolvedValue(null);
   prismaMock.socialPost.findUnique.mockResolvedValue(null);
-  prismaMock.socialPost.upsert.mockResolvedValue({ id: "sp-1" });
+  prismaMock.socialPost.findMany.mockResolvedValue([]);
+  prismaMock.socialPost.upsert.mockResolvedValue({ id: "sp-1", externalPostId: "tp-1" });
   prismaMock.socialPostEngagementSnapshot.upsert.mockResolvedValue({});
   prismaMock.socialFollowersSnapshot.findFirst.mockResolvedValue(null);
   prismaMock.socialFollowersSnapshot.upsert.mockResolvedValue({});
   prismaMock.threadsApiToken.update.mockResolvedValue({});
+  prismaMock.$transaction.mockImplementation(async (ops: unknown[]) => Promise.all(ops));
 });
 
 function buildRequest() {
@@ -282,5 +291,42 @@ describe("social-import cron", () => {
     const args = prismaMock.socialFollowersSnapshot.upsert.mock.calls[0]![0];
     expect(args.create.deltaFollowers).toBe(20); // 500 - 480
     expect(args.create.followingCount).toBeNull();
+  });
+
+  it("batches SocialPost + snapshot writes through $transaction (not per-post round-trips)", async () => {
+    // Yield 3 posts so we can assert the batch carries all of them in one
+    // $transaction invocation instead of the pre-refactor N round-trips.
+    registerThreads(async function* () {
+      yield threadsPost({ externalPostId: "tp-1" });
+      yield threadsPost({ externalPostId: "tp-2" });
+      yield threadsPost({ externalPostId: "tp-3" });
+    });
+
+    // Return distinct ids so the snapshot upsert can't accidentally see
+    // the same `postId` three times.
+    prismaMock.socialPost.upsert
+      .mockResolvedValueOnce({ id: "sp-1", externalPostId: "tp-1" })
+      .mockResolvedValueOnce({ id: "sp-2", externalPostId: "tp-2" })
+      .mockResolvedValueOnce({ id: "sp-3", externalPostId: "tp-3" });
+
+    const { GET } = await import("../route");
+    await GET(buildRequest());
+
+    // Two $transaction calls: one for the 3 SocialPost upserts, one for
+    // the 3 engagement-snapshot upserts (all posts are young enough).
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(2);
+
+    // Both transactions receive an array of upsert operations (not nested
+    // promises, not objects) — this is the contract N+1 relies on.
+    for (const call of prismaMock.$transaction.mock.calls) {
+      const ops = call[0] as unknown[];
+      expect(Array.isArray(ops)).toBe(true);
+      expect(ops.length).toBe(3);
+    }
+
+    // The per-model upsert was called 3×+3× even though only two network
+    // hops happened (one per $transaction batch).
+    expect(prismaMock.socialPost.upsert).toHaveBeenCalledTimes(3);
+    expect(prismaMock.socialPostEngagementSnapshot.upsert).toHaveBeenCalledTimes(3);
   });
 });
