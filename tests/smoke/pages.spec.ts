@@ -1,10 +1,28 @@
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { test, expect } from "@playwright/test";
 
-// Known non-actionable warnings to ignore
+// Known non-actionable warnings to ignore.
+//
+// The previous patterns (/hydrat/i and /did not match.*server/i) were
+// too broad — ANY hydration error, including ones caused by OUR own
+// code, slipped through. Narrow to third-party origins we can't fix:
+// Clerk (UserButton) and Radix (aria-controls IDs generated client-side).
+// The patterns require BOTH the "hydration/server-mismatch" substring
+// AND a third-party marker so an in-app hydration bug still fails the
+// smoke test.
+//
+// Known third-party markers as of 2026-04:
+//   - "clerk"   — Clerk components / clerk.com URLs in stack traces
+//   - "cl-"     — Clerk's generated class prefixes (cl-userButton-root, etc.)
+//   - "radix"   — Radix UI component name or import path
+//   - "@radix-ui" — same origin, scoped import form
 const IGNORED_PATTERNS = [
-  /hydrat/i, // React/Next.js hydration mismatches (Clerk UserButton, Radix aria-controls)
-  /did not match.*server/i, // React SSR/client mismatch
+  // Hydration warning/error originating in Clerk or Radix components.
+  /hydrat.*(clerk|cl-|radix|@radix-ui)/i,
+  /(clerk|cl-|radix|@radix-ui).*hydrat/i,
+  // SSR/client mismatch originating in Clerk or Radix.
+  /did not match.*server.*(clerk|cl-|radix|@radix-ui)/i,
+  /(clerk|cl-|radix|@radix-ui).*did not match.*server/i,
 ];
 
 // Collect console errors for every test

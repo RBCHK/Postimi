@@ -45,6 +45,25 @@ test.describe("Mobile navigation", () => {
     await page.waitForURL(/\/$/);
   });
 
+  test("header and bottom nav apply safe-area-inset utility classes", async ({ page }) => {
+    // CLAUDE.md: on iPhone PWA the header must use pt-[env(safe-area-inset-top)]
+    // to clear the Dynamic Island, and the bottom nav must use
+    // pb-[env(safe-area-inset-bottom)] to clear the home indicator.
+    //
+    // We assert the class is present rather than the computed style —
+    // Playwright's WebKit emulation does not render env() the same way
+    // Safari-on-device does, so getComputedStyle().paddingBottom reports
+    // 0px and becomes a flaky signal. The class presence is what ships.
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
+
+    const header = page.locator("header").first();
+    await expect(header).toHaveClass(/pt-\[env\(safe-area-inset-top\)\]/);
+
+    const bottomNav = page.locator("nav.fixed.bottom-0");
+    await expect(bottomNav).toHaveClass(/pb-\[env\(safe-area-inset-bottom\)\]/);
+  });
+
   test("chat input has font size >= 16px (prevents iOS auto-zoom)", async ({ page }) => {
     await page.goto("/");
     await page.waitForLoadState("domcontentloaded");
