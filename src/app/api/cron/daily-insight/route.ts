@@ -72,8 +72,7 @@ export const GET = withCronLogging("daily-insight", async () => {
         getLatestFollowersSnapshot(user.id),
       ]);
       const trends = trendsResult.status === "fulfilled" ? trendsResult.value : [];
-      const latestFollowers =
-        followersResult.status === "fulfilled" ? followersResult.value : null;
+      const latestFollowers = followersResult.status === "fulfilled" ? followersResult.value : null;
       if (trendsResult.status === "rejected") {
         Sentry.captureException(trendsResult.reason, {
           tags: { area: "daily-insight", userId: user.id, subtask: "getLatestTrends" },

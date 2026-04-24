@@ -53,8 +53,7 @@ export function MediaUpload({
 
             if (!res.ok) {
               const data = await res.json().catch(() => ({ error: "Upload failed" }));
-              const errorMsg =
-                typeof data?.error === "string" ? data.error : `HTTP ${res.status}`;
+              const errorMsg = typeof data?.error === "string" ? data.error : `HTTP ${res.status}`;
               failed.push({ filename: file.name, error: errorMsg });
               Sentry.captureException(new Error(`media upload failed: ${errorMsg}`), {
                 tags: { area: "media-upload" },
@@ -89,10 +88,9 @@ export function MediaUpload({
                 : `${failed.length} uploads failed`
             );
           } else {
-            toast.error(
-              `${newItems.length} uploaded, ${failed.length} failed`,
-              { description: failed.map((f) => `${f.filename}: ${f.error}`).join("\n") }
-            );
+            toast.error(`${newItems.length} uploaded, ${failed.length} failed`, {
+              description: failed.map((f) => `${f.filename}: ${f.error}`).join("\n"),
+            });
           }
         }
       } finally {
