@@ -53,13 +53,17 @@ describe("withCronLogging — enabled toggle", () => {
     const body = await res.json();
     expect(body).toMatchObject({ ok: false, skipped: true, reason: "Job disabled" });
     expect(handler).not.toHaveBeenCalled();
+    expect(prismaMock.cronJobRun.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: "SKIPPED", trigger: "SCHEDULED" }),
+    });
   });
 
   it("bypasses the disabled toggle when ?manual=1 is present (admin Run now)", async () => {
     // The toggle controls Vercel scheduled runs, not explicit admin actions.
     // Admin ▷ Run now on a disabled cron must still execute — otherwise the
     // admin sees a misleading "skipped" response on a button they deliberately
-    // clicked.
+    // clicked. The run must be tagged trigger=MANUAL so the admin UI can
+    // distinguish it from a scheduled invocation.
     prismaMock.cronJobConfig.findUnique.mockResolvedValue({ enabled: false });
     const handler = vi.fn().mockResolvedValue({ status: "SUCCESS", data: {} });
     const { withCronLogging } = await import("../cron-helpers");
@@ -69,6 +73,9 @@ describe("withCronLogging — enabled toggle", () => {
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.status).toBe("SUCCESS");
+    expect(prismaMock.cronJobRun.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: "SUCCESS", trigger: "MANUAL" }),
+    });
   });
 
   it("treats manual=0 or any non-'1' value as a normal scheduled run", async () => {
@@ -92,5 +99,20 @@ describe("withCronLogging — enabled toggle", () => {
     expect(body.ok).toBe(true);
     expect(body.imported).toBe(7);
     expect(handler).toHaveBeenCalledTimes(1);
+    expect(prismaMock.cronJobRun.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: "SUCCESS", trigger: "SCHEDULED" }),
+    });
+  });
+
+  it("tags FAILURE runs with the same trigger that invoked the handler", async () => {
+    prismaMock.cronJobConfig.findUnique.mockResolvedValue(null);
+    const handler = vi.fn().mockRejectedValue(new Error("boom"));
+    const { withCronLogging } = await import("../cron-helpers");
+    const wrapped = withCronLogging("x-import", handler);
+    const res = await wrapped(req("https://ex.com/api/cron/x-import?manual=1"));
+    expect(res.status).toBe(500);
+    expect(prismaMock.cronJobRun.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: "FAILURE", trigger: "MANUAL" }),
+    });
   });
 });

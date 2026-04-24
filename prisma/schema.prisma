@@ -309,6 +309,11 @@ enum CronJobStatus {
   SKIPPED
 }
 
+enum CronJobTrigger {
+  SCHEDULED
+  MANUAL
+}
+
 // ─── Content ─────────────────────────────────────────────
 
 model Conversation {
@@ -719,13 +724,14 @@ model XApiCallLog {
 // ─── Admin: Cron Job Run History ────────────────────────
 
 model CronJobRun {
-  id         String        @id @default(cuid())
+  id         String         @id @default(cuid())
   jobName    String
   status     CronJobStatus
+  trigger    CronJobTrigger @default(SCHEDULED)
   durationMs Int?
   resultJson Json?
   error      String? // truncated to 2000 chars
-  startedAt  DateTime      @default(now())
+  startedAt  DateTime       @default(now())
 
   @@index([jobName])
   @@index([startedAt])

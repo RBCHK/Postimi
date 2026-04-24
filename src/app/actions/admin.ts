@@ -48,6 +48,7 @@ export const getCronConfigs = adminAction(async () => {
     select: {
       jobName: true,
       status: true,
+      trigger: true,
       startedAt: true,
       durationMs: true,
     },
@@ -175,6 +176,7 @@ export const getCronRuns = adminAction(
         id: true,
         jobName: true,
         status: true,
+        trigger: true,
         durationMs: true,
         resultJson: true,
         error: true,
