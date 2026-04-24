@@ -129,12 +129,20 @@ function normalizeMediaType(raw: string | undefined): ThreadsMediaType {
 /**
  * Safety cap on pagination loops. Meta returns `paging.next` URLs;
  * without a cap a misbehaving API or a legit huge account could loop.
+ * A realistic 7-day window at 100/page is well under 20 pages.
  */
-const MAX_PAGES = 50;
+const MAX_PAGES = 20;
 
 /**
  * List the authenticated user's Threads posts since `opts.since`.
  * Uses pagination (up to `opts.limit`, default 200).
+ *
+ * Dedup: Meta has been observed in edge cases to hand back a
+ * `paging.next` URL whose payload overlaps with the previous page
+ * (or, more rarely, a URL that echoes the one we just requested).
+ * We maintain a `Set<string>` of seen post IDs and break when a page
+ * produces no new IDs — that terminates both the "stuck cursor" case
+ * and the "looping identical window" case without double-counting.
  */
 export async function fetchThreadsPosts(
   creds: ThreadsApiCredentials,
@@ -144,6 +152,7 @@ export async function fetchThreadsPosts(
   const maxPages = opts.maxPages ?? MAX_PAGES;
   const fields = "id,text,media_type,permalink,timestamp,reply_to";
   const posts: ThreadsPost[] = [];
+  const seenIds = new Set<string>();
 
   let url: string | null =
     `${BASE_URL}/${creds.threadsUserId}/threads?` +
@@ -181,7 +190,14 @@ export async function fetchThreadsPosts(
 
     pageCount++;
 
+    let newIdsOnPage = 0;
     for (const row of page.data ?? []) {
+      if (seenIds.has(row.id)) {
+        // Dedup: Meta returned a row we already have. Don't double-count.
+        continue;
+      }
+      seenIds.add(row.id);
+      newIdsOnPage++;
       posts.push({
         id: row.id,
         text: row.text ?? "",
@@ -195,8 +211,10 @@ export async function fetchThreadsPosts(
 
     const nextUrl = page.paging?.next ?? null;
 
-    // Stuck-cursor guard: API handed us the SAME URL we just requested.
-    if (nextUrl && nextUrl === currentUrl) {
+    // Dedup guard: the entire page contained only IDs we've already
+    // seen. Continuing would either loop (stuck cursor) or keep pulling
+    // the same window forever.
+    if (nextUrl && newIdsOnPage === 0 && (page.data?.length ?? 0) > 0) {
       const Sentry = await import("@sentry/nextjs");
       Sentry.captureMessage("threads-api: stuck pagination cursor", {
         level: "warning",
@@ -209,10 +227,10 @@ export async function fetchThreadsPosts(
     // Max-pages guard.
     if (pageCount >= maxPages && nextUrl) {
       const Sentry = await import("@sentry/nextjs");
-      Sentry.captureMessage("threads-api: max pagination pages reached", {
+      Sentry.captureMessage("threads-pagination-cap-hit", {
         level: "warning",
         tags: { area: "threads-api", endpoint: "posts" },
-        extra: { userId: creds.threadsUserId, maxPages, collected: posts.length },
+        extra: { userId: creds.threadsUserId, pages: pageCount },
       });
       break;
     }
