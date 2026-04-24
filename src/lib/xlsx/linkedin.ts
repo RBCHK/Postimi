@@ -381,6 +381,15 @@ export async function parseLinkedInXlsx(buf: ArrayBuffer): Promise<LinkedInXlsxP
   const followersParse = parseFollowersSheet(workbook.getWorksheet("FOLLOWERS")!);
   const demographics = parseDemographicsSheet(workbook.getWorksheet("DEMOGRAPHICS")!);
 
+  // Cross-check: engagement rows should fall inside the discovery window.
+  // `parseLinkedInDate` only knows `M/D/YYYY` in isolation — it can't tell
+  // a D/M/YYYY-formatted export apart. Here, at the aggregation site, we
+  // have the window bounds and can detect a wholesale locale mismatch: if
+  // more than half of engagement rows land outside [windowStart,windowEnd],
+  // the file is almost certainly D/M/YYYY and every date has been
+  // misinterpreted. Fail loud rather than poisoning analytics.
+  assertEngagementDatesInsideWindow(engagement, discovery);
+
   return {
     discovery,
     engagement,
@@ -390,4 +399,36 @@ export async function parseLinkedInXlsx(buf: ArrayBuffer): Promise<LinkedInXlsxP
     exportTotalFollowers: followersParse.exportTotalFollowers,
     exportDate: followersParse.exportDate,
   };
+}
+
+function assertEngagementDatesInsideWindow(
+  engagement: EngagementRow[],
+  discovery: DiscoveryTotals
+): void {
+  if (engagement.length === 0) return;
+  // Allow a ±1 day cushion on each side — LinkedIn's window boundaries are
+  // inclusive in some exports and exclusive in others, and we don't want a
+  // one-off clamp to trip the locale heuristic. The real signal is
+  // "wholesale wrong interpretation", not "off by a day".
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  const lo = discovery.windowStart.getTime() - MS_PER_DAY;
+  const hi = discovery.windowEnd.getTime() + MS_PER_DAY;
+  let outside = 0;
+  for (const row of engagement) {
+    const t = row.date.getTime();
+    if (t < lo || t > hi) outside++;
+  }
+  // >50% outside → locale mismatch. We choose strict > so the boundary case
+  // "exactly half" doesn't throw; that can happen in short (2-row) fixtures.
+  if (outside * 2 > engagement.length) {
+    throw new LinkedInXlsxError(
+      "Date locale mismatch — export appears to use D/M/YYYY; switch LinkedIn account language to EN (US)",
+      {
+        engagementRows: engagement.length,
+        outsideWindow: outside,
+        windowStart: discovery.windowStart.toISOString(),
+        windowEnd: discovery.windowEnd.toISOString(),
+      }
+    );
+  }
 }

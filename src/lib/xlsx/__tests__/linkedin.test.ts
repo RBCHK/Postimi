@@ -160,4 +160,109 @@ describe("parseLinkedInXlsx — error handling", () => {
     const buf = await wb.xlsx.writeBuffer();
     await expect(parseLinkedInXlsx(buf as ArrayBuffer)).rejects.toThrow(/not a date range/);
   });
+
+  it("throws locale-mismatch error when engagement rows fall outside the discovery window", async () => {
+    // Simulate a D/M/YYYY-formatted export. The discovery window in M/D
+    // parses as "Jan 1 — Jan 7, 2026". The engagement rows, interpreted as
+    // M/D, land on Mar 1, Apr 1, May 1, Jun 1, Jul 1 — all outside the
+    // Jan 1-7 window. Locale heuristic must fire.
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+    buildMinimalValidWorkbook(wb, {
+      window: "1/1/2026 - 1/7/2026",
+      engagementDates: ["3/1/2026", "4/1/2026", "5/1/2026", "6/1/2026", "7/1/2026"],
+      followersTotalDate: "1/7/2026",
+    });
+    const buf = await wb.xlsx.writeBuffer();
+    await expect(parseLinkedInXlsx(buf as ArrayBuffer)).rejects.toThrow(
+      /Date locale mismatch — export appears to use D\/M\/YYYY/
+    );
+  });
+
+  it("tolerates a ±1 day fringe without flagging as locale mismatch", async () => {
+    // Single row one day past windowEnd is benign — LinkedIn's windows are
+    // sometimes inclusive, sometimes exclusive. Only a *majority* of rows
+    // outside should trip the heuristic.
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+    buildMinimalValidWorkbook(wb, {
+      window: "4/13/2026 - 4/19/2026",
+      engagementDates: [
+        "4/13/2026",
+        "4/14/2026",
+        "4/15/2026",
+        "4/16/2026",
+        "4/17/2026",
+        "4/18/2026",
+        "4/20/2026", // 1 day past windowEnd, tolerated by the ±1 cushion
+      ],
+      followersTotalDate: "4/19/2026",
+    });
+    const buf = await wb.xlsx.writeBuffer();
+    const parsed = await parseLinkedInXlsx(buf as ArrayBuffer);
+    expect(parsed.engagement).toHaveLength(7);
+  });
 });
+
+/**
+ * Helper that emits a minimal-valid xlsx for the error-handling tests.
+ * Callers override only the fields they care about; everything else gets
+ * stub values the parsers will accept.
+ */
+function buildMinimalValidWorkbook(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  wb: any,
+  opts: {
+    window: string;
+    engagementDates: string[];
+    followersTotalDate: string;
+    followersTotal?: number;
+    followersDeltas?: Array<[string, number]>;
+  }
+): void {
+  const disc = wb.addWorksheet("DISCOVERY");
+  disc.getCell("A1").value = "Overall Performance";
+  disc.getCell("B1").value = opts.window;
+  disc.getCell("A2").value = "Impressions";
+  disc.getCell("B2").value = "0";
+  disc.getCell("A3").value = "Members reached";
+  disc.getCell("B3").value = "0";
+
+  const eng = wb.addWorksheet("ENGAGEMENT");
+  eng.getCell("A1").value = "Date";
+  eng.getCell("B1").value = "Impressions";
+  eng.getCell("C1").value = "Engagements";
+  opts.engagementDates.forEach((d, i) => {
+    const r = i + 2;
+    eng.getCell(`A${r}`).value = d;
+    eng.getCell(`B${r}`).value = "0";
+    eng.getCell(`C${r}`).value = "0";
+  });
+
+  // TOP POSTS needs headers to satisfy the parser — empty rows are fine.
+  const tp = wb.addWorksheet("TOP POSTS");
+  tp.getCell("A1").value = "header banner";
+  tp.getCell("A3").value = "Post URL";
+  tp.getCell("B3").value = "Post Publish Date";
+  tp.getCell("C3").value = "Engagements";
+  tp.getCell("E3").value = "Post URL";
+  tp.getCell("F3").value = "Post Publish Date";
+  tp.getCell("G3").value = "Impressions";
+
+  const fol = wb.addWorksheet("FOLLOWERS");
+  fol.getCell("A1").value = `Total followers on ${opts.followersTotalDate}`;
+  fol.getCell("B1").value = String(opts.followersTotal ?? 100);
+  fol.getCell("A3").value = "Date";
+  fol.getCell("B3").value = "New followers";
+  const deltas = opts.followersDeltas ?? [[opts.followersTotalDate, 0]];
+  deltas.forEach(([d, n], i) => {
+    const r = i + 4;
+    fol.getCell(`A${r}`).value = d;
+    fol.getCell(`B${r}`).value = String(n);
+  });
+
+  const demo = wb.addWorksheet("DEMOGRAPHICS");
+  demo.getCell("A1").value = "Top Demographics";
+  demo.getCell("B1").value = "Value";
+  demo.getCell("C1").value = "Percentage";
+}
