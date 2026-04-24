@@ -78,6 +78,7 @@ function VoiceBankTab() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Textarea
+          aria-label="Voice bank example"
           placeholder="Paste an example of your writing…"
           value={newContent}
           onChange={(e) => setNewContent(e.target.value)}

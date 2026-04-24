@@ -22,7 +22,7 @@ function NavLink({
     <Link
       href={href}
       className={cn(
-        "flex flex-col items-center gap-0.5 px-3 py-1.5 text-[10px]",
+        "flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 px-3 py-1.5 text-[10px]",
         isActive ? "text-primary" : "text-muted-foreground"
       )}
     >
@@ -41,8 +41,8 @@ export function MobileBottomNav() {
       <Button
         variant="ghost"
         type="button"
-        aria-label="Open composer"
-        className="flex h-auto flex-col items-center gap-0.5 px-3 py-1.5 text-[10px] text-muted-foreground"
+        aria-label="Compose"
+        className="flex h-auto min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 px-3 py-1.5 text-[10px] text-muted-foreground"
         onClick={() => window.dispatchEvent(new Event(COMPOSER_PANEL_OPEN))}
       >
         <PenSquare className="h-5 w-5" />
