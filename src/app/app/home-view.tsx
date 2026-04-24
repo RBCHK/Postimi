@@ -15,6 +15,9 @@ interface HomeViewProps {
   pendingProposal: PlanProposalItem | null;
 }
 
+// Home uses a custom centred layout (vertical-centre + side composer panel) that
+// PageContainer does not support without re-designing the primitive. Kept inline
+// intentionally — matches the same p-4 / md:rounded-[12px] / md:bg-sidebar values.
 export function HomeView({ insights, insightDate, pendingProposal }: HomeViewProps) {
   const router = useRouter();
   const [input, setInput] = useState("");
