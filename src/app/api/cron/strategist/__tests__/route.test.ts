@@ -288,4 +288,64 @@ describe("strategist cron — contract", () => {
     // Failed reservation released.
     expect(failReservationMock).toHaveBeenCalled();
   });
+
+  it("captures a Sentry warning when the Strategy heading regex misses", async () => {
+    const user = await createTestUser({ clerkId: `${PREFIX}heading_${randomSuffix()}` });
+    getConnectedPlatformsMock.mockImplementation(async (uid: string) => {
+      if (uid === user.id) return { platforms: ["X"], primary: "X" };
+      return { platforms: [], primary: null };
+    });
+    // Spanish-language user — both English ("## Strategy") and Russian
+    // ("## Стратегия") heading matches will miss, triggering the fallback.
+    getOutputLanguageMock.mockImplementation(async (uid: string) => {
+      if (uid === user.id) return "es-ES";
+      return "en-US";
+    });
+
+    // AI emits a valid proposal JSON block but under a Spanish heading
+    // the existing regex doesn't know about — that's exactly the drift
+    // pattern we want to observe in Sentry.
+    const proposalJson = JSON.stringify([
+      { type: "addSlot", dayOfWeek: "MON", timeSlot: "9:00 AM" },
+    ]);
+    generateTextMock.mockImplementation(async () => ({
+      text:
+        "## Estrategia\n\nPublica más los lunes.\n\n" +
+        "```json:config-proposal\n" +
+        proposalJson +
+        "\n```",
+      usage: { inputTokens: 10, outputTokens: 10 },
+    }));
+    savePlanProposalMock.mockResolvedValue({ id: "proposal-1" });
+
+    const { GET } = await import("../route");
+    // CronJobConfig may be seeded with enabled=false in the shared test
+    // DB; ?manual=1 bypasses the toggle (the route already documents
+    // this escape hatch for admin-triggered runs).
+    const manualReq = new NextRequest("https://app.postimi.com/api/cron/strategist?manual=1", {
+      headers: { authorization: `Bearer ${CRON_SECRET}` },
+    });
+    const res = await GET(manualReq);
+    expect(res.status).toBe(200);
+
+    const Sentry = await import("@sentry/nextjs");
+    const headingWarnings = (
+      Sentry.captureMessage as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls.filter((c) => {
+      const [msg, opts] = c as [string, { tags?: { userId?: string; area?: string } } | undefined];
+      return (
+        msg === "strategist-heading-parse-failed" &&
+        opts?.tags?.userId === user.id &&
+        opts?.tags?.area === "strategist-heading-parse"
+      );
+    });
+    expect(headingWarnings).toHaveLength(1);
+
+    // Control flow preserved: proposal still saved with the fallback
+    // templated summary so users aren't blocked on a prompt-drift bug.
+    const savedForUs = savePlanProposalMock.mock.calls.filter((c) => c[0] === user.id);
+    expect(savedForUs).toHaveLength(1);
+    const savedArg = savedForUs[0]![1] as { summary: string };
+    expect(savedArg.summary).toMatch(/Schedule template updates/);
+  });
 });

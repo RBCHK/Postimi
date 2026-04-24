@@ -358,6 +358,24 @@ export const GET = withCronLogging("strategist", async () => {
               const summaryMatch =
                 text.match(/##[^#\n]*Strategy[^#\n]*\n([\s\S]{0,300})/i) ??
                 text.match(/##[^#\n]*Стратегия[^#\n]*\n([\s\S]{0,300})/i);
+              if (!summaryMatch?.[1]) {
+                // Both Cyrillic and English heading variants missed —
+                // likely a prompt-drift / output-language regression.
+                // We still fall back to a templated summary so the
+                // proposal is saved, but ops needs to see this so
+                // systemic drift across `outputLanguage` users shows
+                // up in dashboards instead of vanishing silently.
+                Sentry.captureMessage("strategist-heading-parse-failed", {
+                  level: "warning",
+                  tags: {
+                    userId: user.id,
+                    platform,
+                    outputLanguage,
+                    area: "strategist-heading-parse",
+                  },
+                  extra: { rawOutput: text.slice(0, 500) },
+                });
+              }
               const proposalSummary =
                 summaryMatch?.[1]?.trim().slice(0, 300) ??
                 `Schedule template updates (${changes.length}) for ${platform} — ${weekStart}`;
