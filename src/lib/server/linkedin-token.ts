@@ -3,6 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { encryptToken, decryptToken } from "@/lib/token-encryption";
 import { fetchWithRetry } from "@/lib/fetch-with-retry";
 import { withTokenRefreshLock } from "@/lib/server/token-refresh-lock";
+import {
+  runTokenRefreshWithRetry,
+  classifyRefreshError,
+  reportTransientRefreshFailure,
+} from "@/lib/server/token-refresh-retry";
 
 export interface LinkedInApiCredentials {
   accessToken: string;
@@ -75,10 +80,20 @@ async function refreshLinkedInToken(
 
     let tokenData: LinkedInTokenResponse;
     try {
-      tokenData = await exchangeRefreshToken(refreshToken, clientId, clientSecret);
+      // Outer retry (2s / 8s + jitter) on top of `fetchWithRetry`. See
+      // x-token for the full rationale; LinkedIn's refresh endpoint has
+      // similar transient-flap characteristics.
+      tokenData = await runTokenRefreshWithRetry(() =>
+        exchangeRefreshToken(refreshToken, clientId, clientSecret)
+      );
     } catch (err) {
-      // Terminal failure: silently dropping the token here means the
-      // user is disconnected from LinkedIn without any UI signal.
+      // Only delete on explicit `invalid_grant` — any other terminal
+      // failure keeps the token row and returns null so the next caller
+      // retries fresh.
+      const classification = classifyRefreshError(err);
+      if (!classification.invalidGrant) {
+        return reportTransientRefreshFailure(err, "linkedin", userId, classification);
+      }
       Sentry.captureException(err, {
         tags: { area: "linkedin-token", step: "refresh-retry", userId },
       });

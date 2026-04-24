@@ -220,7 +220,31 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return result.toUIMessageStreamResponse();
+    // Propagate stream errors to the client. Without an `onError` here,
+    // an Anthropic outage / 529 / network abort surfaces to streamText's
+    // own `onError` callback (which aborts the reservation + captures
+    // Sentry) but the response stream closes cleanly from the browser's
+    // perspective — `useChat` ends with status "ready" and no visible
+    // error. The callback below converts the thrown error into an error
+    // payload carried in the SSE stream, which `@ai-sdk/react`'s
+    // `useChat` surfaces via its `error` field so the UI can show a
+    // retry affordance. Returning a generic message avoids leaking any
+    // internal detail; the full error object is already in Sentry.
+    return result.toUIMessageStreamResponse({
+      onError: (error) => {
+        // Extra Sentry breadcrumb for the error-propagation path. The
+        // primary capture still lives in the streamText `onError`
+        // callback above (which owns reservation-abort + error tags);
+        // this path runs on the encoder side and captures purely for
+        // visibility of *what reached the client*.
+        Sentry.captureMessage("chat: toUIMessageStreamResponse onError", {
+          level: "warning",
+          tags: { area: "chat-stream-encoder-onError", reservationId: rid },
+          extra: { error: error instanceof Error ? error.message : String(error) },
+        });
+        return "The assistant hit an error while streaming. Please retry.";
+      },
+    });
   } catch (err) {
     if (reservationId) await failReservation(reservationId);
     if (err instanceof SubscriptionRequiredError) {
