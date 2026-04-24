@@ -565,6 +565,7 @@ model SocialPostEngagementSnapshot {
 
   @@unique([userId, platform, postId, snapshotDate])
   @@index([userId, platform])
+  @@index([userId, platform, snapshotDate])
   @@index([postId])
 }
 

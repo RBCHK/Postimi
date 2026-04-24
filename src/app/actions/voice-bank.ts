@@ -2,11 +2,27 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth";
-import type { VoiceBankType } from "@/generated/prisma";
+import { VoiceBankType as PrismaVoiceBankType } from "@/generated/prisma";
 
-export async function getVoiceBankEntries(type?: "REPLY" | "POST", limit?: number) {
+// App-side type kept narrow to the two values we currently accept. The
+// mapping records force TS to error when a new Prisma variant lands in
+// the schema — same convention as contentTypeToPrisma in conversations.ts.
+type VoiceBankTypeApp = "Reply" | "Post";
+type VoiceBankTypeInput = "REPLY" | "POST";
+
+const voiceBankTypeToPrisma: Record<VoiceBankTypeInput, PrismaVoiceBankType> = {
+  REPLY: "REPLY",
+  POST: "POST",
+};
+
+const voiceBankTypeFromPrisma: Record<PrismaVoiceBankType, VoiceBankTypeApp> = {
+  REPLY: "Reply",
+  POST: "Post",
+};
+
+export async function getVoiceBankEntries(type?: VoiceBankTypeInput, limit?: number) {
   const userId = await requireUserId();
-  const where = type ? { userId, type: type as VoiceBankType } : { userId };
+  const where = type ? { userId, type: voiceBankTypeToPrisma[type] } : { userId };
   const rows = await prisma.voiceBankEntry.findMany({
     where,
     orderBy: { createdAt: "desc" },
@@ -15,16 +31,16 @@ export async function getVoiceBankEntries(type?: "REPLY" | "POST", limit?: numbe
   return rows.map((r) => ({
     id: r.id,
     content: r.content,
-    type: r.type === "REPLY" ? "Reply" : ("Post" as "Reply" | "Post"),
+    type: voiceBankTypeFromPrisma[r.type],
     topic: r.topic,
     createdAt: r.createdAt,
   }));
 }
 
-export async function addVoiceBankEntry(content: string, type: "REPLY" | "POST", topic?: string) {
+export async function addVoiceBankEntry(content: string, type: VoiceBankTypeInput, topic?: string) {
   const userId = await requireUserId();
   await prisma.voiceBankEntry.create({
-    data: { content, type: type as VoiceBankType, topic, userId },
+    data: { content, type: voiceBankTypeToPrisma[type], topic, userId },
   });
 }
 
