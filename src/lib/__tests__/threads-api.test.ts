@@ -155,19 +155,31 @@ describe("fetchThreadInsights", () => {
   });
 
   it("throws ThreadsScopeError when Meta returns 500 with error code 10", async () => {
+    vi.useFakeTimers();
     // Observed in prod (Sentry issue 7422796902): Meta returns HTTP 500
     // with `code:10` when the app lacks permission. We must classify it
-    // as a scope denial, not a generic error.
-    mockFetch.mockResolvedValueOnce(
+    // as a scope denial, not a generic error. 500 is retried up to 3
+    // times by fetchWithRetry; the final response flows through to the
+    // scope-denial detector.
+    const scopeDenial = () =>
       response(
         {},
         {
           status: 500,
           text: '{"error":{"message":"Application does not have permission for this action","type":"THApiException","code":10,"fbtrace_id":"A_teeOpMVJNeoabpK5OZLGL"}}',
         }
-      )
-    );
-    await expect(fetchThreadInsights(creds, "t-1")).rejects.toBeInstanceOf(ThreadsScopeError);
+      );
+    mockFetch
+      .mockResolvedValueOnce(scopeDenial())
+      .mockResolvedValueOnce(scopeDenial())
+      .mockResolvedValueOnce(scopeDenial());
+
+    const pending = fetchThreadInsights(creds, "t-1");
+    const settled = pending.catch((e) => e);
+    await vi.runAllTimersAsync();
+    const err = await settled;
+    vi.useRealTimers();
+    expect(err).toBeInstanceOf(ThreadsScopeError);
   });
 
   it("throws ThreadsAuthError when 401 has no scope hint", async () => {
@@ -211,24 +223,33 @@ describe("fetchThreadsUserInsights", () => {
   });
 
   it("throws ThreadsScopeError when Meta returns 500 with error code 10", async () => {
+    vi.useFakeTimers();
     // Same Sentry-observed shape as fetchThreadInsights — account-level
     // insights also require threads_manage_insights, and Meta signals
-    // denial the same way.
-    mockFetch.mockResolvedValueOnce(
+    // denial the same way. fetchWithRetry will try 3 times, then the
+    // scope-denial body flows through to the classifier.
+    const scopeDenial = () =>
       response(
         {},
         {
           status: 500,
           text: '{"error":{"message":"Application does not have permission for this action","type":"THApiException","code":10,"fbtrace_id":"A_teeOpMVJNeoabpK5OZLGL"}}',
         }
-      )
-    );
-    await expect(
-      fetchThreadsUserInsights(creds, {
-        since: new Date("2026-04-10T00:00:00Z"),
-        until: new Date("2026-04-11T23:59:59Z"),
-      })
-    ).rejects.toBeInstanceOf(ThreadsScopeError);
+      );
+    mockFetch
+      .mockResolvedValueOnce(scopeDenial())
+      .mockResolvedValueOnce(scopeDenial())
+      .mockResolvedValueOnce(scopeDenial());
+
+    const pending = fetchThreadsUserInsights(creds, {
+      since: new Date("2026-04-10T00:00:00Z"),
+      until: new Date("2026-04-11T23:59:59Z"),
+    });
+    const settled = pending.catch((e) => e);
+    await vi.runAllTimersAsync();
+    const err = await settled;
+    vi.useRealTimers();
+    expect(err).toBeInstanceOf(ThreadsScopeError);
   });
 
   it("throws ThreadsScopeError on 403 with scope language", async () => {

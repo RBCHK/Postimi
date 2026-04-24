@@ -1,7 +1,8 @@
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { encryptToken, decryptToken } from "@/lib/token-encryption";
-import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { fetchWithRetry } from "@/lib/fetch-with-retry";
+import { withTokenRefreshLock } from "@/lib/server/token-refresh-lock";
 
 export interface ThreadsApiCredentials {
   accessToken: string;
@@ -59,56 +60,52 @@ async function refreshThreadsToken(
   encryptedAccessToken: string,
   expectedUpdatedAt: Date
 ): Promise<ThreadsApiCredentials | null> {
-  const current = await prisma.threadsApiToken.findUnique({ where: { userId } });
-  if (!current) return null;
+  return withTokenRefreshLock(userId, "threads", async () => {
+    const current = await prisma.threadsApiToken.findUnique({ where: { userId } });
+    if (!current) return null;
 
-  if (current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
     const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    if (current.expiresAt > sevenDaysFromNow) {
-      return {
-        accessToken: decryptToken(current.accessToken),
-        threadsUserId: current.threadsUserId,
-        threadsUsername: current.threadsUsername,
-      };
+    if (current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+      if (current.expiresAt > sevenDaysFromNow) {
+        return {
+          accessToken: decryptToken(current.accessToken),
+          threadsUserId: current.threadsUserId,
+          threadsUsername: current.threadsUsername,
+        };
+      }
     }
-  }
 
-  const accessToken = decryptToken(encryptedAccessToken);
+    const accessToken = decryptToken(encryptedAccessToken);
 
-  let tokenData: ThreadsTokenResponse;
-  try {
-    tokenData = await exchangeForRefreshedToken(accessToken);
-  } catch (err) {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    let tokenData: ThreadsTokenResponse;
     try {
       tokenData = await exchangeForRefreshedToken(accessToken);
-    } catch (retryErr) {
+    } catch (err) {
       // Terminal failure: silently dropping the token here means the
       // user is disconnected from Threads without any UI signal.
-      Sentry.captureException(retryErr, {
+      Sentry.captureException(err, {
         tags: { area: "threads-token", step: "refresh-retry", userId },
-        extra: { firstError: err instanceof Error ? err.message : String(err) },
       });
       console.error(`[threads-token] refresh failed for user ${userId}, deleting token:`, err);
       await prisma.threadsApiToken.delete({ where: { userId } }).catch(() => {});
       return null;
     }
-  }
 
-  const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
-  await prisma.threadsApiToken.update({
-    where: { userId },
-    data: {
-      accessToken: encryptToken(tokenData.access_token),
-      expiresAt,
-    },
+    const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
+    await prisma.threadsApiToken.update({
+      where: { userId },
+      data: {
+        accessToken: encryptToken(tokenData.access_token),
+        expiresAt,
+      },
+    });
+
+    return {
+      accessToken: tokenData.access_token,
+      threadsUserId: current.threadsUserId,
+      threadsUsername: current.threadsUsername,
+    };
   });
-
-  return {
-    accessToken: tokenData.access_token,
-    threadsUserId: current.threadsUserId,
-    threadsUsername: current.threadsUsername,
-  };
 }
 
 async function exchangeForRefreshedToken(accessToken: string): Promise<ThreadsTokenResponse> {
@@ -117,8 +114,9 @@ async function exchangeForRefreshedToken(accessToken: string): Promise<ThreadsTo
     access_token: accessToken,
   });
 
-  const res = await fetchWithTimeout(
-    `https://graph.threads.net/refresh_access_token?${params.toString()}`
+  const res = await fetchWithRetry(
+    `https://graph.threads.net/refresh_access_token?${params.toString()}`,
+    { maxAttempts: 2, retryContext: "threads-token:refresh" }
   );
 
   if (!res.ok) {

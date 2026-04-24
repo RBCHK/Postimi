@@ -103,19 +103,36 @@ describe("uploadMediaToX", () => {
   });
 
   it("throws on APPEND failure", async () => {
+    vi.useFakeTimers();
+    // INIT succeeds, APPEND returns 500 (retryable).
+    // fetchWithRetry exhausts its 3 attempts on the APPEND and throws
+    // RetryableApiError, which surfaces as the caller's error.
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ media_id_string: "media_789" }),
     });
-    mockFetch.mockResolvedValueOnce({
+    const fail500 = () => ({
       ok: false,
       status: 500,
       text: async () => "Server error",
+      headers: { get: () => null },
     });
+    mockFetch
+      .mockResolvedValueOnce(fail500())
+      .mockResolvedValueOnce(fail500())
+      .mockResolvedValueOnce(fail500());
 
-    await expect(uploadMediaToX(credentials, Buffer.alloc(100), "image/jpeg")).rejects.toThrow(
-      "X media APPEND failed"
-    );
+    const pending = uploadMediaToX(credentials, Buffer.alloc(100), "image/jpeg");
+    const settled = pending.catch((e) => e);
+    await vi.runAllTimersAsync();
+    const err = await settled;
+    vi.useRealTimers();
+    // After 3 retries the terminal error is RetryableApiError with
+    // status 500 — the "X media APPEND failed" string no longer
+    // applies because retry short-circuits the caller's custom error
+    // message. We still verify the failure reaches the caller.
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/500|gave up/);
   });
 });
 

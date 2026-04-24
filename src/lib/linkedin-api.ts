@@ -3,7 +3,7 @@
  * All functions require LinkedInApiCredentials (OAuth 2.0 per-user tokens from DB).
  */
 
-import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { fetchWithRetry } from "@/lib/fetch-with-retry";
 
 const REST_BASE = "https://api.linkedin.com/rest";
 const LINKEDIN_VERSION = "202504";
@@ -36,10 +36,11 @@ export async function postToLinkedIn(
     distribution: { feedDistribution: "MAIN_FEED" },
   };
 
-  const res = await fetchWithTimeout(`${REST_BASE}/posts`, {
+  const res = await fetchWithRetry(`${REST_BASE}/posts`, {
     method: "POST",
     headers: linkedInHeaders(credentials.accessToken),
     body: JSON.stringify(body),
+    retryContext: "linkedin-api:posts.text",
   });
 
   if (!res.ok) {
@@ -63,7 +64,7 @@ export async function uploadImageToLinkedIn(
   mimeType: string
 ): Promise<string> {
   // Step 1: Initialize upload
-  const initRes = await fetchWithTimeout(`${REST_BASE}/images?action=initializeUpload`, {
+  const initRes = await fetchWithRetry(`${REST_BASE}/images?action=initializeUpload`, {
     method: "POST",
     headers: linkedInHeaders(credentials.accessToken),
     body: JSON.stringify({
@@ -71,6 +72,7 @@ export async function uploadImageToLinkedIn(
         owner: `urn:li:person:${credentials.linkedinUserId}`,
       },
     }),
+    retryContext: "linkedin-api:images.init",
   });
 
   if (!initRes.ok) {
@@ -85,7 +87,7 @@ export async function uploadImageToLinkedIn(
 
   // Step 2: Upload binary — image uploads can take longer than the 30s
   // default, especially on slow connections, so give it more headroom.
-  const uploadRes = await fetchWithTimeout(uploadUrl, {
+  const uploadRes = await fetchWithRetry(uploadUrl, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${credentials.accessToken}`,
@@ -93,6 +95,7 @@ export async function uploadImageToLinkedIn(
     },
     body: new Uint8Array(imageBuffer),
     timeoutMs: 60_000,
+    retryContext: "linkedin-api:images.upload",
   });
 
   if (!uploadRes.ok) {
@@ -125,10 +128,11 @@ export async function postToLinkedInWithImage(
     },
   };
 
-  const res = await fetchWithTimeout(`${REST_BASE}/posts`, {
+  const res = await fetchWithRetry(`${REST_BASE}/posts`, {
     method: "POST",
     headers: linkedInHeaders(credentials.accessToken),
     body: JSON.stringify(body),
+    retryContext: "linkedin-api:posts.image",
   });
 
   if (!res.ok) {
@@ -163,10 +167,11 @@ export async function postToLinkedInWithImages(
     },
   };
 
-  const res = await fetchWithTimeout(`${REST_BASE}/posts`, {
+  const res = await fetchWithRetry(`${REST_BASE}/posts`, {
     method: "POST",
     headers: linkedInHeaders(credentials.accessToken),
     body: JSON.stringify(body),
+    retryContext: "linkedin-api:posts.multiImage",
   });
 
   if (!res.ok) {

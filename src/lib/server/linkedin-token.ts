@@ -1,7 +1,8 @@
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { encryptToken, decryptToken } from "@/lib/token-encryption";
-import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { fetchWithRetry } from "@/lib/fetch-with-retry";
+import { withTokenRefreshLock } from "@/lib/server/token-refresh-lock";
 
 export interface LinkedInApiCredentials {
   accessToken: string;
@@ -49,66 +50,62 @@ async function refreshLinkedInToken(
   encryptedRefreshToken: string,
   expectedUpdatedAt: Date
 ): Promise<LinkedInApiCredentials | null> {
-  const current = await prisma.linkedInApiToken.findUnique({ where: { userId } });
-  if (!current) return null;
+  return withTokenRefreshLock(userId, "linkedin", async () => {
+    const current = await prisma.linkedInApiToken.findUnique({ where: { userId } });
+    if (!current) return null;
 
-  if (current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
     const fiveDaysFromNow = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
-    if (current.expiresAt > fiveDaysFromNow) {
-      return {
-        accessToken: decryptToken(current.accessToken),
-        linkedinUserId: current.linkedinUserId,
-        linkedinName: current.linkedinName,
-      };
+    if (current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+      if (current.expiresAt > fiveDaysFromNow) {
+        return {
+          accessToken: decryptToken(current.accessToken),
+          linkedinUserId: current.linkedinUserId,
+          linkedinName: current.linkedinName,
+        };
+      }
     }
-  }
 
-  const refreshToken = decryptToken(encryptedRefreshToken);
+    const refreshToken = decryptToken(encryptedRefreshToken);
 
-  const clientId = process.env.LINKEDIN_CLIENT_ID;
-  const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
-    throw new Error("LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET must be set");
-  }
+    const clientId = process.env.LINKEDIN_CLIENT_ID;
+    const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      throw new Error("LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET must be set");
+    }
 
-  let tokenData: LinkedInTokenResponse;
-  try {
-    tokenData = await exchangeRefreshToken(refreshToken, clientId, clientSecret);
-  } catch (err) {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    let tokenData: LinkedInTokenResponse;
     try {
       tokenData = await exchangeRefreshToken(refreshToken, clientId, clientSecret);
-    } catch (retryErr) {
+    } catch (err) {
       // Terminal failure: silently dropping the token here means the
       // user is disconnected from LinkedIn without any UI signal.
-      Sentry.captureException(retryErr, {
+      Sentry.captureException(err, {
         tags: { area: "linkedin-token", step: "refresh-retry", userId },
-        extra: { firstError: err instanceof Error ? err.message : String(err) },
       });
       console.error(`[linkedin-token] refresh failed for user ${userId}, deleting token:`, err);
       await prisma.linkedInApiToken.delete({ where: { userId } }).catch(() => {});
       return null;
     }
-  }
 
-  const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
-  await prisma.linkedInApiToken.update({
-    where: { userId },
-    data: {
-      accessToken: encryptToken(tokenData.access_token),
-      refreshToken: tokenData.refresh_token
-        ? encryptToken(tokenData.refresh_token)
-        : current.refreshToken,
-      expiresAt,
-      scopes: tokenData.scope,
-    },
+    const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
+    await prisma.linkedInApiToken.update({
+      where: { userId },
+      data: {
+        accessToken: encryptToken(tokenData.access_token),
+        refreshToken: tokenData.refresh_token
+          ? encryptToken(tokenData.refresh_token)
+          : current.refreshToken,
+        expiresAt,
+        scopes: tokenData.scope,
+      },
+    });
+
+    return {
+      accessToken: tokenData.access_token,
+      linkedinUserId: current.linkedinUserId,
+      linkedinName: current.linkedinName,
+    };
   });
-
-  return {
-    accessToken: tokenData.access_token,
-    linkedinUserId: current.linkedinUserId,
-    linkedinName: current.linkedinName,
-  };
 }
 
 async function exchangeRefreshToken(
@@ -116,7 +113,7 @@ async function exchangeRefreshToken(
   clientId: string,
   clientSecret: string
 ): Promise<LinkedInTokenResponse> {
-  const res = await fetchWithTimeout("https://www.linkedin.com/oauth/v2/accessToken", {
+  const res = await fetchWithRetry("https://www.linkedin.com/oauth/v2/accessToken", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -125,6 +122,8 @@ async function exchangeRefreshToken(
       client_id: clientId,
       client_secret: clientSecret,
     }),
+    maxAttempts: 2,
+    retryContext: "linkedin-token:refresh",
   });
 
   if (!res.ok) {
