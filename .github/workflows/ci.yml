@@ -121,13 +121,8 @@ jobs:
       - name: Run desktop E2E tests
         run: npx playwright test --project=desktop
 
-      # mobile-safari has been flaky due to Clerk dev-instance session
-      # token issues on the CI (Linux Chromium emulating iPhone 15 Pro).
-      # Run it non-blocking for now so real regressions elsewhere still gate
-      # merges. Track recovery separately — do NOT drop this suite.
-      - name: Run mobile-safari E2E tests (non-blocking)
+      - name: Run mobile-safari E2E tests
         run: npx playwright test --project=mobile-safari
-        continue-on-error: true
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
