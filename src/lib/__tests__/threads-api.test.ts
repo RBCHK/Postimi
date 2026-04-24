@@ -3,6 +3,7 @@ import {
   fetchThreadsPosts,
   fetchThreadInsights,
   fetchThreadsUserInsights,
+  postToThreads,
   ThreadsAuthError,
   ThreadsScopeError,
   type ThreadsApiCredentials,
@@ -272,5 +273,41 @@ describe("fetchThreadsUserInsights", () => {
         until: new Date("2026-04-11T23:59:59Z"),
       })
     ).rejects.toBeInstanceOf(ThreadsAuthError);
+  });
+});
+
+describe("postToThreads — retry", () => {
+  it("retries on transient 503 and succeeds on the next attempt", async () => {
+    vi.useFakeTimers();
+    // Container creation: 503 then 200.
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        text: async () => "service unavailable",
+        headers: { get: () => null },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: "container-1" }),
+        json: async () => ({ id: "container-1" }),
+      })
+      // Publish step: straight 200.
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: "thread-1" }),
+        json: async () => ({ id: "thread-1" }),
+      });
+
+    const pending = postToThreads(creds, "hello");
+    await vi.runAllTimersAsync();
+    const result = await pending;
+    vi.useRealTimers();
+
+    expect(result.threadId).toBe("thread-1");
+    // INIT(503) + INIT(200) + PUBLISH(200) = 3 calls
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 });

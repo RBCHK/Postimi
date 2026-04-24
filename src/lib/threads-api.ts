@@ -117,6 +117,37 @@ async function threadsGet(url: string, retryContext: string): Promise<Response> 
   }
 }
 
+/**
+ * Threads POST with retry + backoff. Mirrors `threadsGet` but for
+ * publish/container creation paths. `fetchWithRetry` already scopes
+ * retries to idempotent-ish statuses (429/5xx/network) and honours
+ * `Retry-After`. Returning a Response on terminal failure (rather
+ * than letting `RetryableApiError` bubble) keeps call sites uniform
+ * with the rest of the file: each caller reads `res.ok` / `res.text()`
+ * and throws its own descriptive `Threads … failed` error so the
+ * publish stack traces stay readable.
+ */
+async function threadsPost(
+  url: string,
+  body: URLSearchParams,
+  retryContext: string
+): Promise<Response> {
+  try {
+    return await fetchWithRetry(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      retryContext,
+    });
+  } catch (err) {
+    const { RetryableApiError } = await import("@/lib/fetch-with-retry");
+    if (err instanceof RetryableApiError) {
+      return new Response(err.body, { status: err.status || 500 });
+    }
+    throw err;
+  }
+}
+
 function normalizeMediaType(raw: string | undefined): ThreadsMediaType {
   if (raw && THREADS_MEDIA_TYPES.includes(raw as ThreadsMediaType)) {
     return raw as ThreadsMediaType;
@@ -375,16 +406,15 @@ export async function postToThreads(
   text: string
 ): Promise<{ threadId: string; threadUrl: string }> {
   // Step 1: Create media container
-  const containerRes = await fetchWithRetry(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
+  const containerRes = await threadsPost(
+    `${BASE_URL}/${credentials.threadsUserId}/threads`,
+    new URLSearchParams({
       media_type: "TEXT",
       text,
       access_token: credentials.accessToken,
     }),
-    retryContext: "threads-api:container.text",
-  });
+    "threads-api:container.text"
+  );
 
   if (!containerRes.ok) {
     const body = await containerRes.text();
@@ -394,17 +424,13 @@ export async function postToThreads(
   const container = (await containerRes.json()) as { id: string };
 
   // Step 2: Publish the container
-  const publishRes = await fetchWithRetry(
+  const publishRes = await threadsPost(
     `${BASE_URL}/${credentials.threadsUserId}/threads_publish`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        creation_id: container.id,
-        access_token: credentials.accessToken,
-      }),
-      retryContext: "threads-api:publish.text",
-    }
+    new URLSearchParams({
+      creation_id: container.id,
+      access_token: credentials.accessToken,
+    }),
+    "threads-api:publish.text"
   );
 
   if (!publishRes.ok) {
@@ -430,17 +456,16 @@ export async function postToThreadsWithImage(
   imageUrl: string
 ): Promise<{ threadId: string; threadUrl: string }> {
   // Step 1: Create image container
-  const containerRes = await fetchWithRetry(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
+  const containerRes = await threadsPost(
+    `${BASE_URL}/${credentials.threadsUserId}/threads`,
+    new URLSearchParams({
       media_type: "IMAGE",
       image_url: imageUrl,
       text,
       access_token: credentials.accessToken,
     }),
-    retryContext: "threads-api:container.image",
-  });
+    "threads-api:container.image"
+  );
 
   if (!containerRes.ok) {
     const body = await containerRes.text();
@@ -450,17 +475,13 @@ export async function postToThreadsWithImage(
   const container = (await containerRes.json()) as { id: string };
 
   // Step 2: Publish the container
-  const publishRes = await fetchWithRetry(
+  const publishRes = await threadsPost(
     `${BASE_URL}/${credentials.threadsUserId}/threads_publish`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        creation_id: container.id,
-        access_token: credentials.accessToken,
-      }),
-      retryContext: "threads-api:publish.image",
-    }
+    new URLSearchParams({
+      creation_id: container.id,
+      access_token: credentials.accessToken,
+    }),
+    "threads-api:publish.image"
   );
 
   if (!publishRes.ok) {
@@ -522,17 +543,16 @@ export async function postToThreadsWithImages(
   // Step 1: Create individual image item containers
   const childIds: string[] = [];
   for (const imageUrl of imageUrls) {
-    const itemRes = await fetchWithRetry(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
+    const itemRes = await threadsPost(
+      `${BASE_URL}/${credentials.threadsUserId}/threads`,
+      new URLSearchParams({
         media_type: "IMAGE",
         image_url: imageUrl,
         is_carousel_item: "true",
         access_token: credentials.accessToken,
       }),
-      retryContext: "threads-api:carousel.item",
-    });
+      "threads-api:carousel.item"
+    );
 
     if (!itemRes.ok) {
       const body = await itemRes.text();
@@ -549,19 +569,16 @@ export async function postToThreadsWithImages(
   }
 
   // Step 3: Create carousel container with children (comma-separated)
-  const params = new URLSearchParams({
-    media_type: "CAROUSEL",
-    children: childIds.join(","),
-    text,
-    access_token: credentials.accessToken,
-  });
-
-  const carouselRes = await fetchWithRetry(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params,
-    retryContext: "threads-api:carousel.container",
-  });
+  const carouselRes = await threadsPost(
+    `${BASE_URL}/${credentials.threadsUserId}/threads`,
+    new URLSearchParams({
+      media_type: "CAROUSEL",
+      children: childIds.join(","),
+      text,
+      access_token: credentials.accessToken,
+    }),
+    "threads-api:carousel.container"
+  );
 
   if (!carouselRes.ok) {
     const body = await carouselRes.text();
@@ -573,17 +590,13 @@ export async function postToThreadsWithImages(
   // Step 4: Wait for carousel to finish, then publish
   await waitForContainerReady(credentials, carousel.id);
 
-  const publishRes = await fetchWithRetry(
+  const publishRes = await threadsPost(
     `${BASE_URL}/${credentials.threadsUserId}/threads_publish`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        creation_id: carousel.id,
-        access_token: credentials.accessToken,
-      }),
-      retryContext: "threads-api:publish.carousel",
-    }
+    new URLSearchParams({
+      creation_id: carousel.id,
+      access_token: credentials.accessToken,
+    }),
+    "threads-api:publish.carousel"
   );
 
   if (!publishRes.ok) {
