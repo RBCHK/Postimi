@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { auth } from "@clerk/nextjs/server";
 import { WaitlistForm } from "@/components/waitlist-form";
 
 export const metadata = {
@@ -7,16 +8,25 @@ export const metadata = {
     "Postimi helps creators grow on X, LinkedIn, and Threads with an AI strategist that understands your voice, tracks your metrics, and plans your content.",
 };
 
-export default function LandingPage() {
+// auth() reads cookies — opts the page into dynamic rendering. Explicit for clarity.
+export const dynamic = "force-dynamic";
+
+export default async function LandingPage() {
+  const { userId } = await auth();
+  const ctaHref = userId
+    ? (process.env.NEXT_PUBLIC_APP_URL ?? "https://app.postimi.com")
+    : "/sign-in";
+  const ctaLabel = userId ? "Open app" : "Sign in";
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="flex items-center justify-between px-6 py-5 md:px-10">
         <span className="text-lg font-semibold tracking-tight">Postimi</span>
         <Link
-          href="/sign-in"
+          href={ctaHref}
           className="text-sm text-muted-foreground [@media(hover:hover)]:hover:text-foreground"
         >
-          Sign in
+          {ctaLabel}
         </Link>
       </header>
 
@@ -116,8 +126,8 @@ export default function LandingPage() {
             <Link href="/legal/terms" className="[@media(hover:hover)]:hover:text-foreground">
               Terms
             </Link>
-            <Link href="/sign-in" className="[@media(hover:hover)]:hover:text-foreground">
-              Sign in
+            <Link href={ctaHref} className="[@media(hover:hover)]:hover:text-foreground">
+              {ctaLabel}
             </Link>
           </nav>
         </div>
