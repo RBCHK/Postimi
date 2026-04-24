@@ -3,6 +3,7 @@
  * All functions require ThreadsApiCredentials (OAuth 2.0 per-user tokens from DB).
  */
 
+import { fetchWithRetry } from "@/lib/fetch-with-retry";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 const BASE_URL = "https://graph.threads.net/v1.0";
@@ -94,17 +95,26 @@ export interface ThreadsAccountInsights {
   followersCount: number;
 }
 
-const RETRY_DELAYS_MS = [1000, 4000, 15000];
-
-async function threadsGet(url: string): Promise<Response> {
-  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
-    const res = await fetchWithTimeout(url);
-    if (res.status !== 429) return res;
-    if (attempt === RETRY_DELAYS_MS.length) return res;
-    await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]!));
+/**
+ * Threads GET with retry + backoff. Delegates to `fetchWithRetry`
+ * which retries on 429/5xx and honours Retry-After. We catch the
+ * terminal `RetryableApiError` and rethrow the original Response-like
+ * object so downstream code (auth/scope error classification) keeps
+ * its existing shape.
+ */
+async function threadsGet(url: string, retryContext: string): Promise<Response> {
+  try {
+    return await fetchWithRetry(url, { retryContext });
+  } catch (err) {
+    // `fetchWithRetry` throws RetryableApiError after exhausting retries.
+    // Convert it back into a Response so `res.status` / `res.text()` at
+    // call sites work unchanged.
+    const { RetryableApiError } = await import("@/lib/fetch-with-retry");
+    if (err instanceof RetryableApiError) {
+      return new Response(err.body, { status: err.status || 500 });
+    }
+    throw err;
   }
-  // Unreachable — the loop returns on non-429 or exhausts retries.
-  throw new Error("threadsGet: retry logic bug");
 }
 
 function normalizeMediaType(raw: string | undefined): ThreadsMediaType {
@@ -117,14 +127,21 @@ function normalizeMediaType(raw: string | undefined): ThreadsMediaType {
 }
 
 /**
+ * Safety cap on pagination loops. Meta returns `paging.next` URLs;
+ * without a cap a misbehaving API or a legit huge account could loop.
+ */
+const MAX_PAGES = 50;
+
+/**
  * List the authenticated user's Threads posts since `opts.since`.
  * Uses pagination (up to `opts.limit`, default 200).
  */
 export async function fetchThreadsPosts(
   creds: ThreadsApiCredentials,
-  opts: { since?: Date; limit?: number } = {}
+  opts: { since?: Date; limit?: number; maxPages?: number } = {}
 ): Promise<ThreadsPost[]> {
   const limit = opts.limit ?? 200;
+  const maxPages = opts.maxPages ?? MAX_PAGES;
   const fields = "id,text,media_type,permalink,timestamp,reply_to";
   const posts: ThreadsPost[] = [];
 
@@ -137,8 +154,11 @@ export async function fetchThreadsPosts(
       ...(opts.since ? { since: String(Math.floor(opts.since.getTime() / 1000)) } : {}),
     }).toString();
 
+  let pageCount = 0;
+
   while (url && posts.length < limit) {
-    const res: Response = await threadsGet(url);
+    const currentUrl: string = url;
+    const res: Response = await threadsGet(currentUrl, "threads-api:posts");
     if (res.status === 401 || res.status === 403) {
       const body = await res.text();
       throw new ThreadsAuthError(`Threads auth failed ${res.status}: ${body}`, res.status);
@@ -159,6 +179,8 @@ export async function fetchThreadsPosts(
       paging?: { next?: string };
     };
 
+    pageCount++;
+
     for (const row of page.data ?? []) {
       posts.push({
         id: row.id,
@@ -171,8 +193,36 @@ export async function fetchThreadsPosts(
       if (posts.length >= limit) break;
     }
 
-    url = page.paging?.next ?? null;
+    const nextUrl = page.paging?.next ?? null;
+
+    // Stuck-cursor guard: API handed us the SAME URL we just requested.
+    if (nextUrl && nextUrl === currentUrl) {
+      const Sentry = await import("@sentry/nextjs");
+      Sentry.captureMessage("threads-api: stuck pagination cursor", {
+        level: "warning",
+        tags: { area: "threads-api", endpoint: "posts" },
+        extra: { userId: creds.threadsUserId, pageCount },
+      });
+      break;
+    }
+
+    // Max-pages guard.
+    if (pageCount >= maxPages && nextUrl) {
+      const Sentry = await import("@sentry/nextjs");
+      Sentry.captureMessage("threads-api: max pagination pages reached", {
+        level: "warning",
+        tags: { area: "threads-api", endpoint: "posts" },
+        extra: { userId: creds.threadsUserId, maxPages, collected: posts.length },
+      });
+      break;
+    }
+
+    url = nextUrl;
   }
+
+  console.log(
+    `[threads-api] fetchThreadsPosts: user=${creds.threadsUserId} pages=${pageCount} posts=${posts.length}`
+  );
 
   return posts;
 }
@@ -196,7 +246,7 @@ export async function fetchThreadInsights(
       access_token: creds.accessToken,
     }).toString();
 
-  const res = await threadsGet(url);
+  const res = await threadsGet(url, "threads-api:insights");
   if (res.status === 401 || res.status === 403) {
     const body = await res.text();
     if (isScopeDenial(body)) {
@@ -252,7 +302,7 @@ export async function fetchThreadsUserInsights(
       access_token: creds.accessToken,
     }).toString();
 
-  const res = await threadsGet(url);
+  const res = await threadsGet(url, "threads-api:user-insights");
   if (res.status === 401 || res.status === 403) {
     const body = await res.text();
     if (isScopeDenial(body)) {
@@ -307,7 +357,7 @@ export async function postToThreads(
   text: string
 ): Promise<{ threadId: string; threadUrl: string }> {
   // Step 1: Create media container
-  const containerRes = await fetchWithTimeout(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
+  const containerRes = await fetchWithRetry(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -315,6 +365,7 @@ export async function postToThreads(
       text,
       access_token: credentials.accessToken,
     }),
+    retryContext: "threads-api:container.text",
   });
 
   if (!containerRes.ok) {
@@ -325,7 +376,7 @@ export async function postToThreads(
   const container = (await containerRes.json()) as { id: string };
 
   // Step 2: Publish the container
-  const publishRes = await fetchWithTimeout(
+  const publishRes = await fetchWithRetry(
     `${BASE_URL}/${credentials.threadsUserId}/threads_publish`,
     {
       method: "POST",
@@ -334,6 +385,7 @@ export async function postToThreads(
         creation_id: container.id,
         access_token: credentials.accessToken,
       }),
+      retryContext: "threads-api:publish.text",
     }
   );
 
@@ -360,7 +412,7 @@ export async function postToThreadsWithImage(
   imageUrl: string
 ): Promise<{ threadId: string; threadUrl: string }> {
   // Step 1: Create image container
-  const containerRes = await fetchWithTimeout(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
+  const containerRes = await fetchWithRetry(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -369,6 +421,7 @@ export async function postToThreadsWithImage(
       text,
       access_token: credentials.accessToken,
     }),
+    retryContext: "threads-api:container.image",
   });
 
   if (!containerRes.ok) {
@@ -379,7 +432,7 @@ export async function postToThreadsWithImage(
   const container = (await containerRes.json()) as { id: string };
 
   // Step 2: Publish the container
-  const publishRes = await fetchWithTimeout(
+  const publishRes = await fetchWithRetry(
     `${BASE_URL}/${credentials.threadsUserId}/threads_publish`,
     {
       method: "POST",
@@ -388,6 +441,7 @@ export async function postToThreadsWithImage(
         creation_id: container.id,
         access_token: credentials.accessToken,
       }),
+      retryContext: "threads-api:publish.image",
     }
   );
 
@@ -450,7 +504,7 @@ export async function postToThreadsWithImages(
   // Step 1: Create individual image item containers
   const childIds: string[] = [];
   for (const imageUrl of imageUrls) {
-    const itemRes = await fetchWithTimeout(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
+    const itemRes = await fetchWithRetry(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -459,6 +513,7 @@ export async function postToThreadsWithImages(
         is_carousel_item: "true",
         access_token: credentials.accessToken,
       }),
+      retryContext: "threads-api:carousel.item",
     });
 
     if (!itemRes.ok) {
@@ -483,10 +538,11 @@ export async function postToThreadsWithImages(
     access_token: credentials.accessToken,
   });
 
-  const carouselRes = await fetchWithTimeout(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
+  const carouselRes = await fetchWithRetry(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params,
+    retryContext: "threads-api:carousel.container",
   });
 
   if (!carouselRes.ok) {
@@ -499,7 +555,7 @@ export async function postToThreadsWithImages(
   // Step 4: Wait for carousel to finish, then publish
   await waitForContainerReady(credentials, carousel.id);
 
-  const publishRes = await fetchWithTimeout(
+  const publishRes = await fetchWithRetry(
     `${BASE_URL}/${credentials.threadsUserId}/threads_publish`,
     {
       method: "POST",
@@ -508,6 +564,7 @@ export async function postToThreadsWithImages(
         creation_id: carousel.id,
         access_token: credentials.accessToken,
       }),
+      retryContext: "threads-api:publish.carousel",
     }
   );
 

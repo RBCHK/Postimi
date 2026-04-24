@@ -4,7 +4,7 @@
  */
 
 import { logXApiCall } from "@/lib/x-api-logger";
-import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { fetchWithRetry } from "@/lib/fetch-with-retry";
 
 const BASE_URL = "https://api.twitter.com/2";
 
@@ -93,12 +93,13 @@ async function xFetch<T>(
   const url = `${BASE_URL}${endpoint}`;
   const qs = new URLSearchParams(params).toString();
 
-  const res = await fetchWithTimeout(`${url}?${qs}`, {
+  const res = await fetchWithRetry(`${url}?${qs}`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
     cache: "no-store",
+    retryContext: `x-api:GET ${endpoint}`,
   });
 
   if (!res.ok) {
@@ -117,13 +118,14 @@ async function xPost<T>(
   endpoint: string,
   body: Record<string, unknown>
 ): Promise<T> {
-  const res = await fetchWithTimeout(`${BASE_URL}${endpoint}`, {
+  const res = await fetchWithRetry(`${BASE_URL}${endpoint}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
+    retryContext: `x-api:POST ${endpoint}`,
   });
 
   if (!res.ok) {
@@ -155,7 +157,7 @@ export async function uploadMediaToX(
   const { accessToken } = credentials;
 
   // INIT
-  const initRes = await fetchWithTimeout(UPLOAD_BASE_URL, {
+  const initRes = await fetchWithRetry(UPLOAD_BASE_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -166,6 +168,7 @@ export async function uploadMediaToX(
       total_bytes: imageBuffer.length,
       media_type: mimeType,
     }),
+    retryContext: "x-api:media/upload INIT",
   });
   if (!initRes.ok) {
     const body = await initRes.text();
@@ -186,11 +189,12 @@ export async function uploadMediaToX(
 
     // APPEND uploads a 1MB binary chunk — give it a larger budget than
     // the 30s default to tolerate slow client connections.
-    const appendRes = await fetchWithTimeout(UPLOAD_BASE_URL, {
+    const appendRes = await fetchWithRetry(UPLOAD_BASE_URL, {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
       body: formData,
       timeoutMs: 60_000,
+      retryContext: "x-api:media/upload APPEND",
     });
     if (!appendRes.ok) {
       const body = await appendRes.text();
@@ -201,13 +205,14 @@ export async function uploadMediaToX(
   }
 
   // FINALIZE
-  const finalizeRes = await fetchWithTimeout(UPLOAD_BASE_URL, {
+  const finalizeRes = await fetchWithRetry(UPLOAD_BASE_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ command: "FINALIZE", media_id: mediaId }),
+    retryContext: "x-api:media/upload FINALIZE",
   });
   if (!finalizeRes.ok) {
     const body = await finalizeRes.text();
@@ -385,15 +390,24 @@ export async function fetchUserTweets(
   return tweets;
 }
 
+/**
+ * Safety cap on pagination loops. X returns a `meta.next_token` per
+ * page; without a cap a misbehaving API (same token returned forever)
+ * or a legitimate-but-huge account could loop indefinitely.
+ */
+const MAX_PAGES = 50;
+
 /** Fetch user tweets with pagination support (>100 tweets) */
 export async function fetchUserTweetsPaginated(
   credentials: XApiCredentials,
-  opts: { maxResults?: number; startTime?: string; sinceId?: string } = {},
+  opts: { maxResults?: number; startTime?: string; sinceId?: string; maxPages?: number } = {},
   logOpts?: XApiLogOpts
 ): Promise<XTweetMetrics[]> {
   const allTweets: XTweetMetrics[] = [];
   let paginationToken: string | undefined;
   const perPage = Math.min(opts.maxResults ?? 100, 100);
+  const maxPages = opts.maxPages ?? MAX_PAGES;
+  let pageCount = 0;
 
   do {
     const params: Record<string, string> = {
@@ -410,13 +424,40 @@ export async function fetchUserTweetsPaginated(
       params
     );
 
+    pageCount++;
+
     if (data.data?.length) {
       for (const tweet of data.data) {
         allTweets.push(parseTweet(tweet, credentials.xUsername));
       }
     }
 
-    paginationToken = data.meta?.next_token;
+    const nextToken = data.meta?.next_token;
+
+    // Stuck-cursor guard: API handed us the SAME token we just used.
+    // This indicates a broken upstream — the next page would be identical.
+    if (nextToken && nextToken === paginationToken) {
+      const Sentry = await import("@sentry/nextjs");
+      Sentry.captureMessage("x-api: stuck pagination cursor", {
+        level: "warning",
+        tags: { area: "x-api", endpoint: "users/tweets" },
+        extra: { userId: credentials.xUserId, token: nextToken, pageCount },
+      });
+      break;
+    }
+
+    // Max-pages guard: explicit cap so we never loop forever.
+    if (pageCount >= maxPages && nextToken) {
+      const Sentry = await import("@sentry/nextjs");
+      Sentry.captureMessage("x-api: max pagination pages reached", {
+        level: "warning",
+        tags: { area: "x-api", endpoint: "users/tweets" },
+        extra: { userId: credentials.xUserId, maxPages, collected: allTweets.length },
+      });
+      break;
+    }
+
+    paginationToken = nextToken;
 
     if (opts.maxResults && allTweets.length >= opts.maxResults) {
       return allTweets.slice(0, opts.maxResults);
@@ -432,6 +473,11 @@ export async function fetchUserTweetsPaginated(
       ...logOpts,
     });
   }
+
+  // Visibility: log the page count so we notice crons approaching the cap in prod.
+  console.log(
+    `[x-api] fetchUserTweetsPaginated: user=${credentials.xUserId} pages=${pageCount} tweets=${allTweets.length}`
+  );
 
   return allTweets;
 }
