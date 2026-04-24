@@ -177,7 +177,16 @@ export async function uploadMediaToX(
   const initData = (await initRes.json()) as { media_id_string: string };
   const mediaId = initData.media_id_string;
 
-  // APPEND (chunked)
+  // APPEND (chunked).
+  //
+  // Each chunk is keyed by `segment_index` and is therefore idempotent
+  // from X's perspective — retrying the same chunk with the same index
+  // is safe, duplicates are deduped server-side. We wrap every chunk
+  // call in its own `fetchWithRetry` invocation (3 attempts, exp
+  // backoff on 5xx/network, honours Retry-After), so a transient
+  // failure on chunk 2/5 gets its own fresh retry budget independent
+  // of any other chunk. This matters for larger images — a single
+  // blip that would otherwise fail the whole upload now recovers.
   const totalChunks = Math.ceil(imageBuffer.length / CHUNK_SIZE);
   for (let i = 0; i < totalChunks; i++) {
     const chunk = imageBuffer.subarray(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
@@ -194,7 +203,7 @@ export async function uploadMediaToX(
       headers: { Authorization: `Bearer ${accessToken}` },
       body: formData,
       timeoutMs: 60_000,
-      retryContext: "x-api:media/upload APPEND",
+      retryContext: `x-api:media/upload APPEND chunk=${i}/${totalChunks}`,
     });
     if (!appendRes.ok) {
       const body = await appendRes.text();

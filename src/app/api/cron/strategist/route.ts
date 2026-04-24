@@ -24,6 +24,7 @@ import { getXApiTokenForUser } from "@/lib/server/x-token";
 import { withCronLogging } from "@/lib/cron-helpers";
 import { reserveQuota, completeReservation, failReservation } from "@/lib/ai-quota";
 import { PLANS } from "@/lib/plans";
+import { withTimeout, TimeoutError } from "@/lib/with-timeout";
 import {
   QuotaExceededError,
   RateLimitExceededError,
@@ -44,6 +45,15 @@ import type {
 } from "@/lib/types";
 
 export const maxDuration = 120;
+
+/**
+ * Tavily's Node client wraps `fetch` internally and exposes no
+ * cancel mechanism. A hung search stalls `generateText` which stalls
+ * the whole cron. Bound every tool-call with a hard wall so a slow
+ * Tavily leg degrades this user's analysis quality rather than the
+ * whole queue.
+ */
+const TAVILY_TIMEOUT_MS = 15_000;
 
 // ADR-008 Phase 6: Strategist runs per (user × connected platform).
 //
@@ -281,16 +291,32 @@ export const GET = withCronLogging("strategist", async () => {
               }),
               execute: async ({ query }) => {
                 searchQueries.push(query);
-                const response = await tavilyClient.search(query, {
-                  maxResults: 5,
-                  searchDepth: "basic",
-                  timeout: 30,
-                });
-                return response.results.map((r) => ({
-                  title: r.title,
-                  url: r.url,
-                  snippet: r.content?.slice(0, 500) ?? "",
-                }));
+                try {
+                  const response = await withTimeout(
+                    tavilyClient.search(query, {
+                      maxResults: 5,
+                      searchDepth: "basic",
+                      timeout: 30,
+                    }),
+                    TAVILY_TIMEOUT_MS,
+                    "tavily:strategist"
+                  );
+                  return response.results.map((r) => ({
+                    title: r.title,
+                    url: r.url,
+                    snippet: r.content?.slice(0, 500) ?? "",
+                  }));
+                } catch (err) {
+                  if (err instanceof TimeoutError) {
+                    Sentry.captureMessage("tavily-timeout", {
+                      level: "warning",
+                      tags: { area: "tavily", caller: "strategist" },
+                      extra: { userId: user.id, query, timeoutMs: TAVILY_TIMEOUT_MS },
+                    });
+                    return [];
+                  }
+                  throw err;
+                }
               },
             }),
           },

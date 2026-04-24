@@ -117,6 +117,37 @@ async function threadsGet(url: string, retryContext: string): Promise<Response> 
   }
 }
 
+/**
+ * Threads POST with retry + backoff. Mirrors `threadsGet` but for
+ * publish/container creation paths. `fetchWithRetry` already scopes
+ * retries to idempotent-ish statuses (429/5xx/network) and honours
+ * `Retry-After`. Returning a Response on terminal failure (rather
+ * than letting `RetryableApiError` bubble) keeps call sites uniform
+ * with the rest of the file: each caller reads `res.ok` / `res.text()`
+ * and throws its own descriptive `Threads … failed` error so the
+ * publish stack traces stay readable.
+ */
+async function threadsPost(
+  url: string,
+  body: URLSearchParams,
+  retryContext: string
+): Promise<Response> {
+  try {
+    return await fetchWithRetry(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      retryContext,
+    });
+  } catch (err) {
+    const { RetryableApiError } = await import("@/lib/fetch-with-retry");
+    if (err instanceof RetryableApiError) {
+      return new Response(err.body, { status: err.status || 500 });
+    }
+    throw err;
+  }
+}
+
 function normalizeMediaType(raw: string | undefined): ThreadsMediaType {
   if (raw && THREADS_MEDIA_TYPES.includes(raw as ThreadsMediaType)) {
     return raw as ThreadsMediaType;
@@ -129,12 +160,20 @@ function normalizeMediaType(raw: string | undefined): ThreadsMediaType {
 /**
  * Safety cap on pagination loops. Meta returns `paging.next` URLs;
  * without a cap a misbehaving API or a legit huge account could loop.
+ * A realistic 7-day window at 100/page is well under 20 pages.
  */
-const MAX_PAGES = 50;
+const MAX_PAGES = 20;
 
 /**
  * List the authenticated user's Threads posts since `opts.since`.
  * Uses pagination (up to `opts.limit`, default 200).
+ *
+ * Dedup: Meta has been observed in edge cases to hand back a
+ * `paging.next` URL whose payload overlaps with the previous page
+ * (or, more rarely, a URL that echoes the one we just requested).
+ * We maintain a `Set<string>` of seen post IDs and break when a page
+ * produces no new IDs — that terminates both the "stuck cursor" case
+ * and the "looping identical window" case without double-counting.
  */
 export async function fetchThreadsPosts(
   creds: ThreadsApiCredentials,
@@ -144,6 +183,7 @@ export async function fetchThreadsPosts(
   const maxPages = opts.maxPages ?? MAX_PAGES;
   const fields = "id,text,media_type,permalink,timestamp,reply_to";
   const posts: ThreadsPost[] = [];
+  const seenIds = new Set<string>();
 
   let url: string | null =
     `${BASE_URL}/${creds.threadsUserId}/threads?` +
@@ -181,7 +221,14 @@ export async function fetchThreadsPosts(
 
     pageCount++;
 
+    let newIdsOnPage = 0;
     for (const row of page.data ?? []) {
+      if (seenIds.has(row.id)) {
+        // Dedup: Meta returned a row we already have. Don't double-count.
+        continue;
+      }
+      seenIds.add(row.id);
+      newIdsOnPage++;
       posts.push({
         id: row.id,
         text: row.text ?? "",
@@ -195,8 +242,10 @@ export async function fetchThreadsPosts(
 
     const nextUrl = page.paging?.next ?? null;
 
-    // Stuck-cursor guard: API handed us the SAME URL we just requested.
-    if (nextUrl && nextUrl === currentUrl) {
+    // Dedup guard: the entire page contained only IDs we've already
+    // seen. Continuing would either loop (stuck cursor) or keep pulling
+    // the same window forever.
+    if (nextUrl && newIdsOnPage === 0 && (page.data?.length ?? 0) > 0) {
       const Sentry = await import("@sentry/nextjs");
       Sentry.captureMessage("threads-api: stuck pagination cursor", {
         level: "warning",
@@ -209,10 +258,10 @@ export async function fetchThreadsPosts(
     // Max-pages guard.
     if (pageCount >= maxPages && nextUrl) {
       const Sentry = await import("@sentry/nextjs");
-      Sentry.captureMessage("threads-api: max pagination pages reached", {
+      Sentry.captureMessage("threads-pagination-cap-hit", {
         level: "warning",
         tags: { area: "threads-api", endpoint: "posts" },
-        extra: { userId: creds.threadsUserId, maxPages, collected: posts.length },
+        extra: { userId: creds.threadsUserId, pages: pageCount },
       });
       break;
     }
@@ -357,16 +406,15 @@ export async function postToThreads(
   text: string
 ): Promise<{ threadId: string; threadUrl: string }> {
   // Step 1: Create media container
-  const containerRes = await fetchWithRetry(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
+  const containerRes = await threadsPost(
+    `${BASE_URL}/${credentials.threadsUserId}/threads`,
+    new URLSearchParams({
       media_type: "TEXT",
       text,
       access_token: credentials.accessToken,
     }),
-    retryContext: "threads-api:container.text",
-  });
+    "threads-api:container.text"
+  );
 
   if (!containerRes.ok) {
     const body = await containerRes.text();
@@ -376,17 +424,13 @@ export async function postToThreads(
   const container = (await containerRes.json()) as { id: string };
 
   // Step 2: Publish the container
-  const publishRes = await fetchWithRetry(
+  const publishRes = await threadsPost(
     `${BASE_URL}/${credentials.threadsUserId}/threads_publish`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        creation_id: container.id,
-        access_token: credentials.accessToken,
-      }),
-      retryContext: "threads-api:publish.text",
-    }
+    new URLSearchParams({
+      creation_id: container.id,
+      access_token: credentials.accessToken,
+    }),
+    "threads-api:publish.text"
   );
 
   if (!publishRes.ok) {
@@ -412,17 +456,16 @@ export async function postToThreadsWithImage(
   imageUrl: string
 ): Promise<{ threadId: string; threadUrl: string }> {
   // Step 1: Create image container
-  const containerRes = await fetchWithRetry(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
+  const containerRes = await threadsPost(
+    `${BASE_URL}/${credentials.threadsUserId}/threads`,
+    new URLSearchParams({
       media_type: "IMAGE",
       image_url: imageUrl,
       text,
       access_token: credentials.accessToken,
     }),
-    retryContext: "threads-api:container.image",
-  });
+    "threads-api:container.image"
+  );
 
   if (!containerRes.ok) {
     const body = await containerRes.text();
@@ -432,17 +475,13 @@ export async function postToThreadsWithImage(
   const container = (await containerRes.json()) as { id: string };
 
   // Step 2: Publish the container
-  const publishRes = await fetchWithRetry(
+  const publishRes = await threadsPost(
     `${BASE_URL}/${credentials.threadsUserId}/threads_publish`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        creation_id: container.id,
-        access_token: credentials.accessToken,
-      }),
-      retryContext: "threads-api:publish.image",
-    }
+    new URLSearchParams({
+      creation_id: container.id,
+      access_token: credentials.accessToken,
+    }),
+    "threads-api:publish.image"
   );
 
   if (!publishRes.ok) {
@@ -459,15 +498,58 @@ export async function postToThreadsWithImage(
 }
 
 /**
- * Wait for a Threads media container to reach FINISHED status.
- * Threads processes images asynchronously — we must poll until ready.
+ * Adaptive backoff schedule for container-ready polling. Starts tight
+ * because single-image Threads usually finish in <3s, stretches out
+ * for slow/degraded Meta states, caps at 8s so we don't overshoot the
+ * total elapsed budget. Any index past the array length reuses the
+ * final value (8s).
  */
-async function waitForContainerReady(
+const CONTAINER_POLL_BACKOFF_MS = [1000, 2000, 3000, 5000, 8000];
+const CONTAINER_POLL_MAX_DELAY_MS = 8000;
+
+/**
+ * Hard wall on how long we'll wait for Meta to finish processing.
+ * Meta's docs quote "up to 2 minutes"; we pick 90s as a pragmatic
+ * middle ground — long enough to absorb a slow carousel-item but
+ * short enough to stay under the Vercel 120s function wall after
+ * subsequent publish calls.
+ */
+const CONTAINER_POLL_TOTAL_MS = 90_000;
+
+function containerPollDelay(iteration: number): number {
+  return CONTAINER_POLL_BACKOFF_MS[iteration] ?? CONTAINER_POLL_MAX_DELAY_MS;
+}
+
+/**
+ * Wait for a Threads media container to reach FINISHED status.
+ *
+ * Threads processes images asynchronously — we must poll until ready.
+ * Uses an adaptive backoff (1s → 2s → 3s → 5s → 8s → 8s …) and a
+ * total elapsed cap of 90s rather than a fixed iteration count, so
+ * slow single-image or carousel uploads don't time out prematurely
+ * while a genuinely stuck container still exits within the function
+ * budget.
+ *
+ * Honours a `Retry-After` header if Meta sends one (clamped to the
+ * normal max delay so a misbehaving upstream can't stall the wait).
+ * Throws immediately on `ERROR` status — Meta has already given up.
+ *
+ * Exported under `_internal` purely for unit testing; production
+ * callers should go through `postToThreadsWithImage(s)`.
+ */
+export async function _waitForContainerReady(
   credentials: ThreadsApiCredentials,
   containerId: string,
-  maxAttempts = 15
+  opts: { totalMs?: number } = {}
 ): Promise<void> {
-  for (let i = 0; i < maxAttempts; i++) {
+  const totalMs = opts.totalMs ?? CONTAINER_POLL_TOTAL_MS;
+  const started = Date.now();
+
+  for (let iteration = 0; ; iteration++) {
+    if (Date.now() - started > totalMs) {
+      throw new Error(`Threads media processing timed out after ${totalMs}ms`);
+    }
+
     const res = await fetchWithTimeout(
       `${BASE_URL}/${containerId}?fields=status,error_message&access_token=${credentials.accessToken}`
     );
@@ -484,10 +566,24 @@ async function waitForContainerReady(
       throw new Error(`Threads media processing failed: ${data.error_message ?? "unknown error"}`);
     }
 
-    // IN_PROGRESS — wait and retry
-    await new Promise((r) => setTimeout(r, 2000));
+    // IN_PROGRESS — wait and retry. Prefer server-supplied Retry-After
+    // when present; otherwise fall back to the adaptive schedule.
+    const retryAfterHeader = res.headers?.get?.("Retry-After") ?? null;
+    let waitMs = containerPollDelay(iteration);
+    if (retryAfterHeader) {
+      const retryAfterSec = Number(retryAfterHeader);
+      if (Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
+        waitMs = Math.min(retryAfterSec * 1000, CONTAINER_POLL_MAX_DELAY_MS);
+      }
+    }
+
+    // Clip the sleep so we don't overshoot the total cap on the tail.
+    const remaining = totalMs - (Date.now() - started);
+    if (remaining <= 0) {
+      throw new Error(`Threads media processing timed out after ${totalMs}ms`);
+    }
+    await new Promise((r) => setTimeout(r, Math.min(waitMs, remaining)));
   }
-  throw new Error("Threads media processing timed out");
 }
 
 /**
@@ -504,17 +600,16 @@ export async function postToThreadsWithImages(
   // Step 1: Create individual image item containers
   const childIds: string[] = [];
   for (const imageUrl of imageUrls) {
-    const itemRes = await fetchWithRetry(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
+    const itemRes = await threadsPost(
+      `${BASE_URL}/${credentials.threadsUserId}/threads`,
+      new URLSearchParams({
         media_type: "IMAGE",
         image_url: imageUrl,
         is_carousel_item: "true",
         access_token: credentials.accessToken,
       }),
-      retryContext: "threads-api:carousel.item",
-    });
+      "threads-api:carousel.item"
+    );
 
     if (!itemRes.ok) {
       const body = await itemRes.text();
@@ -527,23 +622,20 @@ export async function postToThreadsWithImages(
 
   // Step 2: Wait for all items to finish processing
   for (const childId of childIds) {
-    await waitForContainerReady(credentials, childId);
+    await _waitForContainerReady(credentials, childId);
   }
 
   // Step 3: Create carousel container with children (comma-separated)
-  const params = new URLSearchParams({
-    media_type: "CAROUSEL",
-    children: childIds.join(","),
-    text,
-    access_token: credentials.accessToken,
-  });
-
-  const carouselRes = await fetchWithRetry(`${BASE_URL}/${credentials.threadsUserId}/threads`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params,
-    retryContext: "threads-api:carousel.container",
-  });
+  const carouselRes = await threadsPost(
+    `${BASE_URL}/${credentials.threadsUserId}/threads`,
+    new URLSearchParams({
+      media_type: "CAROUSEL",
+      children: childIds.join(","),
+      text,
+      access_token: credentials.accessToken,
+    }),
+    "threads-api:carousel.container"
+  );
 
   if (!carouselRes.ok) {
     const body = await carouselRes.text();
@@ -553,19 +645,15 @@ export async function postToThreadsWithImages(
   const carousel = (await carouselRes.json()) as { id: string };
 
   // Step 4: Wait for carousel to finish, then publish
-  await waitForContainerReady(credentials, carousel.id);
+  await _waitForContainerReady(credentials, carousel.id);
 
-  const publishRes = await fetchWithRetry(
+  const publishRes = await threadsPost(
     `${BASE_URL}/${credentials.threadsUserId}/threads_publish`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        creation_id: carousel.id,
-        access_token: credentials.accessToken,
-      }),
-      retryContext: "threads-api:publish.carousel",
-    }
+    new URLSearchParams({
+      creation_id: carousel.id,
+      access_token: credentials.accessToken,
+    }),
+    "threads-api:publish.carousel"
   );
 
   if (!publishRes.ok) {

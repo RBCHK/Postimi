@@ -165,6 +165,61 @@ describe("researcher cron — contract", () => {
     expect(Sentry.captureException).toHaveBeenCalled();
   });
 
+  it("emits tavily-timeout warning and returns empty results when Tavily hangs", async () => {
+    const user = await createTestUser({ clerkId: `${PREFIX}tmout_${randomSuffix()}` });
+
+    // Simulate the already-timed-out state: `withTimeout` would
+    // normally wait 15s on a hung Tavily search and then reject with
+    // `TimeoutError`. Rather than burn 15s of real time inside this
+    // test (or fight fake-timer + promise-microtask interleaving), we
+    // short-circuit the Tavily client itself — it throws a real
+    // `TimeoutError` instance (same class the route's catch branch
+    // uses for `instanceof`), and the route must still emit
+    // `tavily-timeout` and return [].
+    const { TimeoutError } = await import("@/lib/with-timeout");
+    tavilySearchMock.mockImplementation(async () => {
+      throw new TimeoutError("tavily:researcher timed out after 15000ms", 15_000);
+    });
+
+    // Drive `generateText` to actually invoke the webSearch tool once
+    // and observe its return value so we can assert on graceful
+    // degradation (the note still gets saved).
+    generateTextMock.mockImplementation(async (opts: unknown) => {
+      const cast = opts as {
+        tools?: { webSearch?: { execute?: (args: { query: string }) => Promise<unknown> } };
+      };
+      const toolResult = await cast.tools?.webSearch?.execute?.({ query: "q" });
+      return {
+        text: "# Topic: After timeout\n\nok",
+        steps: [{ toolResult }],
+        finishReason: "stop",
+        usage: { inputTokens: 5, outputTokens: 5 },
+        _toolResult: toolResult,
+      };
+    });
+
+    const manualReq = new NextRequest("https://app.postimi.com/api/cron/researcher?manual=1", {
+      headers: { authorization: `Bearer ${CRON_SECRET}` },
+    });
+
+    const { GET } = await import("../route");
+    const res = await GET(manualReq);
+    expect(res.status).toBe(200);
+
+    const Sentry = await import("@sentry/nextjs");
+    const timeoutWarnings = (
+      Sentry.captureMessage as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls.filter((c) => {
+      const [msg, opts] = c as [string, { extra?: { userId?: string } } | undefined];
+      return msg === "tavily-timeout" && opts?.extra?.userId === user.id;
+    });
+    expect(timeoutWarnings).toHaveLength(1);
+
+    // The note is still saved — graceful degradation, not a hard fail.
+    const savedForUs = saveResearchNoteMock.mock.calls.filter((c) => c[0] === user.id);
+    expect(savedForUs).toHaveLength(1);
+  });
+
   it("emits a Sentry warning when the tool loop hits the step limit", async () => {
     const user = await createTestUser({ clerkId: `${PREFIX}steps_${randomSuffix()}` });
 

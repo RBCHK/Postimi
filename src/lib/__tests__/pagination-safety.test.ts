@@ -169,18 +169,21 @@ describe("fetchUserTweetsPaginated — safety caps", () => {
 
 describe("fetchThreadsPosts — safety caps", () => {
   it("stops at the configured maxPages", async () => {
-    // Every page returns paging.next → would loop without a cap.
+    // Every page returns paging.next with a fresh unique ID → would
+    // loop without a cap. With dedup on IDs the per-page content is
+    // always new, so only the hard page cap fires.
+    let idCounter = 0;
     mockFetch.mockImplementation(async () =>
       responseJson({
         data: [
           {
-            id: `th-${Math.random()}`,
+            id: `th-${++idCounter}`,
             text: "x",
             media_type: "TEXT_POST",
             timestamp: "2026-04-01T00:00:00+0000",
           },
         ],
-        paging: { next: `https://graph.threads.net/v1.0/next-${Math.random()}` },
+        paging: { next: `https://graph.threads.net/v1.0/next-${idCounter}` },
       })
     );
 
@@ -190,48 +193,60 @@ describe("fetchThreadsPosts — safety caps", () => {
 
     const Sentry = await import("@sentry/nextjs");
     expect(Sentry.captureMessage).toHaveBeenCalledWith(
-      "threads-api: max pagination pages reached",
+      "threads-pagination-cap-hit",
       expect.objectContaining({ level: "warning" })
     );
   });
 
-  it("detects a stuck paging.next (server echoes back the same URL) and breaks", async () => {
-    // The Threads paginator's stuck detector fires when `paging.next`
-    // equals the URL we JUST requested. First response includes a
-    // next URL; the second response echoes that same URL back in its
-    // own paging.next → paginator recognises the stall after fetching
-    // the page a second time.
-    mockFetch.mockImplementation(async (url: string) => {
-      if (url.includes("stuck-cursor")) {
-        // The echo page: returns itself as `next`.
-        return responseJson({
+  it("dedupes duplicate IDs across pages and does not double-count", async () => {
+    // Meta hands back two different `paging.next` URLs but the
+    // second page contains only IDs already seen on the first page.
+    // The paginator must (a) not double-count, (b) break rather than
+    // fetch page three.
+    mockFetch
+      .mockResolvedValueOnce(
+        responseJson({
           data: [
             {
-              id: "th-stuck",
+              id: "th-1",
               text: "x",
+              media_type: "TEXT_POST",
+              timestamp: "2026-04-01T00:00:00+0000",
+            },
+            {
+              id: "th-2",
+              text: "y",
               media_type: "TEXT_POST",
               timestamp: "2026-04-02T00:00:00+0000",
             },
           ],
-          paging: { next: url },
-        });
-      }
-      // First page: hand out the stuck URL.
-      return responseJson({
-        data: [
-          {
-            id: "th-1",
-            text: "x",
-            media_type: "TEXT_POST",
-            timestamp: "2026-04-01T00:00:00+0000",
-          },
-        ],
-        paging: { next: "https://graph.threads.net/v1.0/page?stuck-cursor=1" },
-      });
-    });
+          paging: { next: "https://graph.threads.net/v1.0/page?cursor=B" },
+        })
+      )
+      .mockResolvedValueOnce(
+        responseJson({
+          data: [
+            // Duplicates of page 1.
+            {
+              id: "th-1",
+              text: "x",
+              media_type: "TEXT_POST",
+              timestamp: "2026-04-01T00:00:00+0000",
+            },
+            {
+              id: "th-2",
+              text: "y",
+              media_type: "TEXT_POST",
+              timestamp: "2026-04-02T00:00:00+0000",
+            },
+          ],
+          paging: { next: "https://graph.threads.net/v1.0/page?cursor=C" },
+        })
+      );
 
     const posts = await fetchThreadsPosts(threadsCreds, { limit: 100 });
-    expect(posts.length).toBeGreaterThanOrEqual(2);
+    expect(posts.map((p) => p.id)).toEqual(["th-1", "th-2"]);
+    // Two pages fetched — the third is short-circuited by the dedup guard.
     expect(mockFetch).toHaveBeenCalledTimes(2);
 
     const Sentry = await import("@sentry/nextjs");

@@ -9,12 +9,22 @@ import { saveResearchNote, deleteResearchNote, getAllResearchNotes } from "@/lib
 import { withCronLogging } from "@/lib/cron-helpers";
 import { reserveQuota, completeReservation, failReservation } from "@/lib/ai-quota";
 import { PLANS } from "@/lib/plans";
+import { withTimeout, TimeoutError } from "@/lib/with-timeout";
 import {
   QuotaExceededError,
   RateLimitExceededError,
   SubscriptionRequiredError,
 } from "@/lib/errors";
 import type { ResearchSource } from "@/lib/types";
+
+/**
+ * Tavily's Node client wraps `fetch` internally and exposes no
+ * cancel mechanism. A hung search stalls `generateText` which stalls
+ * the whole cron. Bound every tool-call with a hard wall so a slow
+ * Tavily leg degrades this user's research quality rather than the
+ * whole queue.
+ */
+const TAVILY_TIMEOUT_MS = 15_000;
 
 export const maxDuration = 120;
 
@@ -68,18 +78,37 @@ export const GET = withCronLogging("researcher", async () => {
             }),
             execute: async ({ query }) => {
               searchQueries.push(query);
-              const response = await tavilyClient.search(query, {
-                maxResults: 5,
-                searchDepth: "basic",
-                timeout: 30,
-              });
-              const searchResults = response.results.map((r) => ({
-                title: r.title,
-                url: r.url,
-                snippet: r.content?.slice(0, 500) ?? "",
-              }));
-              allSources.push(...searchResults);
-              return searchResults;
+              try {
+                const response = await withTimeout(
+                  tavilyClient.search(query, {
+                    maxResults: 5,
+                    searchDepth: "basic",
+                    timeout: 30,
+                  }),
+                  TAVILY_TIMEOUT_MS,
+                  "tavily:researcher"
+                );
+                const searchResults = response.results.map((r) => ({
+                  title: r.title,
+                  url: r.url,
+                  snippet: r.content?.slice(0, 500) ?? "",
+                }));
+                allSources.push(...searchResults);
+                return searchResults;
+              } catch (err) {
+                if (err instanceof TimeoutError) {
+                  Sentry.captureMessage("tavily-timeout", {
+                    level: "warning",
+                    tags: { area: "tavily", caller: "researcher" },
+                    extra: { userId: user.id, query, timeoutMs: TAVILY_TIMEOUT_MS },
+                  });
+                  // Degrade gracefully — an empty result set lets the
+                  // model carry on rather than the whole tool call
+                  // failing and aborting this user's research note.
+                  return [];
+                }
+                throw err;
+              }
             },
           }),
           deleteOldNote: tool({
