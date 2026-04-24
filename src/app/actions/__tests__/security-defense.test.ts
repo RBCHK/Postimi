@@ -17,11 +17,11 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
-vi.mock("@/generated/prisma", () => ({
-  ContentType: {},
-  ConversationStatus: {},
-  SlotType: {},
-}));
+// No mock for @/generated/prisma — enums are only used as TypeScript type
+// annotations in the SUT (erased at compile time). Loading the real
+// generated enum exports means any future code that starts comparing
+// values at runtime will actually work; the empty `{}` mock would have
+// silently returned undefined.
 
 vi.mock("@/lib/date-utils", () => ({
   calendarDateStr: vi.fn().mockReturnValue("2099-01-01"),

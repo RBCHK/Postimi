@@ -71,6 +71,38 @@ for (const { name, path } of pages) {
   });
 }
 
+// Conversation pages are dynamic — the path includes a server-generated
+// id — so we can't list them up-front. Instead we create a conversation
+// via the home composer and verify /c/<id> renders without hydration
+// or console errors. If SSR breaks for the conversation route, this
+// catches it before the fuller conversation E2E does.
+test("Conversation page (/c/<id>) loads without errors", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForLoadState("domcontentloaded");
+
+  // Reset any errors collected during the home-page load — we only want
+  // to assert on errors fired by /c/<id> rendering.
+  (page as unknown as { __consoleErrors: string[] }).__consoleErrors = [];
+
+  // Use the same composer flow the real E2E uses so we exercise the
+  // DB-backed creation path (ADR-002: DB is source of truth) instead
+  // of fabricating a conversation id.
+  const textarea = page.locator('textarea[placeholder*="Paste a tweet"]');
+  await textarea.waitFor({ timeout: 10_000 });
+  await textarea.fill("smoke: verify /c/<id> renders");
+  await page.locator('button[aria-label="Send message"]').click();
+
+  // /app routes rewrite to /c/<id> via middleware when on the app host.
+  await page.waitForURL(/\/c\/[a-zA-Z0-9-]+/, { timeout: 15_000 });
+  await page.waitForLoadState("domcontentloaded");
+
+  // Give async errors a moment to fire (matches the other page tests).
+  await page.waitForTimeout(500);
+
+  const errors = getErrors(page);
+  expect(errors, "Console errors on conversation page").toEqual([]);
+});
+
 test("unauthenticated user is redirected to sign-in", async ({ browser }) => {
   // Create a fresh context without stored auth and without Clerk testing cookies
   const context = await browser.newContext({ storageState: undefined });

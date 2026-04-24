@@ -41,10 +41,11 @@ vi.mock("@/lib/ai-quota", () => ({
   checkRateLimit: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-vi.mock("@/generated/prisma", () => ({
-  ContentType: {},
-  ConversationStatus: {},
-}));
+// No mock for @/generated/prisma — enums are only referenced as TypeScript
+// type annotations in the SUT (erased at compile time). The empty `{}` mock
+// hid the fact that nothing at runtime needed them; letting the real
+// exports load means any future code that starts comparing to enum values
+// will actually work (the empty mock would have returned undefined).
 
 beforeEach(() => {
   mockFetchTweet.mockReset();
