@@ -174,7 +174,7 @@ export function DraftItem({
         {isEditing ? (
           <input
             ref={titleInputRef}
-            className="text-sm font-medium leading-snug bg-transparent border-none outline-none w-full placeholder:text-muted-foreground/50"
+            className="w-full border-none bg-transparent text-base font-medium leading-snug outline-none placeholder:text-muted-foreground/50 md:text-sm"
             value={editTitle}
             placeholder={DRAFT_DEFAULT_TITLE}
             onChange={(e) => setEditTitle(e.target.value)}
@@ -314,7 +314,7 @@ export function SlotItem({
       <Badge
         variant="ghost"
         className={cn(
-          "p-0.5 text-xs font-normal shrink-0 cursor-pointer hover:bg-muted/50 rounded",
+          "p-0.5 text-xs font-normal shrink-0 cursor-pointer [@media(hover:hover)]:hover:bg-muted/50 rounded",
           config.badgeClassName
         )}
         title={

@@ -4,6 +4,7 @@ import { useTypewriter } from "@/hooks/use-typewriter";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import type { Root, Text, Element, RootContent } from "hast";
+import { Button } from "@/components/ui/button";
 import { useConversation } from "@/contexts/conversation-context";
 
 const COLLAPSE_THRESHOLD = 300;
@@ -132,12 +133,14 @@ export function ChatBubble({ message, isStreaming = false }: ChatBubbleProps) {
         <div className="max-w-[80%] rounded-xl rounded-br-md bg-primary px-4 py-2.5 text-base leading-relaxed text-primary-foreground">
           <p className="whitespace-pre-wrap wrap-break-word">{displayContent}</p>
           {isLong && (
-            <button
+            <Button
+              variant="link"
+              size="sm"
               onClick={() => setExpanded((v) => !v)}
-              className="mt-1 text-xs text-primary-foreground/60 [@media(hover:hover)]:hover:text-primary-foreground/90 transition-colors"
+              className="mt-1 h-auto p-0 text-xs text-primary-foreground/60 [@media(hover:hover)]:hover:text-primary-foreground/90 [@media(hover:hover)]:hover:no-underline"
             >
               {expanded ? "Show less" : "Show more"}
-            </button>
+            </Button>
           )}
         </div>
       </div>

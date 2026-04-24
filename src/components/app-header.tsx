@@ -15,7 +15,7 @@ export function AppHeader() {
         <Link
           href="/"
           onClick={() => window.dispatchEvent(new Event("focus-chat-input"))}
-          className="text-lg font-semibold tracking-tight text-foreground hover:text-foreground/90 transition-colors"
+          className="text-lg font-semibold tracking-tight text-foreground [@media(hover:hover)]:hover:text-foreground/90 transition-colors"
         >
           Postimi
         </Link>

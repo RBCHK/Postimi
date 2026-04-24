@@ -125,17 +125,19 @@ export function StrategistView() {
       {connectedPlatforms.length > 1 && (
         <div className="flex gap-1 overflow-x-auto shrink-0 pb-1">
           {connectedPlatforms.map((p) => (
-            <button
+            <Button
               key={p}
+              variant="ghost"
+              size="sm"
               onClick={() => setSelectedPlatform(p)}
-              className={`shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium ${
                 selectedPlatform === p
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-muted/60"
+                  ? "bg-muted text-foreground [@media(hover:hover)]:hover:bg-muted [@media(hover:hover)]:hover:text-foreground"
+                  : "text-muted-foreground [@media(hover:hover)]:hover:bg-muted/60 [@media(hover:hover)]:hover:text-foreground"
               }`}
             >
               {PLATFORM_CONFIG[p].label}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -143,15 +145,19 @@ export function StrategistView() {
       {/* Mobile: horizontal tabs */}
       <div className="md:hidden flex gap-1 overflow-x-auto pb-2 shrink-0">
         {NAV.map((item) => (
-          <button
+          <Button
             key={item.id}
+            variant="ghost"
+            size="sm"
             onClick={() => setLeftTab(item.id)}
-            className={`shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-              leftTab === item.id ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+            className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium ${
+              leftTab === item.id
+                ? "bg-primary text-primary-foreground [@media(hover:hover)]:hover:bg-primary [@media(hover:hover)]:hover:text-primary-foreground"
+                : "text-muted-foreground [@media(hover:hover)]:hover:bg-transparent [@media(hover:hover)]:hover:text-muted-foreground"
             }`}
           >
             {item.label}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -165,17 +171,19 @@ export function StrategistView() {
             {/* Desktop tab switcher */}
             <div className="hidden md:flex gap-1 mb-2">
               {NAV.map((item) => (
-                <button
+                <Button
                   key={item.id}
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setLeftTab(item.id)}
-                  className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  className={`flex-1 rounded-md py-1.5 text-xs font-medium ${
                     leftTab === item.id
-                      ? "bg-muted text-foreground"
-                      : "text-muted-foreground [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-muted/60"
+                      ? "bg-muted text-foreground [@media(hover:hover)]:hover:bg-muted [@media(hover:hover)]:hover:text-foreground"
+                      : "text-muted-foreground [@media(hover:hover)]:hover:bg-muted/60 [@media(hover:hover)]:hover:text-foreground"
                   }`}
                 >
                   {item.label}
-                </button>
+                </Button>
               ))}
             </div>
 
@@ -264,13 +272,15 @@ export function StrategistView() {
           >
             {/* Mobile back */}
             {leftTab === "analyses" && (
-              <button
-                className="md:hidden flex items-center gap-1.5 text-xs text-muted-foreground mb-4 min-h-[44px]"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="md:hidden flex h-auto items-center gap-1.5 self-start px-2 py-2 mb-4 min-h-[44px] text-xs text-muted-foreground [@media(hover:hover)]:hover:bg-transparent [@media(hover:hover)]:hover:text-foreground"
                 onClick={handleMobileBack}
               >
                 <ArrowLeft className="size-3.5" />
                 Back
-              </button>
+              </Button>
             )}
 
             {leftTab === "research" ? (
@@ -333,9 +343,10 @@ export function StrategistView() {
                 </p>
 
                 <div className="mb-5 rounded-md border">
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
-                    className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium [@media(hover:hover)]:hover:bg-muted/40 transition-colors"
+                    className="flex h-auto w-full items-center justify-between rounded-b-none px-3 py-2 text-sm font-medium [@media(hover:hover)]:hover:bg-muted/40"
                     onClick={() => setProfileOpen((v) => !v)}
                   >
                     <span>
@@ -352,14 +363,14 @@ export function StrategistView() {
                     ) : (
                       <ChevronDown className="size-3.5 text-muted-foreground" />
                     )}
-                  </button>
+                  </Button>
                   {profileOpen && (
                     <div className="border-t px-3 py-3 space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">
                           <Label className="text-xs">Name</Label>
                           <Input
-                            className="h-8 text-sm"
+                            className="h-9"
                             placeholder="Ruslan Buchak"
                             value={profile.name}
                             onChange={(e) => updateProfile({ name: e.target.value })}
@@ -368,7 +379,7 @@ export function StrategistView() {
                         <div className="space-y-1">
                           <Label className="text-xs">Username</Label>
                           <Input
-                            className="h-8 text-sm"
+                            className="h-9"
                             placeholder="razRBCHK"
                             value={profile.username}
                             onChange={(e) => updateProfile({ username: e.target.value })}
@@ -377,7 +388,7 @@ export function StrategistView() {
                         <div className="space-y-1">
                           <Label className="text-xs">Followers</Label>
                           <Input
-                            className="h-8 text-sm"
+                            className="h-9"
                             placeholder="1200"
                             value={profile.followers}
                             onChange={(e) => updateProfile({ followers: e.target.value })}
@@ -386,7 +397,7 @@ export function StrategistView() {
                         <div className="space-y-1">
                           <Label className="text-xs">Following</Label>
                           <Input
-                            className="h-8 text-sm"
+                            className="h-9"
                             placeholder="350"
                             value={profile.following}
                             onChange={(e) => updateProfile({ following: e.target.value })}
@@ -396,7 +407,7 @@ export function StrategistView() {
                       <div className="space-y-1">
                         <Label className="text-xs">Bio</Label>
                         <Textarea
-                          className="text-sm resize-none"
+                          className="resize-none"
                           rows={2}
                           placeholder="About you..."
                           value={profile.bio}

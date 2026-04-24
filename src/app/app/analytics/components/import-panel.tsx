@@ -296,7 +296,7 @@ export function ImportPanel() {
               href={LINKEDIN_ANALYTICS_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+              className="inline-flex items-center gap-1 text-xs text-primary [@media(hover:hover)]:hover:underline"
             >
               <ExternalLink className="h-3 w-3" />
               Open LinkedIn Analytics

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { ArrowDown } from "lucide-react";
 import { ChatBubble } from "@/components/chat-bubble";
+import { Button } from "@/components/ui/button";
 import { useConversation } from "@/contexts/conversation-context";
 
 const SCROLL_TOP_OFFSET = 32; // px = pt-8
@@ -108,13 +109,15 @@ export function ChatMessages() {
         </div>
       </div>
       {showScrollBtn && (
-        <button
+        <Button
+          variant="secondary"
+          size="icon"
           onClick={scrollToBottom}
-          className="absolute bottom-4 left-1/2 z-10 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full bg-secondary text-secondary-foreground shadow-md transition-opacity hover:opacity-80"
+          className="absolute bottom-4 left-1/2 z-10 h-10 w-10 -translate-x-1/2 rounded-full shadow-md transition-opacity [@media(hover:hover)]:hover:opacity-80"
           aria-label="Scroll to bottom"
         >
           <ArrowDown className="h-4 w-4" />
-        </button>
+        </Button>
       )}
     </div>
   );

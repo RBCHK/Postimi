@@ -71,7 +71,7 @@ export function ThreadsPostPreview({
         {/* Editable post text */}
         <div className="flex min-h-0 flex-1">
           <textarea
-            className="w-full resize-none border-none bg-transparent p-0 pt-1 text-[15px] leading-[20px] text-white outline-none placeholder:text-[#71767b] focus:ring-0"
+            className="w-full resize-none border-none bg-transparent p-0 pt-1 text-base leading-[20px] text-white outline-none placeholder:text-[#71767b] focus:ring-0 md:text-[15px]"
             placeholder={placeholder}
             value={text}
             onChange={(e) => onChange(e.target.value)}

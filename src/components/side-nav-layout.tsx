@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export interface SideNavItem<T extends string> {
@@ -33,18 +34,20 @@ export function SideNavLayout<T extends string>({
       {/* Mobile: horizontal scrollable tabs */}
       <div className="md:hidden flex gap-1 overflow-x-auto pb-2 shrink-0 scrollbar-hide">
         {items.map((item) => (
-          <button
+          <Button
             key={item.value}
+            variant="ghost"
+            size="sm"
             onClick={() => onChange(item.value)}
             className={cn(
-              "shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+              "shrink-0 px-3 py-1.5 rounded-md text-xs font-medium",
               active === item.value
-                ? "bg-primary text-primary-foreground"
+                ? "bg-primary text-primary-foreground [@media(hover:hover)]:hover:bg-primary [@media(hover:hover)]:hover:text-primary-foreground"
                 : "text-muted-foreground [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-muted"
             )}
           >
             {item.label}
-          </button>
+          </Button>
         ))}
         {links?.map((l) => (
           <Link
@@ -61,18 +64,19 @@ export function SideNavLayout<T extends string>({
       <div className="flex flex-1 min-h-0 gap-8 w-full">
         <nav className="hidden md:flex flex-col gap-0.5 w-44 shrink-0">
           {items.map((item) => (
-            <button
+            <Button
               key={item.value}
+              variant="ghost"
               onClick={() => onChange(item.value)}
               className={cn(
-                "text-left px-3 py-2 rounded-md text-sm transition-colors",
+                "justify-start text-left px-3 py-2 rounded-md text-sm",
                 active === item.value
-                  ? "bg-muted font-medium text-foreground"
+                  ? "bg-muted font-medium text-foreground [@media(hover:hover)]:hover:bg-muted [@media(hover:hover)]:hover:text-foreground"
                   : "text-muted-foreground [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-muted/60"
               )}
             >
               {item.label}
-            </button>
+            </Button>
           ))}
           {links?.map((l) => (
             <Link

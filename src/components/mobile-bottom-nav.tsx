@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { Home, FileEdit, Calendar, TrendingUp, BarChart3, PenSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { COMPOSER_PANEL_OPEN } from "@/components/composer-sidebar-container";
 
 function NavLink({
@@ -37,14 +38,16 @@ export function MobileBottomNav() {
       <NavLink href="/" icon={Home} label="Home" />
       <NavLink href="/drafts" icon={FileEdit} label="Drafts" />
       <NavLink href="/schedule" icon={Calendar} label="Schedule" />
-      <button
+      <Button
+        variant="ghost"
         type="button"
-        className="flex flex-col items-center gap-0.5 px-3 py-1.5 text-[10px] text-muted-foreground"
+        aria-label="Open composer"
+        className="flex h-auto flex-col items-center gap-0.5 px-3 py-1.5 text-[10px] text-muted-foreground"
         onClick={() => window.dispatchEvent(new Event(COMPOSER_PANEL_OPEN))}
       >
         <PenSquare className="h-5 w-5" />
         <span>Compose</span>
-      </button>
+      </Button>
       <NavLink href="/strategist" icon={TrendingUp} label="Strategy" />
       <NavLink href="/analytics" icon={BarChart3} label="Analytics" />
     </nav>

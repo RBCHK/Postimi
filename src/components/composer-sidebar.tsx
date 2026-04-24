@@ -644,7 +644,7 @@ export function ComposerSidebar({
             <Button
               variant="default"
               size="sm"
-              className="gap-1.5 bg-green-600 hover:bg-green-600 text-white"
+              className="gap-1.5 bg-green-600 [@media(hover:hover)]:hover:bg-green-600 text-white"
               disabled
             >
               <CheckCircle2 className="h-3.5 w-3.5" />

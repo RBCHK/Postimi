@@ -7,7 +7,10 @@ export const metadata = {
 export default function TermsPage() {
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
-      <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">
+      <Link
+        href="/"
+        className="text-sm text-muted-foreground [@media(hover:hover)]:hover:text-foreground"
+      >
         ← Back to Postimi
       </Link>
       <h1 className="mt-6 text-2xl font-semibold">Terms of Service</h1>

@@ -12,7 +12,10 @@ export default function LandingPage() {
     <div className="min-h-screen bg-background text-foreground">
       <header className="flex items-center justify-between px-6 py-5 md:px-10">
         <span className="text-lg font-semibold tracking-tight">Postimi</span>
-        <Link href="/sign-in" className="text-sm text-muted-foreground hover:text-foreground">
+        <Link
+          href="/sign-in"
+          className="text-sm text-muted-foreground [@media(hover:hover)]:hover:text-foreground"
+        >
           Sign in
         </Link>
       </header>
@@ -107,13 +110,13 @@ export default function LandingPage() {
         <div className="mx-auto flex max-w-4xl flex-col items-center justify-between gap-3 sm:flex-row">
           <span>© {new Date().getFullYear()} Postimi</span>
           <nav className="flex gap-6">
-            <Link href="/legal/privacy" className="hover:text-foreground">
+            <Link href="/legal/privacy" className="[@media(hover:hover)]:hover:text-foreground">
               Privacy
             </Link>
-            <Link href="/legal/terms" className="hover:text-foreground">
+            <Link href="/legal/terms" className="[@media(hover:hover)]:hover:text-foreground">
               Terms
             </Link>
-            <Link href="/sign-in" className="hover:text-foreground">
+            <Link href="/sign-in" className="[@media(hover:hover)]:hover:text-foreground">
               Sign in
             </Link>
           </nav>
