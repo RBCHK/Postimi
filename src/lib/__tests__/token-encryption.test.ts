@@ -95,6 +95,18 @@ describe("token-encryption — nondeterminism (IV-based)", () => {
     // parts: [version, iv, authTag, data] — IV must differ between calls.
     expect(c1[1]).not.toBe(c2[1]);
   });
+
+  it("100 encrypts of the same plaintext produce 100 distinct ciphertexts (IV entropy)", async () => {
+    const { encryptToken } = await import("@/lib/token-encryption");
+    const plaintext = "repeat-me";
+    const set = new Set<string>();
+    for (let i = 0; i < 100; i++) {
+      set.add(encryptToken(plaintext));
+    }
+    // If any two encryptions collide, IV generation is broken (e.g. seeded
+    // or reused) — a catastrophic GCM failure (nonce reuse breaks confidentiality).
+    expect(set.size).toBe(100);
+  });
 });
 
 describe("token-encryption — key rotation", () => {
@@ -146,6 +158,32 @@ describe("token-encryption — bad input handling", () => {
     const data = Buffer.from(parts[3]!, "base64");
     data[data.length - 1] = data[data.length - 1]! ^ 0x01;
     const tampered = [parts[0], parts[1], parts[2], data.toString("base64")].join(":");
+
+    expect(() => decryptToken(tampered)).toThrow();
+  });
+
+  it("decrypt on tampered auth tag throws (separate path from ciphertext tamper)", async () => {
+    const { encryptToken, decryptToken } = await import("@/lib/token-encryption");
+    const good = encryptToken("sensitive");
+    const parts = good.split(":");
+    // Flip one bit of the GCM auth tag only. Auth tag is cryptographically
+    // bound to (key, iv, aad=none, ciphertext); any bit flip here must fail
+    // closed. A regression that skipped setAuthTag() would mask this.
+    const tag = Buffer.from(parts[2]!, "base64");
+    tag[0] = tag[0]! ^ 0x80;
+    const tampered = [parts[0], parts[1], tag.toString("base64"), parts[3]].join(":");
+
+    expect(() => decryptToken(tampered)).toThrow();
+  });
+
+  it("decrypt on tampered IV throws", async () => {
+    const { encryptToken, decryptToken } = await import("@/lib/token-encryption");
+    const good = encryptToken("sensitive");
+    const parts = good.split(":");
+    // Flip IV — GCM auth tag is bound to IV, so any change must fail closed.
+    const iv = Buffer.from(parts[1]!, "base64");
+    iv[0] = iv[0]! ^ 0x80;
+    const tampered = [parts[0], iv.toString("base64"), parts[2], parts[3]].join(":");
 
     expect(() => decryptToken(tampered)).toThrow();
   });

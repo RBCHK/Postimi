@@ -15,7 +15,11 @@
 set -u
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
-files=$(grep -rlE '^"use server"' src/app/actions/ 2>/dev/null || true)
+# SRC_DIR override exists for the test harness (scripts/__tests__/).
+# Default matches the real repo layout.
+SRC_DIR="${SRC_DIR:-src/app/actions/}"
+
+files=$(grep -rlE '^"use server"' "$SRC_DIR" 2>/dev/null || true)
 [ -z "$files" ] && exit 0
 
 violations=$(echo "$files" | xargs grep -nE 'export async function [a-zA-Z_]+\(\s*userId:\s*string' 2>/dev/null || true)
