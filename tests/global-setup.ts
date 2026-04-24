@@ -1,7 +1,26 @@
 // clerkSetup() runs in globalSetup (clerk-global-setup.ts) BEFORE the dev server starts.
-// This setup project signs in via the Clerk UI and saves auth state
-// so all other projects can reuse it via storageState.
-import { setupClerkTestingToken } from "@clerk/testing/playwright";
+// This setup project authenticates programmatically via Clerk's ticket-based
+// sign-in (no UI navigation) and saves auth state so all other projects can
+// reuse it via storageState.
+//
+// Why ticket-based and not UI:
+//   The previous UI flow (page.goto("/sign-in") → fill email/password →
+//   maybe OTP → wait for redirect) was flaky in CI. Two problems:
+//     1. Cold-compile of /sign-in under `next dev` ate the test timeout.
+//     2. Each setup round-trip went through the Clerk dev API multiple
+//        times, hitting throttling and adding latency.
+//
+//   `clerk.signIn({ emailAddress, page })` from @clerk/testing/playwright
+//   uses Clerk Backend SDK to mint a sign-in token, then evaluates a
+//   ticket-strategy sign-in inside the page. No /sign-in render, no
+//   email/password form, no OTP — just `__session` cookie injection.
+//   This is the pattern recommended in
+//   https://clerk.com/docs/testing/playwright/test-authenticated-flows.
+//
+//   We still navigate to /sign-in (an unprotected, Clerk-loaded route) so
+//   `window.Clerk` exists before calling clerk.signIn — the helper requires
+//   it. We do NOT interact with the form.
+import { clerk, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { test as setup, expect } from "@playwright/test";
 
 setup("authenticate via clerk", async ({ page }, testInfo) => {
@@ -9,57 +28,42 @@ setup("authenticate via clerk", async ({ page }, testInfo) => {
     testInfo.project.name === "setup-mobile"
       ? "tests/.auth/mobile-user.json"
       : "tests/.auth/user.json";
-  // Set up testing token route interception (bypasses captcha/bot protection)
+
+  // Set up testing token route interception (bypasses captcha/bot protection).
+  // Required even for ticket-based sign-in — Clerk's bot detection still
+  // applies to the /v1/client and related FAPI calls the helper triggers.
   await setupClerkTestingToken({ page });
 
-  // Navigate to sign-in page
+  // Navigate to /sign-in: a public route (per src/proxy.ts) that mounts
+  // Clerk's <SignIn /> and therefore loads window.Clerk. We do not interact
+  // with the form — clerk.signIn() will hijack window.Clerk directly.
   await page.goto("/sign-in");
   await page.waitForLoadState("domcontentloaded");
 
-  // Fill in credentials via the Clerk UI form
-  const emailInput = page.locator('input[name="identifier"], input[placeholder*="email"]');
-  await emailInput.waitFor({ timeout: 10_000 });
-  await emailInput.fill(process.env.E2E_CLERK_USER_USERNAME!);
+  // Programmatic ticket-based sign-in. Under the hood:
+  //   1. Backend SDK looks up user by email (CLERK_SECRET_KEY required).
+  //   2. Backend SDK creates a 5-minute sign-in token.
+  //   3. page.evaluate() drives window.Clerk.client.signIn.create({
+  //        strategy: 'ticket', ticket
+  //      }) which sets __session and clerk_db_jwt cookies.
+  //   4. Helper waits for window.Clerk.user to be populated.
+  await clerk.signIn({
+    page,
+    emailAddress: process.env.E2E_CLERK_USER_USERNAME!,
+  });
 
-  const passwordInput = page.locator('input[name="password"], input[type="password"]');
-  await passwordInput.waitFor({ timeout: 5_000 });
-  await passwordInput.fill(process.env.E2E_CLERK_USER_PASSWORD!);
-
-  // Click Continue to submit credentials
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-
-  // Handle device verification (Clerk sends email code for new devices).
-  // Test emails with +clerk_test use verification code 424242.
-  // Wait for either redirect to home (no verification) or factor-two page
-  await page.waitForURL(
-    (url) => {
-      const u = url.toString();
-      return !u.includes("/sign-in") || u.includes("factor-two");
-    },
-    { timeout: 10_000 }
-  );
-
-  if (page.url().includes("factor-two")) {
-    // Clerk OTP input: click the first visible input box and type all digits
-    const otpInput = page.locator('input[name="codeInput"]').first();
-    if (await otpInput.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await otpInput.click();
-      await page.keyboard.type("424242", { delay: 50 });
-    } else {
-      // Fallback: focus the OTP area and type via keyboard
-      const otpArea = page.getByRole("textbox", { name: /verification/i });
-      await otpArea.click();
-      await page.keyboard.type("424242", { delay: 50 });
-    }
-    // Clerk auto-submits after all 6 digits are entered — no Continue click needed
-  }
-
-  // Wait for successful auth — should redirect away from sign-in
-  await page.waitForURL((url) => !url.toString().includes("/sign-in"), { timeout: 15_000 });
+  // Sanity check: navigate to a protected route and confirm we land there
+  // instead of bouncing back to /sign-in. Without this the storageState
+  // could be saved with no usable cookies and downstream projects would
+  // silently run unauthenticated.
+  await page.goto("/");
+  await page.waitForURL((url) => !url.toString().includes("/sign-in"), {
+    timeout: 15_000,
+  });
   await expect(page.locator("body")).toBeVisible();
 
-  // Grant an active subscription so AI endpoints aren't blocked by requireActiveSubscription.
-  // The endpoint is gated by ALLOW_TEST_SEED (never set in production).
+  // Grant an active subscription so AI endpoints aren't blocked by
+  // requireActiveSubscription. Endpoint is gated by ALLOW_TEST_SEED.
   const grantRes = await page.request.post("/api/test/grant-subscription");
   if (!grantRes.ok()) {
     throw new Error(
@@ -67,6 +71,6 @@ setup("authenticate via clerk", async ({ page }, testInfo) => {
     );
   }
 
-  // Persist auth state for all other projects
+  // Persist auth state for all other projects.
   await page.context().storageState({ path: authFile });
 });

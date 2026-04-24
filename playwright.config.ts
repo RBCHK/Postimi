@@ -27,10 +27,17 @@ export default defineConfig({
       timeout: 10_000,
     },
     {
-      command: "npm run dev",
+      // Local dev runs against `next dev` for fast iteration. CI runs against
+      // a production build (`next build && next start`) so /sign-in and other
+      // routes don't pay an on-demand compile penalty on first request — that
+      // 20–30s cold-compile blew past the 30s test timeout in setup and made
+      // the entire suite flaky after a fresh CI runner starts.
+      command: process.env.CI ? "npm run build && npm run start" : "npm run dev",
       url: baseURL,
       reuseExistingServer: !process.env.CI,
-      timeout: 60_000,
+      // Prod builds need ~60s on GitHub Actions; allow 180s headroom so a slow
+      // runner doesn't kill the server before next start binds the port.
+      timeout: process.env.CI ? 180_000 : 60_000,
       env: { ...process.env, ANTHROPIC_BASE_URL: "http://localhost:4567/v1" },
     },
   ],
