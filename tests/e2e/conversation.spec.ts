@@ -38,6 +38,65 @@ test.describe("Conversation flow", () => {
     await expect(assistantMessage).not.toBeEmpty();
   });
 
+  test("/api/chat failure surfaces error banner and preserves the user's message", async ({
+    page,
+  }) => {
+    // CLAUDE.md: "If user input is cleared optimistically before async
+    // operations, wrap in try/catch and restore the input on failure."
+    //
+    // For /api/chat specifically, the user message is persisted to the DB
+    // BEFORE the chat call, so clearing the textarea is correct — the
+    // message is not lost. What the user needs is:
+    //   (a) a visible error banner telling them the AI response failed
+    //   (b) their original user message still rendered in the conversation
+    //       so they can retry (e.g. with a follow-up) without re-typing
+    //
+    // This test locks both.
+
+    // First, get into an existing conversation so we bypass the home
+    // flow's fetchTweetFullTextAction path.
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
+    const homeTextarea = page.locator('textarea[placeholder*="Paste a tweet"]');
+    await homeTextarea.waitFor({ timeout: 10_000 });
+    await homeTextarea.fill("Seed message to enter a conversation");
+    await page.locator('button[aria-label="Send message"]').click();
+    await page.waitForURL(/\/c\/[a-zA-Z0-9-]+/, { timeout: 15_000 });
+
+    // Wait for the first AI response (unblocked) so we're in the steady
+    // state before we break /api/chat.
+    await page.locator('[data-role="assistant"]').first().waitFor({ timeout: 30_000 });
+
+    // Now break /api/chat — every subsequent request returns 500.
+    await page.route("**/api/chat", (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "internal_server_error" }),
+      })
+    );
+
+    // Send a follow-up that will trip the stubbed 500.
+    const input = page.locator('textarea[placeholder*="Paste a tweet"]');
+    await input.fill("This will fail to get an AI response");
+    await page.locator('button[aria-label="Send message"]').click();
+
+    // (a) The user message is preserved in the conversation — not lost.
+    //     Two user messages total (seed + retry); both must be visible.
+    await expect(page.locator('[data-role="user"]')).toHaveCount(2, { timeout: 10_000 });
+    await expect(page.locator('[data-role="user"]').last()).toContainText(
+      "This will fail to get an AI response"
+    );
+
+    // (b) An error banner appears — the AI SDK surfaces the 500 via its
+    //     `error` state, which the ConversationView renders as AiErrorBanner.
+    //     AiErrorBanner falls through to the generic banner (tone="error")
+    //     when the body isn't one of the known error kinds, so we assert
+    //     on a visible role="alert"-like banner containing any text.
+    const banner = page.locator("p.text-red-400, p.text-amber-300").first();
+    await expect(banner).toBeVisible({ timeout: 10_000 });
+  });
+
   test("multiple messages in a conversation", async ({ page }) => {
     await page.goto("/");
     const textarea = page.locator('textarea[placeholder*="Paste a tweet"]');
