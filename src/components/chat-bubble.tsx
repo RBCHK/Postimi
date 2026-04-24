@@ -69,9 +69,9 @@ interface ChatBubbleProps {
 const markdownComponents: Components = {
   hr: () => null,
   em: ({ children }) => <em className="not-italic text-amber-400/80">{children}</em>,
-  h1: ({ children }) => <h1 className="text-lg font-bold mt-8 mb-3">{children}</h1>,
-  h2: ({ children }) => <h2 className="text-xl font-bold mt-7 mb-2">{children}</h2>,
-  h3: ({ children }) => <h3 className="text-base font-bold mt-7 mb-2">{children}</h3>,
+  h1: ({ children }) => <h1 className="text-lg font-semibold mt-8 mb-4">{children}</h1>,
+  h2: ({ children }) => <h2 className="text-xl font-semibold mt-8 mb-2">{children}</h2>,
+  h3: ({ children }) => <h3 className="text-sm font-semibold mt-6 mb-2">{children}</h3>,
   ul: ({ children }) => <ul className="list-disc pl-7 mt-2 mb-4 space-y-2">{children}</ul>,
   ol: ({ children }) => <ol className="list-decimal pl-7 mt-2 mb-4 space-y-2">{children}</ol>,
   li: ({ children }) => <li className="leading-relaxed">{children}</li>,

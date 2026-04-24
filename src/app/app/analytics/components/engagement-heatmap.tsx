@@ -67,7 +67,7 @@ export function EngagementHeatmap() {
         ) : (
           <>
             {allAtMidnight && (
-              <p className="mb-2 text-[11px] text-amber-600 dark:text-amber-400">
+              <p className="mb-2 text-xs text-amber-600 dark:text-amber-400">
                 All posts are at midnight UTC — heatmap shows day-of-week only. Hour precision
                 requires X API import.
               </p>
@@ -79,7 +79,7 @@ export function EngagementHeatmap() {
                 <div className="w-8 shrink-0" />
                 <div className="grid flex-1" style={{ gridTemplateColumns: "repeat(24, 1fr)" }}>
                   {HOURS.map((h) => (
-                    <div key={h} className="text-center text-[9px] text-muted-foreground">
+                    <div key={h} className="text-center text-xs text-muted-foreground">
                       {h % 6 === 0 ? h : ""}
                     </div>
                   ))}
@@ -93,7 +93,7 @@ export function EngagementHeatmap() {
                     key={day}
                     className="flex items-center border-b border-border/30 last:border-b-0"
                   >
-                    <span className="w-8 shrink-0 text-right text-[10px] text-muted-foreground pr-1.5 border-r border-border/30 py-0.5">
+                    <span className="w-8 shrink-0 text-right text-xs text-muted-foreground pr-1.5 border-r border-border/30 py-0.5">
                       {day}
                     </span>
                     <div className="grid flex-1" style={{ gridTemplateColumns: "repeat(24, 1fr)" }}>
@@ -119,15 +119,15 @@ export function EngagementHeatmap() {
 
               {/* Legend */}
               <div className="mt-2 flex items-center justify-end gap-1.5">
-                <span className="text-[10px] text-muted-foreground">Less</span>
+                <span className="text-xs text-muted-foreground">Less</span>
                 {[0.15, 0.35, 0.55, 0.75, 0.9].map((op) => (
                   <div
                     key={op}
-                    className="h-3 w-3 rounded-[2px]"
+                    className="h-3 w-3 rounded-sm"
                     style={{ backgroundColor: `hsl(221 83% 53% / ${op * 100}%)` }}
                   />
                 ))}
-                <span className="text-[10px] text-muted-foreground">More</span>
+                <span className="text-xs text-muted-foreground">More</span>
               </div>
             </div>
           </>

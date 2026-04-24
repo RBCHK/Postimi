@@ -26,6 +26,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { PageContainer } from "@/components/page-container";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
@@ -516,18 +517,22 @@ export function AdminView({ initialConfigs, initialRuns, initialWaitlist }: Admi
               {/* Summary cards */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 {costSummaries.map((s) => (
-                  <div key={s.period} className="rounded-lg border p-4">
-                    <div className="text-sm text-muted-foreground">
-                      {PERIOD_LABELS[s.period] ?? s.period}
-                    </div>
-                    <div className="mt-1 flex items-baseline gap-2">
-                      <DollarSign className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-xl font-semibold">{formatCents(s.totalCostCents)}</span>
-                    </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {s.totalCalls} calls · {s.totalResources} resources
-                    </div>
-                  </div>
+                  <Card key={s.period} className="py-4">
+                    <CardContent className="px-4">
+                      <div className="text-sm text-muted-foreground">
+                        {PERIOD_LABELS[s.period] ?? s.period}
+                      </div>
+                      <div className="mt-1 flex items-baseline gap-2">
+                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-xl font-semibold">
+                          {formatCents(s.totalCostCents)}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {s.totalCalls} calls · {s.totalResources} resources
+                      </div>
+                    </CardContent>
+                  </Card>
                 ))}
               </div>
 

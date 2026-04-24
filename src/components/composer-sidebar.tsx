@@ -512,7 +512,7 @@ export function ComposerSidebar({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-xs font-bold"
+                  aria-label={`Compose for ${PLATFORM_CONFIG[p].label}`}
                   onClick={() => onSelectPlatform?.(p)}
                 >
                   <PlatformIcon platform={p} className="h-4 w-4" />

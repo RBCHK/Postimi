@@ -124,7 +124,7 @@ export function ScheduleView() {
       {groupedSlots.length === 0 ? (
         <EmptyState message="No scheduled slots for this week" />
       ) : (
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-6">
           {groupedSlots.map(([dateLabel, slotList]) => (
             <div key={dateLabel} className="flex flex-col gap-2">
               <SectionLabel>{dateLabel}</SectionLabel>

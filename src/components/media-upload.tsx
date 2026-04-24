@@ -99,7 +99,7 @@ export function MediaUpload({
             {uploading ? "Uploading…" : "Add image"}
           </Button>
           {media.length > 0 && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {media.length}/{maxImages}
             </span>
           )}

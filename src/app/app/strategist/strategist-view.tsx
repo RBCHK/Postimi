@@ -286,7 +286,7 @@ export function StrategistView() {
             {leftTab === "research" ? (
               selectedResearch ? (
                 <div className="max-w-2xl pb-8">
-                  <h2 className="text-base font-semibold mb-1">{selectedResearch.topic}</h2>
+                  <h2 className="text-sm font-semibold mb-1">{selectedResearch.topic}</h2>
                   <p className="text-xs text-muted-foreground mb-4">
                     {selectedResearch.createdAt.toLocaleDateString("ru-RU")} ·{" "}
                     {selectedResearch.sources.length} sources
@@ -337,12 +337,12 @@ export function StrategistView() {
               )
             ) : !showAnalysisPanel ? (
               <div className="max-w-2xl w-full pb-8">
-                <h2 className="text-base font-semibold mb-1">New Analysis</h2>
+                <h2 className="text-sm font-semibold mb-1">New Analysis</h2>
                 <p className="text-sm text-muted-foreground mb-4">
                   Export CSV from X Analytics (Analytics → Export), paste it below.
                 </p>
 
-                <div className="mb-5 rounded-md border">
+                <div className="mb-4 rounded-md border">
                   <Button
                     variant="ghost"
                     type="button"

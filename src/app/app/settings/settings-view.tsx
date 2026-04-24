@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Plus, Trash2, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -629,7 +630,7 @@ function StrategyConfigTab() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-6">
         {sections.map(({ label, section }) => (
           <ScheduleSection
             key={section}
@@ -682,7 +683,7 @@ function LanguageTab() {
   ];
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       {fields.map(({ key, label, desc }) => (
         <div key={key} className="flex flex-col gap-2">
           <div>
@@ -950,37 +951,41 @@ function ConnectionsTab() {
         </div>
 
         {status === null ? null : status.connected ? (
-          <div className="flex items-center justify-between rounded-lg border border-border p-4">
-            <div className="flex flex-col gap-0.5">
-              <p className="text-sm font-medium">{status.username}</p>
-              {status.connectedAt && (
-                <p className="text-xs text-muted-foreground">
-                  Connected {new Date(status.connectedAt).toLocaleDateString()}
-                </p>
-              )}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleDisconnect(platform)}
-              disabled={disconnecting === platform}
-            >
-              {disconnecting === platform ? "Disconnecting..." : "Disconnect"}
-            </Button>
-          </div>
+          <Card className="py-4">
+            <CardContent className="flex items-center justify-between px-4">
+              <div className="flex flex-col gap-0.5">
+                <p className="text-sm font-medium">{status.username}</p>
+                {status.connectedAt && (
+                  <p className="text-xs text-muted-foreground">
+                    Connected {new Date(status.connectedAt).toLocaleDateString()}
+                  </p>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleDisconnect(platform)}
+                disabled={disconnecting === platform}
+              >
+                {disconnecting === platform ? "Disconnecting..." : "Disconnect"}
+              </Button>
+            </CardContent>
+          </Card>
         ) : (
-          <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
-            <p className="text-sm text-muted-foreground">No {label} account connected.</p>
-            <Button
-              size="sm"
-              className="w-fit"
-              onClick={() => {
-                window.location.href = connectUrl;
-              }}
-            >
-              Connect {label}
-            </Button>
-          </div>
+          <Card className="py-4">
+            <CardContent className="flex flex-col gap-3 px-4">
+              <p className="text-sm text-muted-foreground">No {label} account connected.</p>
+              <Button
+                size="sm"
+                className="w-fit"
+                onClick={() => {
+                  window.location.href = connectUrl;
+                }}
+              >
+                Connect {label}
+              </Button>
+            </CardContent>
+          </Card>
         )}
       </div>
     );
