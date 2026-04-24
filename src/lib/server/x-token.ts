@@ -100,6 +100,10 @@ async function refreshXApiToken(
     }
 
     const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
+    // Protected by `withTokenRefreshLock` (advisory xact lock above) — the
+    // read + exchange + update is serialized per user, so two parallel
+    // callers can't both exchange the same `refresh_token` and then race
+    // on the final write.
     await prisma.xApiToken.update({
       where: { userId },
       data: {

@@ -92,6 +92,8 @@ async function refreshThreadsToken(
     }
 
     const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
+    // Protected by `withTokenRefreshLock` — read + exchange + update
+    // are serialized per user.
     await prisma.threadsApiToken.update({
       where: { userId },
       data: {

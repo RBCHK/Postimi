@@ -273,29 +273,34 @@ export async function toggleSlotPosted(
 
   if (slot.status === "POSTED") {
     if (slot.conversationId) {
-      // Revert to SCHEDULED — slot has content, keep the row
-      await prisma.scheduledSlot.update({
-        where: { id },
+      // Revert to SCHEDULED — slot has content, keep the row.
+      // Defense-in-depth: scope every write by `userId` so a future refactor
+      // that drops the precheck can't silently open a cross-tenant path.
+      await prisma.scheduledSlot.updateMany({
+        where: { id, userId },
         data: { status: "SCHEDULED", postedAt: null },
       });
-      await prisma.conversation.update({
-        where: { id: slot.conversationId },
+      await prisma.conversation.updateMany({
+        where: { id: slot.conversationId, userId },
         data: { status: "SCHEDULED" },
       });
       revalidatePath("/");
       return { status: "SCHEDULED" };
     } else {
       // No content — delete row; slot reappears as virtual EMPTY on next fetch
-      await prisma.scheduledSlot.delete({ where: { id } });
+      await prisma.scheduledSlot.deleteMany({ where: { id, userId } });
       revalidatePath("/");
       return { status: "EMPTY" };
     }
   } else {
     const postedAt = new Date();
-    await prisma.scheduledSlot.update({ where: { id }, data: { status: "POSTED", postedAt } });
+    await prisma.scheduledSlot.updateMany({
+      where: { id, userId },
+      data: { status: "POSTED", postedAt },
+    });
     if (slot.conversationId) {
-      await prisma.conversation.update({
-        where: { id: slot.conversationId },
+      await prisma.conversation.updateMany({
+        where: { id: slot.conversationId, userId },
         data: { status: "POSTED" },
       });
     }
@@ -308,9 +313,9 @@ export async function deleteSlot(id: string) {
   const userId = await requireUserId();
   const slot = await prisma.scheduledSlot.findFirst({ where: { id, userId } });
   if (!slot) return;
-  await prisma.scheduledSlot.delete({ where: { id } });
+  await prisma.scheduledSlot.deleteMany({ where: { id, userId } });
   if (slot.conversationId) {
-    await prisma.conversation.delete({
+    await prisma.conversation.deleteMany({
       where: { id: slot.conversationId, userId },
     });
   }
@@ -322,13 +327,13 @@ export async function unscheduleSlot(id: string) {
   const slot = await prisma.scheduledSlot.findFirst({ where: { id, userId } });
   if (!slot) return;
   if (slot.conversationId) {
-    await prisma.conversation.update({
-      where: { id: slot.conversationId },
+    await prisma.conversation.updateMany({
+      where: { id: slot.conversationId, userId },
       data: { status: "DRAFT" },
     });
   }
   // Delete the row — slot reappears as virtual EMPTY on next fetch
-  await prisma.scheduledSlot.delete({ where: { id } });
+  await prisma.scheduledSlot.deleteMany({ where: { id, userId } });
   revalidatePath("/");
 }
 

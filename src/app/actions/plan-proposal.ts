@@ -186,8 +186,11 @@ export async function acceptProposal(id: string, selectedIndices?: number[]): Pr
     revalidatePath("/");
   }
 
-  await prisma.planProposal.update({
-    where: { id },
+  // Defense-in-depth: scope the state transition by userId AND current status
+  // — the precheck enforced both, but keeping them in the WHERE here means
+  // a future refactor that re-orders the operations can't lose either guard.
+  await prisma.planProposal.updateMany({
+    where: { id, userId, status: "PENDING" },
     data: { status: "ACCEPTED", reviewedAt: new Date() },
   });
 }
@@ -200,8 +203,8 @@ export async function rejectProposal(id: string): Promise<void> {
   });
   if (!proposal) throw new Error("Proposal not found");
 
-  await prisma.planProposal.update({
-    where: { id },
+  await prisma.planProposal.updateMany({
+    where: { id, userId },
     data: { status: "REJECTED", reviewedAt: new Date() },
   });
   revalidatePath("/");

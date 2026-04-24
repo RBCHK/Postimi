@@ -26,6 +26,28 @@ function mimeToExtension(mimeType: string): string {
   return map[mimeType] ?? "jpg";
 }
 
+const MAX_FILENAME_LENGTH = 120;
+const UNSAFE_FILENAME_CHARS_RE = /[^A-Za-z0-9._-]+/g;
+
+/**
+ * Normalize a client-supplied filename before persisting. React escapes
+ * text on render, so this is not fixing a live XSS — it's belt-and-
+ * suspenders against a future template that uses `dangerouslySetInnerHTML`
+ * or a migration that exports filenames into a non-HTML context (CSV,
+ * Content-Disposition header, S3 key).
+ *
+ * Policy: collapse anything outside [A-Za-z0-9._-] to a single "_",
+ * cap at 120 chars, and fall back to "file.<ext>" if nothing survives.
+ */
+function sanitizeFilename(raw: string, fallbackExt: string): string {
+  const cleaned = raw
+    .normalize("NFKC")
+    .replace(UNSAFE_FILENAME_CHARS_RE, "_")
+    .replace(/^[._-]+/, "") // strip leading dots so ".htaccess"-style names can't shadow
+    .slice(0, MAX_FILENAME_LENGTH);
+  return cleaned.length > 0 ? cleaned : `file.${fallbackExt}`;
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const userId = await requireUserId();
@@ -128,7 +150,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           storageKey,
           url: urlData.publicUrl,
           thumbnailUrl: thumbUrlData.publicUrl,
-          filename: file.name,
+          filename: sanitizeFilename(file.name, ext),
           mimeType: processed.mimeType,
           sizeBytes: processed.buffer.length,
           width: processed.width,

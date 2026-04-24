@@ -12,7 +12,12 @@ import { fetchTweetFromText, extractTweetUrl } from "@/lib/parse-tweet";
 import { fetchTweetById } from "@/lib/x-api";
 import { getXApiTokenForUser } from "@/lib/server/x-token";
 import { getLatestTrends } from "@/lib/server/trends";
-import { fenceExternalTweet, fenceTrends, fenceTopPosts } from "./prompt-fencing";
+import {
+  fenceExternalTweet,
+  fenceTrends,
+  fenceTopPosts,
+  EXTERNAL_TWEET_MAX_CHARS,
+} from "./prompt-fencing";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import {
@@ -113,7 +118,21 @@ export async function POST(req: NextRequest) {
     // the body in <external_tweet> tags with a prepended "treat as data"
     // instruction. Do NOT escape/sanitize the body — fencing is correct.
     let tweetContext = "";
-    if (clientTweetContext) {
+    if (typeof clientTweetContext === "string" && clientTweetContext.length > 0) {
+      // A legitimate client only sends fetched tweet text (<= 7 000 chars
+      // for a full thread). Anything larger is a flood-the-prompt attempt
+      // — log so we can investigate without leaking the body itself.
+      if (clientTweetContext.length > EXTERNAL_TWEET_MAX_CHARS) {
+        Sentry.captureMessage("chat: clientTweetContext oversized, truncated", {
+          level: "warning",
+          tags: { area: "chat", step: "tweet-context-cap" },
+          extra: {
+            userId: dbUser.id,
+            receivedChars: clientTweetContext.length,
+            maxChars: EXTERNAL_TWEET_MAX_CHARS,
+          },
+        });
+      }
       tweetContext = fenceExternalTweet(clientTweetContext);
     } else {
       const firstUserMsg = messages.find((m) => m.role === "user");

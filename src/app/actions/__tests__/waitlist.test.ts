@@ -168,4 +168,35 @@ describe("joinWaitlist", () => {
     const ua = prismaMock.waitlistEntry.upsert.mock.calls[0][0].create.userAgent;
     expect(ua).toHaveLength(500);
   });
+
+  it("honeypot tripped: reports ok without touching the DB", async () => {
+    const { joinWaitlist } = await import("../waitlist");
+    const result = await joinWaitlist({ email: "bot@example.com", hp: "I am a bot" });
+
+    // Bot should see success to avoid learning the trap exists.
+    expect(result).toEqual({ ok: true });
+    expect(prismaMock.waitlistEntry.count).not.toHaveBeenCalled();
+    expect(prismaMock.waitlistEntry.upsert).not.toHaveBeenCalled();
+  });
+
+  it("empty hp string is ignored (legitimate form)", async () => {
+    const { joinWaitlist } = await import("../waitlist");
+    const result = await joinWaitlist({ email: "real@example.com", hp: "" });
+
+    expect(result).toEqual({ ok: true });
+    expect(prismaMock.waitlistEntry.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("per-email rate limit: 3+ recent inserts for same email → rate_limited", async () => {
+    // First count call → IP bucket (0, OK). Second call → email bucket (3, tripped).
+    prismaMock.waitlistEntry.count
+      .mockResolvedValueOnce(0) // IP bucket
+      .mockResolvedValueOnce(3); // email bucket
+    const { joinWaitlist } = await import("../waitlist");
+
+    const result = await joinWaitlist({ email: "target@example.com" });
+
+    expect(result).toEqual({ ok: false, error: "rate_limited" });
+    expect(prismaMock.waitlistEntry.upsert).not.toHaveBeenCalled();
+  });
 });

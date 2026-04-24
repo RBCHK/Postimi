@@ -33,5 +33,7 @@ export async function removeVoiceBankEntry(id: string) {
   // Ownership check: only delete if belongs to current user
   const entry = await prisma.voiceBankEntry.findFirst({ where: { id, userId } });
   if (!entry) throw new Error("Entry not found");
-  await prisma.voiceBankEntry.delete({ where: { id } });
+  // Defense-in-depth: scope the delete by userId so a refactor that drops
+  // the precheck above still can't reach another user's row.
+  await prisma.voiceBankEntry.deleteMany({ where: { id, userId } });
 }
