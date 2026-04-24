@@ -60,6 +60,7 @@ interface CronConfig {
   lastRun: {
     jobName: string;
     status: string;
+    trigger: string;
     startedAt: Date;
     durationMs: number | null;
   } | null;
@@ -69,6 +70,7 @@ interface CronRun {
   id: string;
   jobName: string;
   status: string;
+  trigger: string;
   durationMs: number | null;
   resultJson: unknown;
   error: string | null;
@@ -386,6 +388,11 @@ export function AdminView({ initialConfigs, initialRuns, initialWaitlist }: Admi
                               <StatusBadge status={config.lastRun.status} />
                               <span>{formatTimeAgo(config.lastRun.startedAt)}</span>
                               <span>{formatDuration(config.lastRun.durationMs)}</span>
+                              {config.lastRun.trigger === "MANUAL" && (
+                                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider">
+                                  Manual
+                                </span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -473,6 +480,11 @@ export function AdminView({ initialConfigs, initialRuns, initialWaitlist }: Admi
                       <div className="flex items-center gap-3">
                         <StatusBadge status={run.status} />
                         <span className="font-medium">{run.jobName}</span>
+                        {run.trigger === "MANUAL" && (
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                            Manual
+                          </span>
+                        )}
                         <span className="text-xs text-muted-foreground">
                           {formatDuration(run.durationMs)}
                         </span>

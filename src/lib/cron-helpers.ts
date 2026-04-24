@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
-import type { CronJobStatus, Prisma } from "@/generated/prisma";
+import type { CronJobStatus, CronJobTrigger, Prisma } from "@/generated/prisma";
 
 interface CronResult {
   status: "SUCCESS" | "PARTIAL" | "FAILURE";
@@ -38,6 +38,7 @@ export function withCronLogging(
     // (e.g. triggering a backfill while the schedule is paused). Bearer auth
     // above already restricts this to authenticated callers.
     const isManual = new URL(req.url).searchParams.get("manual") === "1";
+    const trigger: CronJobTrigger = isManual ? "MANUAL" : "SCHEDULED";
 
     const config = await prisma.cronJobConfig.findUnique({
       where: { jobName },
@@ -51,6 +52,7 @@ export function withCronLogging(
             data: {
               jobName,
               status: "SKIPPED" as CronJobStatus,
+              trigger,
               durationMs: 0,
               resultJson: { reason: "Job disabled in CronJobConfig" },
             },
@@ -79,6 +81,7 @@ export function withCronLogging(
             data: {
               jobName,
               status: "FAILURE" as CronJobStatus,
+              trigger,
               durationMs: Date.now() - startedAt,
               error: errorMsg.slice(0, 2000),
               startedAt: new Date(startedAt),
@@ -101,6 +104,7 @@ export function withCronLogging(
           data: {
             jobName,
             status: result.status as CronJobStatus,
+            trigger,
             durationMs,
             resultJson: (result.data as Prisma.InputJsonValue) ?? undefined,
             error: result.error?.slice(0, 2000) ?? undefined,
