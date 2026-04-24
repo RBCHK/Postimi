@@ -60,11 +60,33 @@ export const GET = withCronLogging("daily-insight", async () => {
         orderBy: { date: "desc" },
       });
 
-      // 4. Latest trends and followers snapshot
-      const [trends, latestFollowers] = await Promise.all([
+      // 4. Latest trends and followers snapshot.
+      //
+      // Both inputs are optional context for the insight prompt — a
+      // missing trends array or a missing followers snapshot is
+      // acceptable. Using allSettled so one sub-fetch failing doesn't
+      // abort the whole user's insight; we fall back to null/[] and
+      // log the rejection per-subtask for ops visibility.
+      const [trendsResult, followersResult] = await Promise.allSettled([
         getLatestTrends(user.id),
         getLatestFollowersSnapshot(user.id),
       ]);
+      const trends = trendsResult.status === "fulfilled" ? trendsResult.value : [];
+      const latestFollowers = followersResult.status === "fulfilled" ? followersResult.value : null;
+      if (trendsResult.status === "rejected") {
+        Sentry.captureException(trendsResult.reason, {
+          tags: { area: "daily-insight", userId: user.id, subtask: "getLatestTrends" },
+        });
+      }
+      if (followersResult.status === "rejected") {
+        Sentry.captureException(followersResult.reason, {
+          tags: {
+            area: "daily-insight",
+            userId: user.id,
+            subtask: "getLatestFollowersSnapshot",
+          },
+        });
+      }
 
       // 5. Generate insights with Haiku
       const insightModel = "claude-haiku-4-5-20251001";

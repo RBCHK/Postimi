@@ -2,6 +2,8 @@
 
 import { useCallback, useRef, useState } from "react";
 import { ImagePlus, Loader2, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
+import * as Sentry from "@sentry/nextjs";
 import { Button } from "@/components/ui/button";
 import type { MediaItem, Platform } from "@/lib/types";
 import { PLATFORM_IMAGE_LIMITS } from "@/lib/types";
@@ -35,32 +37,62 @@ export function MediaUpload({
       const filesToUpload = Array.from(files).slice(0, remaining);
       setUploading(true);
 
+      const newItems: MediaItem[] = [];
+      const failed: { filename: string; error: string }[] = [];
       try {
-        const newItems: MediaItem[] = [];
         for (const file of filesToUpload) {
-          const formData = new FormData();
-          formData.append("file", file);
-          formData.append("conversationId", conversationId);
+          try {
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("conversationId", conversationId);
 
-          const res = await fetch("/api/media/upload", {
-            method: "POST",
-            body: formData,
-          });
+            const res = await fetch("/api/media/upload", {
+              method: "POST",
+              body: formData,
+            });
 
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({ error: "Upload failed" }));
-            console.error("[MediaUpload] Upload error:", data.error);
-            continue;
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({ error: "Upload failed" }));
+              const errorMsg = typeof data?.error === "string" ? data.error : `HTTP ${res.status}`;
+              failed.push({ filename: file.name, error: errorMsg });
+              Sentry.captureException(new Error(`media upload failed: ${errorMsg}`), {
+                tags: { area: "media-upload" },
+                extra: { filename: file.name, size: file.size, status: res.status },
+              });
+              continue;
+            }
+
+            const item: MediaItem = await res.json();
+            newItems.push(item);
+          } catch (err) {
+            failed.push({
+              filename: file.name,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            Sentry.captureException(err, {
+              tags: { area: "media-upload" },
+              extra: { filename: file.name, size: file.size },
+            });
           }
-
-          const item: MediaItem = await res.json();
-          newItems.push(item);
         }
         if (newItems.length > 0) {
           onMediaChange([...media, ...newItems]);
         }
-      } catch (err) {
-        console.error("[MediaUpload] Upload error:", err);
+        // Surface a per-batch summary so users aren't misled about what
+        // actually uploaded. Silence when nothing failed.
+        if (failed.length > 0) {
+          if (newItems.length === 0) {
+            toast.error(
+              failed.length === 1
+                ? `Upload failed: ${failed[0].error}`
+                : `${failed.length} uploads failed`
+            );
+          } else {
+            toast.error(`${newItems.length} uploaded, ${failed.length} failed`, {
+              description: failed.map((f) => `${f.filename}: ${f.error}`).join("\n"),
+            });
+          }
+        }
       } finally {
         setUploading(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
