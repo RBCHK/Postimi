@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { GripVertical } from "lucide-react";
 import { ComposerSidebar } from "@/components/composer-sidebar";
+import { Button } from "@/components/ui/button";
 import { useConversation } from "@/contexts/conversation-context";
 import { cn } from "@/lib/utils";
 import { getPrevComposerOpen, setPrevComposerOpen } from "@/lib/composer-sidebar-state";
@@ -93,11 +94,12 @@ export function ComposerSidebarContainer() {
     return (
       <>
         {isOpen && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
             aria-label="Close composer"
-            className="fixed inset-0 z-40 bg-black/50 transition-opacity duration-300 ease-out"
             onClick={() => setIsOpen(false)}
+            className="fixed inset-0 z-40 h-auto w-full rounded-none bg-black/50 p-0 transition-opacity duration-300 ease-out [@media(hover:hover)]:hover:bg-black/50 [@media(hover:hover)]:hover:text-inherit"
           />
         )}
         {isOpen && (

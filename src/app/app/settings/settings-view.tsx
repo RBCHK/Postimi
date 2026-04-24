@@ -81,7 +81,6 @@ function VoiceBankTab() {
           value={newContent}
           onChange={(e) => setNewContent(e.target.value)}
           rows={3}
-          className="text-sm"
         />
         <div className="flex items-center gap-2">
           <Select value={newType} onValueChange={(v) => setNewType(v as "Reply" | "Post")}>
@@ -155,8 +154,7 @@ function TimePickerInputTouch({ value, onChange, onDone }: TimePickerInputProps)
       autoFocus
       onChange={(e) => onChange({ target: { value: e.target.value } })}
       onBlur={onDone}
-      className="bg-transparent text-sm font-mono outline-none border-none"
-      style={{ fontSize: "16px" }}
+      className="border-none bg-transparent font-mono text-base outline-none"
     />
   );
 }
@@ -275,7 +273,7 @@ function TimePickerInputDesktop({ value, onChange, onDone }: TimePickerInputProp
     buffer && segment === "h" ? buffer.padStart(2, "0") : hour.toString().padStart(2, "0");
 
   const s = (seg: TimeSegment) =>
-    `rounded px-0.5 cursor-default select-none outline-none ${segment === seg ? "bg-blue-500 text-white" : "text-foreground/80 hover:text-foreground"}`;
+    `rounded px-0.5 cursor-default select-none outline-none ${segment === seg ? "bg-blue-500 text-white" : "text-foreground/80 [@media(hover:hover)]:hover:text-foreground"}`;
 
   return (
     <div
@@ -409,30 +407,38 @@ function ScheduleSection({
                       }}
                     />
                   ) : (
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setEditingId(slot.id)}
-                      className="text-sm text-foreground/80 hover:text-foreground transition-colors"
+                      className="h-auto p-0 text-sm font-normal text-foreground/80 [@media(hover:hover)]:hover:bg-transparent [@media(hover:hover)]:hover:text-foreground"
                     >
                       {formatTime12(slot.time)}
-                    </button>
+                    </Button>
                   )}
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Remove time slot"
                     onClick={() => onRemove(slot.id)}
-                    className="text-muted-foreground/50 hover:text-foreground transition-colors"
+                    className="h-auto w-auto p-0 text-muted-foreground/50 [@media(hover:hover)]:hover:bg-transparent [@media(hover:hover)]:hover:text-foreground"
                   >
                     <X className="h-3.5 w-3.5" />
-                  </button>
+                  </Button>
                 </div>
                 <div className="flex justify-center py-3">
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     role="checkbox"
                     aria-checked={allChecked}
+                    aria-label="Toggle all days"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => onAllDaysToggle(slot.id, !allChecked)}
-                    className={`h-5 w-5 rounded-md border-2 flex items-center justify-center transition-all duration-150 ${
+                    className={`h-5 w-5 rounded-md border-2 transition-all duration-150 ${
                       allChecked
-                        ? "bg-blue-500 border-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.3)]"
-                        : "border-border/60 bg-muted/30 hover:border-border"
+                        ? "border-blue-500 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.3)] [@media(hover:hover)]:hover:bg-blue-500 [@media(hover:hover)]:hover:text-white"
+                        : "border-border/60 bg-muted/30 [@media(hover:hover)]:hover:border-border [@media(hover:hover)]:hover:bg-muted/30"
                     }`}
                   >
                     {allChecked && (
@@ -448,19 +454,22 @@ function ScheduleSection({
                         <polyline points="2,6 5,9 10,3" />
                       </svg>
                     )}
-                  </button>
+                  </Button>
                 </div>
                 {DAYS.map((day) => (
                   <div key={day} className="flex justify-center py-3">
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       role="checkbox"
                       aria-checked={slot.days[day]}
+                      aria-label={`Toggle ${day}`}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => onDayToggle(slot.id, day)}
-                      className={`h-5 w-5 rounded-md border-2 flex items-center justify-center transition-all duration-150 ${
+                      className={`h-5 w-5 rounded-md border-2 transition-all duration-150 ${
                         slot.days[day]
-                          ? "bg-blue-500 border-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.3)]"
-                          : "border-border/60 bg-muted/30 hover:border-border"
+                          ? "border-blue-500 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.3)] [@media(hover:hover)]:hover:bg-blue-500 [@media(hover:hover)]:hover:text-white"
+                          : "border-border/60 bg-muted/30 [@media(hover:hover)]:hover:border-border [@media(hover:hover)]:hover:bg-muted/30"
                       }`}
                     >
                       {slot.days[day] && (
@@ -476,7 +485,7 @@ function ScheduleSection({
                           <polyline points="2,6 5,9 10,3" />
                         </svg>
                       )}
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -484,12 +493,15 @@ function ScheduleSection({
           })}
 
           <div className="border-t border-border">
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Add time slot"
               onClick={() => setEditingId(onAdd())}
-              className="flex items-center gap-1.5 px-4 py-3 text-muted-foreground/60 hover:text-foreground transition-colors"
+              className="flex h-auto items-center gap-1.5 rounded-none px-4 py-3 text-muted-foreground/60 [@media(hover:hover)]:hover:bg-transparent [@media(hover:hover)]:hover:text-foreground"
             >
               <Plus className="h-3.5 w-3.5" />
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -793,10 +805,11 @@ function AppearanceTab() {
       <p className="text-sm font-medium">Color mode</p>
       <div className="flex gap-4">
         {THEME_OPTIONS.map((opt) => (
-          <button
+          <Button
             key={opt.value}
+            variant="ghost"
             onClick={() => handleSelect(opt.value)}
-            className="flex flex-col items-center gap-2"
+            className="flex h-auto flex-col items-center gap-2 rounded-none p-0 [@media(hover:hover)]:hover:bg-transparent"
             aria-label={opt.label}
           >
             <div
@@ -811,7 +824,7 @@ function AppearanceTab() {
             >
               {opt.label}
             </span>
-          </button>
+          </Button>
         ))}
       </div>
     </div>

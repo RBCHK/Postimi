@@ -135,7 +135,7 @@ function ChangeRow({
 
   return (
     <div
-      className="flex items-start gap-3 rounded-md border p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+      className="flex items-start gap-3 rounded-md border p-3 cursor-pointer [@media(hover:hover)]:hover:bg-muted/50 transition-colors"
       onClick={onToggle}
     >
       <Checkbox

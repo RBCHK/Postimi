@@ -78,7 +78,7 @@ export function LinkedInPostPreview({
       {/* Editable post text */}
       <div className="flex min-h-0 flex-1 pt-3">
         <textarea
-          className="w-full resize-none border-none bg-transparent p-0 text-[14px] leading-[20px] text-white outline-none placeholder:text-[#71767b] focus:ring-0"
+          className="w-full resize-none border-none bg-transparent p-0 text-base leading-[20px] text-white outline-none placeholder:text-[#71767b] focus:ring-0 md:text-[14px]"
           placeholder={placeholder}
           value={text}
           onChange={(e) => onChange(e.target.value)}

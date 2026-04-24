@@ -133,7 +133,7 @@ export function XPostPreview({
         {/* Editable post text */}
         <textarea
           ref={setRef}
-          className="w-full resize-none overflow-hidden border-none bg-transparent p-0 pt-1 text-[15px] leading-[20px] text-white outline-none placeholder:text-[#71767b] focus:ring-0"
+          className="w-full resize-none overflow-hidden border-none bg-transparent p-0 pt-1 text-base leading-[20px] text-white outline-none placeholder:text-[#71767b] focus:ring-0 md:text-[15px]"
           placeholder={placeholder}
           value={text}
           onChange={handleTextChange}

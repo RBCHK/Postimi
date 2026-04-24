@@ -122,7 +122,10 @@ export function WaitlistSection({ entries }: { entries: WaitlistRow[] }) {
                   ? "invited"
                   : "uninvited";
               return (
-                <tr key={e.id} className="border-b last:border-0 hover:bg-muted/30">
+                <tr
+                  key={e.id}
+                  className="border-b last:border-0 [@media(hover:hover)]:hover:bg-muted/30"
+                >
                   <td className="p-2">
                     <Checkbox
                       checked={selected.has(e.id)}

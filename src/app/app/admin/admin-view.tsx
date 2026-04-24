@@ -462,8 +462,11 @@ export function AdminView({ initialConfigs, initialRuns, initialWaitlist }: Admi
                 {filteredRuns.length === 0 && <EmptyState message="No runs found" />}
                 {filteredRuns.map((run) => (
                   <div key={run.id} className="rounded-lg border">
-                    <button
-                      className="flex w-full items-center justify-between p-4 text-left"
+                    <Button
+                      variant="ghost"
+                      aria-expanded={expandedRunId === run.id}
+                      aria-label={`Toggle details for ${run.jobName}`}
+                      className="flex h-auto w-full items-center justify-between rounded-lg p-4 text-left [@media(hover:hover)]:hover:bg-muted/40"
                       onClick={() => setExpandedRunId(expandedRunId === run.id ? null : run.id)}
                     >
                       <div className="flex items-center gap-3">
@@ -483,7 +486,7 @@ export function AdminView({ initialConfigs, initialRuns, initialWaitlist }: Admi
                           <ChevronDown className="h-4 w-4" />
                         )}
                       </div>
-                    </button>
+                    </Button>
                     {expandedRunId === run.id && (
                       <div className="border-t px-4 py-3 text-sm">
                         <div className="text-xs text-muted-foreground">

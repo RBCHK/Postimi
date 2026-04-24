@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { MediaItem } from "@/lib/types";
 
@@ -53,14 +54,16 @@ export function ImageGrid({ images, onDelete, className }: ImageGridProps) {
             sizes="(max-width: 640px) 50vw, 300px"
           />
           {onDelete && (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => onDelete(item.id)}
-              className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white opacity-0 transition-opacity [@media(hover:hover)]:group-hover:opacity-100 focus:opacity-100"
+              className="absolute right-1.5 top-1.5 h-7 w-7 rounded-full bg-black/70 text-white opacity-0 transition-opacity [@media(hover:hover)]:group-hover:opacity-100 focus:opacity-100 [@media(hover:hover)]:hover:bg-black/70 [@media(hover:hover)]:hover:text-white"
               aria-label={`Remove ${item.filename}`}
             >
               <X className="h-3.5 w-3.5" />
-            </button>
+            </Button>
           )}
         </div>
       ))}
