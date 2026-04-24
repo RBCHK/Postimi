@@ -24,6 +24,7 @@ import { ThreadsPostPreview } from "@/components/threads-post-preview";
 import { addToQueue, checkExistingSchedule, publishPost } from "@/app/actions/schedule";
 import { slotToLocalDate } from "@/lib/date-utils";
 import { toast } from "sonner";
+import * as Sentry from "@sentry/nextjs";
 import { getXProfileForComposer, hasMediaWriteScope } from "@/app/actions/x-token";
 import { getThreadsProfileForComposer } from "@/app/actions/threads-token";
 import { getLinkedInProfileForComposer } from "@/app/actions/linkedin-token";
@@ -492,9 +493,22 @@ export function ComposerSidebar({
       }
 
       for (const [platform, error] of Object.entries(result.errors)) {
+        // Publishing is money-adjacent (scheduled content delivery). Each
+        // platform error is toasted individually AND captured to Sentry so
+        // we can detect patterns (e.g. X auth-drift, LinkedIn rate limits).
+        // Per-platform isolation is preserved — one platform's failure
+        // doesn't block the others.
+        Sentry.captureException(new Error(`publish failed: ${error}`), {
+          tags: { area: "publish-post", platform },
+          extra: { conversationId, contentType },
+        });
         toast.error(`${platform}: ${error}`);
       }
-    } catch {
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: { area: "publish-post", platform: "outer" },
+        extra: { conversationId, contentType },
+      });
       toast.error("Failed to publish");
     } finally {
       setPublishing(false);
