@@ -9,6 +9,7 @@ import { fetchTweetFromText, extractTweetUrl } from "@/lib/parse-tweet";
 import { deleteMediaStorageForConversation } from "@/lib/server/media";
 import { fetchTweetById } from "@/lib/x-api";
 import { getXApiTokenForUser } from "@/lib/server/x-token";
+import { checkRateLimit } from "@/lib/ai-quota";
 import {
   ContentType as PrismaContentType,
   ConversationStatus as PrismaConversationStatus,
@@ -177,6 +178,14 @@ export async function clearPendingInput(id: string) {
   });
 }
 
+// Allowed client-supplied id formats: cuid (Prisma default) or AI SDK's
+// generated id (the assistant's UIMessage.id). Both fit the charset below
+// and stay under 48 chars. An attacker could in theory pass a cuid that
+// collides with another user's Message row and cause a P2002 insertion
+// error (Message.id is `@id @unique`) — not a data leak, but worth
+// validating shape so the DB layer rejects anything unexpected early.
+const CLIENT_MESSAGE_ID_RE = /^[A-Za-z0-9_-]{1,48}$/;
+
 export async function addMessage(
   conversationId: string,
   role: "user" | "assistant",
@@ -194,8 +203,13 @@ export async function addMessage(
   });
   if (!conversation) return null;
 
+  // Validate client-supplied id shape. If it doesn't match, fall back to
+  // Prisma's default cuid generation instead of throwing — the caller
+  // should not be able to 500 the server just by passing a garbage id.
+  const safeId = id && CLIENT_MESSAGE_ID_RE.test(id) ? id : undefined;
+
   const message = await prisma.message.create({
-    data: { ...(id ? { id } : {}), conversationId, role, content },
+    data: { ...(safeId ? { id: safeId } : {}), conversationId, role, content },
   });
   await prisma.conversation.updateMany({
     where: { id: conversationId, userId },
@@ -274,6 +288,12 @@ export async function markAsPosted(conversationId: string) {
  */
 export async function fetchTweetFullTextAction(text: string): Promise<string | null> {
   const userId = await requireUserId();
+  // Each call burns one of the user's X API quota (free tier caps at
+  // 1 000 users/me-equivalent calls / 24h). Share the same rolling
+  // 1-minute rate limit as /api/chat so a logged-in user can't DoS
+  // their own X integration by looping this action.
+  await checkRateLimit(userId);
+
   const url = extractTweetUrl(text);
   if (!url) return null;
 

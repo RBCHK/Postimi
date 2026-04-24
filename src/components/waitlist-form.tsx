@@ -23,6 +23,10 @@ export function WaitlistForm({ source, className }: Props) {
         email: formData.get("email"),
         source,
         locale: typeof navigator !== "undefined" ? navigator.language?.slice(0, 2) : undefined,
+        // Honeypot: the server treats any non-empty `hp` as a bot signal.
+        // Humans never see this input (CSS-hidden, `tabIndex={-1}`), but
+        // naïve form-scraping bots fill every visible/named input.
+        hp: formData.get("hp"),
       });
     },
     null
@@ -30,6 +34,17 @@ export function WaitlistForm({ source, className }: Props) {
 
   return (
     <form action={action} className={className} noValidate>
+      {/*
+        Honeypot field — MUST stay visually hidden from humans but present
+        in the DOM so bots scraping form inputs fill it. Do NOT remove the
+        name="hp" binding: the server action rejects on any non-empty value.
+      */}
+      <div aria-hidden="true" className="absolute left-[-9999px] h-0 w-0 overflow-hidden">
+        <label>
+          Leave this field empty
+          <input type="text" name="hp" tabIndex={-1} autoComplete="off" defaultValue="" />
+        </label>
+      </div>
       <div className="flex flex-col gap-2 sm:flex-row">
         <Input
           name="email"

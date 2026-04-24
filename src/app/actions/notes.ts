@@ -58,7 +58,13 @@ export async function removeNote(id: string, conversationId: string) {
   });
   if (!conversation) throw new Error("Conversation not found");
 
-  await prisma.note.deleteMany({ where: { id, conversationId } });
+  // Defense-in-depth: Note is owned transitively via Conversation, but
+  // restating the constraint in the WHERE (`conversation.userId`) means
+  // that if Note ever gets its own ownership column or the precheck is
+  // removed, this write still can't reach another user's row.
+  await prisma.note.deleteMany({
+    where: { id, conversation: { id: conversationId, userId } },
+  });
   revalidatePath(`/c/${conversationId}`);
 }
 
@@ -70,7 +76,10 @@ export async function updateNote(id: string, content: string, conversationId: st
   });
   if (!conversation) throw new Error("Conversation not found");
 
-  await prisma.note.updateMany({ where: { id, conversationId }, data: { content } });
+  await prisma.note.updateMany({
+    where: { id, conversation: { id: conversationId, userId } },
+    data: { content },
+  });
   revalidatePath(`/c/${conversationId}`);
 }
 
@@ -82,6 +91,8 @@ export async function clearNotes(conversationId: string) {
   });
   if (!conversation) throw new Error("Conversation not found");
 
-  await prisma.note.deleteMany({ where: { conversationId } });
+  await prisma.note.deleteMany({
+    where: { conversation: { id: conversationId, userId } },
+  });
   revalidatePath(`/c/${conversationId}`);
 }

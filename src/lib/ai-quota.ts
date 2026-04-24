@@ -47,9 +47,13 @@ export const OPERATION_ESTIMATES: Record<string, { model: string; estimatedCostU
 };
 
 /**
- * Atomic rolling 1-minute rate limit on the User row.
+ * Atomic rolling 1-minute rate limit on the User row. Exported so
+ * non-AI auth-gated endpoints (e.g. fetchTweetFullTextAction, which
+ * burns a user's X API quota per call) can share the same counter
+ * — no separate infra, and an attacker can't bypass the AI cap by
+ * spraying another action.
  */
-async function checkRateLimit(userId: string): Promise<void> {
+export async function checkRateLimit(userId: string): Promise<void> {
   const now = new Date();
   const windowMs = 60 * 1000;
 

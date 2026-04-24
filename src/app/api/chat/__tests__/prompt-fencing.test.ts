@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { fenceExternalTweet, fenceTrends, fenceTopPosts } from "../prompt-fencing";
+import {
+  fenceExternalTweet,
+  fenceTrends,
+  fenceTopPosts,
+  EXTERNAL_TWEET_MAX_CHARS,
+} from "../prompt-fencing";
 
 describe("fenceExternalTweet", () => {
   it("wraps a malicious injection payload inside <external_tweet> tags", () => {
@@ -37,6 +42,38 @@ describe("fenceExternalTweet", () => {
     // strip angle brackets on purpose; instead the leading directive
     // tells the model these belong to the post.
     expect(out.indexOf("</external_tweet>")).toBeGreaterThan(out.indexOf(raw));
+  });
+
+  it("truncates bodies longer than EXTERNAL_TWEET_MAX_CHARS and keeps the fence intact", () => {
+    // 3 000 chars > 2 000 cap
+    const oversized = "A".repeat(3000);
+    const out = fenceExternalTweet(oversized);
+
+    // Opening + closing tag still present — the fence survives truncation.
+    const openIdx = out.indexOf("<external_tweet>\n");
+    const closeIdx = out.indexOf("\n</external_tweet>");
+    expect(openIdx).toBeGreaterThan(-1);
+    expect(closeIdx).toBeGreaterThan(openIdx);
+
+    // Body between the tags is capped.
+    const body = out.slice(openIdx + "<external_tweet>\n".length, closeIdx);
+    expect(body.length).toBeLessThanOrEqual(EXTERNAL_TWEET_MAX_CHARS);
+
+    // Truncation marker appears (so the model knows the input was cut)
+    expect(body).toContain("[truncated]");
+
+    // No stray tail of the original oversized payload leaks past the
+    // closing tag.
+    const afterClose = out.slice(closeIdx);
+    expect(afterClose).toBe("\n</external_tweet>");
+  });
+
+  it("does not truncate when input length is exactly the cap", () => {
+    const exact = "B".repeat(EXTERNAL_TWEET_MAX_CHARS);
+    const out = fenceExternalTweet(exact);
+    // No marker and the full body is inside the fence
+    expect(out).not.toContain("[truncated]");
+    expect(out).toContain(exact);
   });
 });
 

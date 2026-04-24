@@ -23,14 +23,15 @@ export async function reorderMedia(conversationId: string, orderedIds: string[])
     throw new Error("Invalid media IDs for reorder");
   }
 
-  // One round-trip for all updates. `Promise.all` would still issue N
-  // separate queries against the connection pool; a `$transaction` array
-  // batches them and keeps them atomic (a mid-flight failure can't leave
-  // positions partially reordered).
+  // One round-trip for all updates, atomic via `$transaction`. `Promise.all`
+  // would issue N parallel queries against the connection pool and leave
+  // positions partially reordered on a mid-flight failure.
+  // Defense-in-depth: `updateMany` with `userId` in WHERE so a compromised
+  // precheck can't leak cross-tenant writes here.
   await prisma.$transaction(
     orderedIds.map((id, index) =>
-      prisma.media.update({
-        where: { id },
+      prisma.media.updateMany({
+        where: { id, userId },
         data: { position: index },
       })
     )
@@ -45,8 +46,9 @@ export async function updateMediaAlt(mediaId: string, alt: string): Promise<void
   });
   if (!media) throw new Error("Media not found");
 
-  await prisma.media.update({
-    where: { id: mediaId },
+  // Defense-in-depth: scope by userId even though precheck verified ownership.
+  await prisma.media.updateMany({
+    where: { id: mediaId, userId },
     data: { alt },
   });
 }
