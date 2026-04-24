@@ -210,7 +210,10 @@ export async function POST(req: NextRequest) {
       },
       onError: async ({ error }) => {
         if (!finished) await abortReservation(rid);
-        Sentry.captureException(error, { tags: { area: "chat-stream" } });
+        Sentry.captureException(error, {
+          tags: { area: "chat-stream-onError", reservationId: rid },
+          user: { id: dbUser.id },
+        });
       },
       onAbort: async () => {
         if (!finished) await abortReservation(rid);
