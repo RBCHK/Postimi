@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUserId, requireUser } from "@/lib/auth";
 import type { SlotStatus, SlotType } from "@/lib/types";
-import { SlotType as PrismaSlotType } from "@/generated/prisma";
+import { SlotType as PrismaSlotType, SlotStatus as PrismaSlotStatus } from "@/generated/prisma";
 import {
   calendarDateStr,
   slotToUtcDate,
@@ -20,18 +20,27 @@ import {
   type DayKey,
 } from "@/lib/server/schedule";
 
-const slotStatusFromPrisma = (v: string): SlotStatus => v.toLowerCase() as SlotStatus;
-
-const slotTypeFromPrisma = (v: PrismaSlotType): SlotType => {
-  const map: Record<PrismaSlotType, SlotType> = {
-    REPLY: "Reply",
-    POST: "Post",
-    THREAD: "Thread",
-    ARTICLE: "Article",
-    QUOTE: "Quote",
-  };
-  return map[v];
+// Explicit mapping records per CLAUDE.md convention: Prisma enums are
+// UPPER_CASE, app types PascalCase/lowercase, never cast directly. Typing
+// with `Record<Prisma, App>` forces TS to error when a new Prisma variant
+// is added, so the mapping can't silently drift.
+const slotStatusMap: Record<PrismaSlotStatus, SlotStatus> = {
+  EMPTY: "empty",
+  SCHEDULED: "scheduled",
+  POSTED: "posted",
 };
+
+const slotStatusFromPrisma = (v: PrismaSlotStatus): SlotStatus => slotStatusMap[v];
+
+const slotTypeMap: Record<PrismaSlotType, SlotType> = {
+  REPLY: "Reply",
+  POST: "Post",
+  THREAD: "Thread",
+  ARTICLE: "Article",
+  QUOTE: "Quote",
+};
+
+const slotTypeFromPrisma = (v: PrismaSlotType): SlotType => slotTypeMap[v];
 
 // ─── Lookup tables ────────────────────────────────────────
 

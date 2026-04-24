@@ -30,8 +30,19 @@ const statusToPrisma: Record<DraftStatus, PrismaConversationStatus> = {
   posted: "POSTED",
 };
 
-const contentTypeFromPrisma = (v: PrismaContentType): ContentType =>
-  (v.toLowerCase().charAt(0).toUpperCase() + v.slice(1).toLowerCase()) as ContentType;
+// Mirror of `contentTypeToPrisma` in reverse. Typed with
+// `Record<Prisma, App>` so a new Prisma enum variant forces a TS error
+// here — the old string-manipulation cast would have silently produced
+// garbage like "Unknown".
+const contentTypeFromPrismaMap: Record<PrismaContentType, ContentType> = {
+  REPLY: "Reply",
+  POST: "Post",
+  THREAD: "Thread",
+  ARTICLE: "Article",
+  QUOTE: "Quote",
+};
+
+const contentTypeFromPrisma = (v: PrismaContentType): ContentType => contentTypeFromPrismaMap[v];
 
 const statusFromPrisma = (v: PrismaConversationStatus): DraftStatus => {
   if (v === "DRAFT") return "draft";
