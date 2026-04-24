@@ -3,6 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { encryptToken, decryptToken } from "@/lib/token-encryption";
 import { fetchWithRetry } from "@/lib/fetch-with-retry";
 import { withTokenRefreshLock } from "@/lib/server/token-refresh-lock";
+import {
+  runTokenRefreshWithRetry,
+  classifyRefreshError,
+  reportTransientRefreshFailure,
+} from "@/lib/server/token-refresh-retry";
 
 export interface ThreadsApiCredentials {
   accessToken: string;
@@ -79,10 +84,19 @@ async function refreshThreadsToken(
 
     let tokenData: ThreadsTokenResponse;
     try {
-      tokenData = await exchangeForRefreshedToken(accessToken);
+      // Outer retry (2s / 8s + jitter) on top of `fetchWithRetry`. See
+      // x-token for the full rationale; Meta's Threads refresh endpoint
+      // under load can briefly 5xx between exchanges.
+      tokenData = await runTokenRefreshWithRetry(() => exchangeForRefreshedToken(accessToken));
     } catch (err) {
-      // Terminal failure: silently dropping the token here means the
-      // user is disconnected from Threads without any UI signal.
+      // Only delete on explicit `invalid_grant`. Threads' long-lived
+      // token refresh returns 400 with `{"error":{"code":190,...}}` on a
+      // revoked token; `classifyRefreshError` matches the `invalid_grant`
+      // substring that Meta's OAuth error bodies carry for such cases.
+      const classification = classifyRefreshError(err);
+      if (!classification.invalidGrant) {
+        return reportTransientRefreshFailure(err, "threads", userId, classification);
+      }
       Sentry.captureException(err, {
         tags: { area: "threads-token", step: "refresh-retry", userId },
       });

@@ -3,6 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { encryptToken, decryptToken } from "@/lib/token-encryption";
 import { fetchWithRetry } from "@/lib/fetch-with-retry";
 import { withTokenRefreshLock } from "@/lib/server/token-refresh-lock";
+import {
+  runTokenRefreshWithRetry,
+  classifyRefreshError,
+  reportTransientRefreshFailure,
+} from "@/lib/server/token-refresh-retry";
 
 export interface XApiCredentials {
   accessToken: string;
@@ -83,14 +88,23 @@ async function refreshXApiToken(
 
     let tokenData: XOAuthTokenResponse;
     try {
-      tokenData = await exchangeRefreshToken(refreshToken, clientId, clientSecret);
+      // Outer retry (2s / 8s + jitter) layered on top of the inner
+      // per-request retry in `fetchWithRetry`. `fetchWithRetry` rides
+      // through transient HTTP-level blips; this loop gives the whole
+      // exchange call a second bite when the provider's auth endpoint
+      // itself briefly flaps between exchanges.
+      tokenData = await runTokenRefreshWithRetry(() =>
+        exchangeRefreshToken(refreshToken, clientId, clientSecret)
+      );
     } catch (err) {
-      // Terminal failure: silently dropping the token here means the
-      // user is disconnected from X without any UI signal. Alert in
-      // Sentry so we can tell why their posts stopped publishing.
-      // `exchangeRefreshToken` itself now retries on transient 5xx via
-      // `fetchWithRetry`, so by the time we land here the failure is
-      // either terminal (401/invalid_grant) or a genuine outage.
+      // Classify the terminal error. Only an explicit `invalid_grant`
+      // means the refresh token is dead and we must delete — anything
+      // else (5xx, 429, network, timeout) is transient and deleting
+      // would force a pointless user reconnection.
+      const classification = classifyRefreshError(err);
+      if (!classification.invalidGrant) {
+        return reportTransientRefreshFailure(err, "x", userId, classification);
+      }
       Sentry.captureException(err, {
         tags: { area: "x-token", step: "refresh-retry", userId },
       });
