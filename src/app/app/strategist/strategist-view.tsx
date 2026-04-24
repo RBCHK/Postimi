@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import {
   Search,
@@ -56,6 +56,13 @@ export function StrategistView() {
   const [profileOpen, setProfileOpen] = useState(!profile.name && !profile.username);
   const [csvRaw, setCsvRaw] = useState("");
   const [showNewAnalysis, setShowNewAnalysis] = useState(analyses.length === 0);
+
+  const profileFieldId = useId();
+  const nameId = `${profileFieldId}-name`;
+  const usernameId = `${profileFieldId}-username`;
+  const followersId = `${profileFieldId}-followers`;
+  const followingId = `${profileFieldId}-following`;
+  const bioId = `${profileFieldId}-bio`;
 
   const selectedAnalysis = analyses.find((a) => a.id === selectedId);
   const selectedResearch = researchNotes.find((n) => n.id === selectedResearchId);
@@ -369,8 +376,11 @@ export function StrategistView() {
                     <div className="border-t px-3 py-3 space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">
-                          <Label className="text-xs">Name</Label>
+                          <Label htmlFor={nameId} className="text-xs">
+                            Name
+                          </Label>
                           <Input
+                            id={nameId}
                             className="h-9"
                             placeholder="Ruslan Buchak"
                             value={profile.name}
@@ -378,8 +388,11 @@ export function StrategistView() {
                           />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">Username</Label>
+                          <Label htmlFor={usernameId} className="text-xs">
+                            Username
+                          </Label>
                           <Input
+                            id={usernameId}
                             className="h-9"
                             placeholder="razRBCHK"
                             value={profile.username}
@@ -387,8 +400,11 @@ export function StrategistView() {
                           />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">Followers</Label>
+                          <Label htmlFor={followersId} className="text-xs">
+                            Followers
+                          </Label>
                           <Input
+                            id={followersId}
                             className="h-9"
                             placeholder="1200"
                             value={profile.followers}
@@ -396,8 +412,11 @@ export function StrategistView() {
                           />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">Following</Label>
+                          <Label htmlFor={followingId} className="text-xs">
+                            Following
+                          </Label>
                           <Input
+                            id={followingId}
                             className="h-9"
                             placeholder="350"
                             value={profile.following}
@@ -406,8 +425,11 @@ export function StrategistView() {
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">Bio</Label>
+                        <Label htmlFor={bioId} className="text-xs">
+                          Bio
+                        </Label>
                         <Textarea
+                          id={bioId}
                           className="resize-none"
                           rows={2}
                           placeholder="About you..."
