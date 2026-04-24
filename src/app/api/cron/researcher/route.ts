@@ -48,6 +48,7 @@ export const GET = withCronLogging("researcher", async () => {
       const allSources: ResearchSource[] = [];
 
       const researcherModel = "claude-sonnet-4-6";
+      const STEP_LIMIT = 10;
       const result = await generateText({
         model: anthropic(researcherModel),
         maxOutputTokens: PLANS.pro.maxOutputTokensPerRequest,
@@ -93,8 +94,25 @@ export const GET = withCronLogging("researcher", async () => {
             },
           }),
         },
-        stopWhen: stepCountIs(10),
+        stopWhen: stepCountIs(STEP_LIMIT),
       });
+
+      // Observability: when the tool loop hit the step cap the model
+      // couldn't conclude — `result.text` may be empty or partial and
+      // the regex below will fall back to `Research — <date>`. Raising
+      // the cap is a product decision, but we at least need to see
+      // step-cap strikes in Sentry so we can justify it with data.
+      if (result.steps.length >= STEP_LIMIT) {
+        Sentry.captureMessage("researcher-step-limit-hit", {
+          level: "warning",
+          tags: { userId: user.id, area: "researcher-step-limit" },
+          extra: {
+            stepCount: result.steps.length,
+            finishReason: result.finishReason,
+            textLength: result.text.length,
+          },
+        });
+      }
 
       const text = result.text;
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 
 // Regression coverage for the N+1 → $transaction batching refactor.
@@ -9,11 +9,17 @@ import { NextRequest } from "next/server";
 //   3. Per-tweet classification (imported vs updated) still matches the
 //      pre-refactor counts when some posts are already in the DB.
 //   4. Zero tweets skips DB work entirely.
+//   5. Wall-clock budget check: once elapsed > 85% of maxDuration, the
+//      remaining users are marked budgetExhausted and the loop exits.
 
 const CRON_SECRET = "test-secret";
 process.env.CRON_SECRET = CRON_SECRET;
 
-vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+const captureMessageMock = vi.hoisted(() => vi.fn());
+vi.mock("@sentry/nextjs", () => ({
+  captureException: vi.fn(),
+  captureMessage: captureMessageMock,
+}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 // Passthrough wrapper so we test the handler directly.
@@ -154,5 +160,73 @@ describe("x-import cron", () => {
     // nothing qualified → no second $transaction.
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     expect(prismaMock.socialPostEngagementSnapshot.upsert).not.toHaveBeenCalled();
+  });
+
+  describe("wall-clock budget guard", () => {
+    let nowSpy: ReturnType<typeof vi.spyOn> | null = null;
+
+    afterEach(() => {
+      nowSpy?.mockRestore();
+      nowSpy = null;
+    });
+
+    it("bails on remaining users once elapsed exceeds 85% of maxDuration", async () => {
+      // Three users; first one consumes the whole budget, the rest must
+      // be marked budgetExhausted without calling fetch.
+      prismaMock.user.findMany.mockResolvedValueOnce([
+        { id: "user-slow" },
+        { id: "user-2" },
+        { id: "user-3" },
+      ]);
+
+      // Minimum Date.now advance pattern: elapsed starts at 0 (first
+      // call at top of handler); second reading (top of loop iter #1)
+      // still under budget; by iter #2 we're past 0.85 * 60s = 51s.
+      const base = 1_000_000;
+      const sequence = [
+        base, // handler start
+        base + 1_000, // iter 0 wall-clock check — under budget
+        base + 55_000, // iter 1 wall-clock check — over budget (55s > 51s)
+      ];
+      let callIdx = 0;
+      nowSpy = vi.spyOn(Date, "now").mockImplementation(() => {
+        const v = sequence[Math.min(callIdx, sequence.length - 1)]!;
+        callIdx++;
+        return v;
+      });
+
+      fetchUserTweetsPaginatedMock.mockResolvedValueOnce([]);
+
+      const { GET } = await import("../route");
+      const res = (await GET(buildRequest())) as unknown as {
+        status: string;
+        data: {
+          results: Array<{ userId: string; budgetExhausted?: boolean; skipped?: boolean }>;
+        };
+      };
+
+      // Only the first user ran; the other two must be budgetExhausted.
+      expect(fetchUserTweetsPaginatedMock).toHaveBeenCalledTimes(1);
+      const byUser = Object.fromEntries(res.data.results.map((r) => [r.userId, r]));
+      expect(byUser["user-slow"]?.budgetExhausted).toBeUndefined();
+      expect(byUser["user-2"]?.budgetExhausted).toBe(true);
+      expect(byUser["user-3"]?.budgetExhausted).toBe(true);
+
+      // Overall status degrades to PARTIAL because we didn't finish
+      // the batch — next scheduled run picks up the skipped users.
+      expect(res.status).toBe("PARTIAL");
+
+      // Sentry warning records the exhaustion for ops visibility.
+      expect(captureMessageMock).toHaveBeenCalledWith(
+        "x-import budget exhausted",
+        expect.objectContaining({
+          level: "warning",
+          extra: expect.objectContaining({
+            processedUsers: 1,
+            usersRemaining: 2,
+          }),
+        })
+      );
+    });
   });
 });

@@ -82,9 +82,13 @@ beforeEach(() => {
   saveResearchNoteMock.mockResolvedValue({ id: "note-1", topic: "t" });
   tavilySearchMock.mockResolvedValue({ results: [] });
   // Default AI behavior — safe output for all users. Tests override
-  // selectively (by user) where failure is required.
+  // selectively (by user) where failure is required. Include `steps`
+  // and `finishReason` so the step-limit observability check inside
+  // the route doesn't crash on absent fields.
   generateTextMock.mockResolvedValue({
     text: "# Topic: Default\n\nSafe",
+    steps: [{}],
+    finishReason: "stop",
     usage: { inputTokens: 10, outputTokens: 10 },
   });
 });
@@ -159,5 +163,44 @@ describe("researcher cron — contract", () => {
 
     const Sentry = await import("@sentry/nextjs");
     expect(Sentry.captureException).toHaveBeenCalled();
+  });
+
+  it("emits a Sentry warning when the tool loop hits the step limit", async () => {
+    const user = await createTestUser({ clerkId: `${PREFIX}steps_${randomSuffix()}` });
+
+    // Simulate the step cap firing: return steps.length === STEP_LIMIT (10).
+    generateTextMock.mockResolvedValue({
+      text: "# Topic: Truncated\n\npartial content",
+      steps: Array.from({ length: 10 }, () => ({})),
+      finishReason: "tool-calls",
+      usage: { inputTokens: 50, outputTokens: 50 },
+    });
+
+    // CronJobConfig may be seeded enabled=false in the shared test DB;
+    // `?manual=1` bypasses the toggle so we exercise the handler body.
+    const manualReq = new NextRequest("https://app.postimi.com/api/cron/researcher?manual=1", {
+      headers: { authorization: `Bearer ${CRON_SECRET}` },
+    });
+
+    const { GET } = await import("../route");
+    const res = await GET(manualReq);
+    expect(res.status).toBe(200);
+
+    const Sentry = await import("@sentry/nextjs");
+    const stepLimitWarnings = (
+      Sentry.captureMessage as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls.filter((c) => {
+      const [msg, opts] = c as [string, { tags?: { userId?: string; area?: string } } | undefined];
+      return (
+        msg === "researcher-step-limit-hit" &&
+        opts?.tags?.userId === user.id &&
+        opts?.tags?.area === "researcher-step-limit"
+      );
+    });
+    expect(stepLimitWarnings).toHaveLength(1);
+
+    // Control flow preserved: note still saved with the truncated text.
+    const savedForUs = saveResearchNoteMock.mock.calls.filter((c) => c[0] === user.id);
+    expect(savedForUs).toHaveLength(1);
   });
 });
