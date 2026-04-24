@@ -183,7 +183,10 @@ export async function acceptProposal(id: string, selectedIndices?: number[]): Pr
         });
       }
     }
-    revalidatePath("/");
+    // Legacy "schedule" proposals write ScheduledSlot rows, which only
+    // affect /schedule (not /strategist, which is the proposal banner
+    // host — handled by revalidate of /strategist elsewhere).
+    revalidatePath("/schedule");
   }
 
   // Defense-in-depth: scope the state transition by userId AND current status
@@ -207,5 +210,8 @@ export async function rejectProposal(id: string): Promise<void> {
     where: { id, userId },
     data: { status: "REJECTED", reviewedAt: new Date() },
   });
+  // Pending proposal banner renders on the home route; revalidate so the
+  // banner clears on next visit. /strategist also surfaces proposals in
+  // future UI — keep it cheap today, only / is needed.
   revalidatePath("/");
 }

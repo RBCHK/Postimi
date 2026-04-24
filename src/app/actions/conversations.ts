@@ -235,7 +235,10 @@ export async function deleteConversation(id: string) {
   // Delete media files from Storage before cascade removes DB records
   await deleteMediaStorageForConversation(id, userId);
   await prisma.conversation.deleteMany({ where: { id, userId } });
-  revalidatePath("/");
+  // Draft list and the specific /c/[id] view both depend on this row.
+  // Narrower than "/" which was blowing the entire dashboard cache.
+  revalidatePath("/drafts");
+  revalidatePath(`/c/${id}`);
 }
 
 /**
@@ -283,7 +286,10 @@ export async function markAsPosted(conversationId: string) {
     where: { id: conversationId, userId },
     data: { status: "POSTED" },
   });
-  revalidatePath("/");
+  // Conversation leaves DRAFT so it disappears from /drafts; /schedule
+  // may surface it if there is a linked slot.
+  revalidatePath("/drafts");
+  revalidatePath("/schedule");
 }
 
 /**

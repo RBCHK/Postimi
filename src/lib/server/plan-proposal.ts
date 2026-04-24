@@ -61,6 +61,10 @@ export async function savePlanProposal(
       metricsSnapshot: data.metricsSnapshot ? (data.metricsSnapshot as object) : undefined,
     },
   });
+  // New PENDING proposal appears in the home-page banner (fetched via
+  // getPendingProposal in /app/page.tsx). Narrower than the previous
+  // tree-wide invalidation — nothing else on the dashboard depends on
+  // proposal state.
   revalidatePath("/");
   return mapProposalRow(row);
 }

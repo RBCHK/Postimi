@@ -86,7 +86,10 @@ export async function saveScheduleConfig(data: ScheduleConfig): Promise<void> {
   } else {
     await prisma.strategyConfig.create({ data: { scheduleConfig: data as object, userId } });
   }
-  revalidatePath("/");
+  // Schedule config drives virtual EMPTY slots on /schedule. The home
+  // route does not render the schedule widget, so invalidating "/"
+  // every mutation was needlessly blowing the dashboard cache.
+  revalidatePath("/schedule");
 }
 
 // ─── Virtual slot computation ─────────────────────────────
@@ -293,12 +296,14 @@ export async function toggleSlotPosted(
         where: { id: slot.conversationId, userId },
         data: { status: "SCHEDULED" },
       });
-      revalidatePath("/");
+      // Slot state drives /schedule. Conversation moves back to SCHEDULED,
+      // still not visible in /drafts (DRAFT only).
+      revalidatePath("/schedule");
       return { status: "SCHEDULED" };
     } else {
       // No content — delete row; slot reappears as virtual EMPTY on next fetch
       await prisma.scheduledSlot.deleteMany({ where: { id, userId } });
-      revalidatePath("/");
+      revalidatePath("/schedule");
       return { status: "EMPTY" };
     }
   } else {
@@ -313,7 +318,7 @@ export async function toggleSlotPosted(
         data: { status: "POSTED" },
       });
     }
-    revalidatePath("/");
+    revalidatePath("/schedule");
     return { postedAt, status: "POSTED" };
   }
 }
@@ -328,7 +333,12 @@ export async function deleteSlot(id: string) {
       where: { id: slot.conversationId, userId },
     });
   }
-  revalidatePath("/");
+  // /schedule shows the slot; /drafts lists DRAFT conversations. A linked
+  // conversation isn't DRAFT (SCHEDULED or POSTED) so deleting it doesn't
+  // move draft list, but revalidate defensively if a conversation was
+  // removed in case UI ever surfaces non-DRAFT conversations in drafts.
+  revalidatePath("/schedule");
+  if (slot.conversationId) revalidatePath("/drafts");
 }
 
 export async function unscheduleSlot(id: string) {
@@ -343,7 +353,10 @@ export async function unscheduleSlot(id: string) {
   }
   // Delete the row — slot reappears as virtual EMPTY on next fetch
   await prisma.scheduledSlot.deleteMany({ where: { id, userId } });
-  revalidatePath("/");
+  // Conversation transitions SCHEDULED→DRAFT so it re-enters the /drafts
+  // list; /schedule loses the real slot row.
+  revalidatePath("/schedule");
+  if (slot.conversationId) revalidatePath("/drafts");
 }
 
 // ─── Publish Post ────────────────────────────────────────
@@ -538,7 +551,10 @@ export async function publishPost(
       data: { status: "POSTED", title: platformText.shared.slice(0, 100) },
     });
 
-    revalidatePath("/");
+    // New POSTED slot shows on /schedule; conversation leaves DRAFT so
+    // /drafts list should refresh too.
+    revalidatePath("/schedule");
+    revalidatePath("/drafts");
   }
 
   return { postedPlatforms, errors, tweetUrl };
@@ -624,7 +640,10 @@ export async function addToQueue(
         });
       }
 
-      revalidatePath("/");
+      // New SCHEDULED slot shows on /schedule; conversation leaves DRAFT
+      // status when a conversationId is supplied.
+      revalidatePath("/schedule");
+      if (conversationId) revalidatePath("/drafts");
       return { date, timeSlot };
     }
   }
@@ -663,5 +682,7 @@ export async function updateScheduledContent(slotId: string, content: string) {
     where: { id: slotId, userId },
     data: { content },
   });
-  revalidatePath("/");
+  // Slot content edit only surfaces on /schedule — the drafts list stores
+  // its own composerContent field.
+  revalidatePath("/schedule");
 }
