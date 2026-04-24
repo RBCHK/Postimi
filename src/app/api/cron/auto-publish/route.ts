@@ -48,13 +48,58 @@ export const GET = withCronLogging("auto-publish", async () => {
       if (slot.conversationId) {
         const media = await getMediaForConversation(slot.conversationId, user.id);
         if (media.length > 0) {
+          // X requires every referenced media to succeed — a tweet with
+          // partial media would be misleading — so any fetch failure
+          // aborts the whole slot. Parallelise the downloads (≤4 per
+          // slot) and cap each one with an explicit 15s timeout so one
+          // stuck upstream can't eat the 60s function budget.
+          const MEDIA_FETCH_TIMEOUT_MS = 15_000;
+          const buffers = await Promise.allSettled(
+            media.map(async (item) => {
+              const imageRes = await fetchWithTimeout(item.url, {
+                timeoutMs: MEDIA_FETCH_TIMEOUT_MS,
+              });
+              if (!imageRes.ok) {
+                throw new Error(
+                  `Media fetch failed (${imageRes.status} ${imageRes.statusText}) for ${item.url}`
+                );
+              }
+              const buf = Buffer.from(await imageRes.arrayBuffer());
+              return { item, buf };
+            })
+          );
+
+          const failures = buffers
+            .map((r, i) => ({ r, i, item: media[i]! }))
+            .filter((x) => x.r.status === "rejected");
+          if (failures.length > 0) {
+            for (const f of failures) {
+              const reason = (f.r as PromiseRejectedResult).reason;
+              Sentry.captureException(reason, {
+                tags: {
+                  area: "auto-publish-media",
+                  slotId: slot.id,
+                  mediaId: f.item.id,
+                  userId: user.id,
+                },
+                extra: { url: f.item.url },
+              });
+            }
+            throw new Error(
+              `Media fetch failed for ${failures.length}/${media.length} item(s); aborting slot`
+            );
+          }
+
+          // Uploads must be sequential-ordered because we concatenate
+          // the returned media IDs in the same order as `media`, and
+          // X's tweet media array is position-sensitive.
           mediaIds = [];
-          for (const item of media) {
-            // Media lives in our own storage (Supabase); 30s default is
-            // generous enough for any image we let users upload.
-            const imageRes = await fetchWithTimeout(item.url);
-            const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
-            const xMediaId = await uploadMediaToX(credentials, imageBuffer, item.mimeType, {
+          for (const res of buffers) {
+            // All fulfilled by the check above.
+            const { item, buf } = (
+              res as PromiseFulfilledResult<{ item: (typeof media)[number]; buf: Buffer }>
+            ).value;
+            const xMediaId = await uploadMediaToX(credentials, buf, item.mimeType, {
               callerJob: "auto-publish",
               userId: user.id,
             });
