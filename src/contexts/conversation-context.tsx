@@ -13,6 +13,8 @@ import {
 import { useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, generateId, type UIMessage, type TextUIPart } from "ai";
+import * as Sentry from "@sentry/nextjs";
+import { toast } from "sonner";
 import { DRAFT_DEFAULT_TITLE } from "@/lib/types";
 import type { ContentType, Message, Note, ComposerContent, Platform } from "@/lib/types";
 import {
@@ -328,11 +330,19 @@ export function ConversationProvider({
       nextMessageIdRef.current = dbMessageId;
       aiSendMessage({ text });
       tweetContextRef.current = "";
-    } catch {
-      // Restore input so the user can retry
+    } catch (err) {
+      // Critical-path: user-typed content is optimistically cleared above.
+      // On failure we must restore it so the user can retry, AND capture
+      // the error to Sentry — silent swallows hide recurring failures
+      // (e.g. Twitter rate limits on fetchTweetFullTextAction) from ops.
+      Sentry.captureException(err, {
+        tags: { area: "conversation-send" },
+        extra: { conversationId },
+      });
       setInput(text);
       setIsFetchingTweet(false);
       tweetContextRef.current = "";
+      toast.error("Couldn't send your message. Your text is restored — try again.");
     }
   }, [input, isLoading, conversationId, aiSendMessage, initialData?.pendingInput]);
 
