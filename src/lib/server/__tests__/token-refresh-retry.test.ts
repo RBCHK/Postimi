@@ -90,6 +90,10 @@ describe("runTokenRefreshWithRetry", () => {
 
   it("retries up to 3 attempts on transient failure, then throws last error", async () => {
     vi.useFakeTimers();
+    // Pin Math.random so jitter is deterministic. Without this the test
+    // advances fake time by 12s but real waits can reach ~12.5s when
+    // Math.random is high — an intermittent hang and timeout.
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
     try {
       const exchange = vi
         .fn()
@@ -98,19 +102,21 @@ describe("runTokenRefreshWithRetry", () => {
       // Attach a catch now so Node doesn't report the rejection before we
       // drain the timers.
       const settled = promise.catch((e) => e);
-      // Drain the two scheduled sleeps (2s + 8s, plus jitter up to 2.5s).
-      await vi.advanceTimersByTimeAsync(12_000);
+      // With jitter pinned to 0, waits are exactly 2s + 8s = 10s.
+      await vi.advanceTimersByTimeAsync(10_000);
       const err = await settled;
       expect(err).toBeInstanceOf(Error);
       expect((err as Error).message).toMatch(/503/);
       expect(exchange).toHaveBeenCalledTimes(3);
     } finally {
+      randomSpy.mockRestore();
       vi.useRealTimers();
     }
   });
 
   it("succeeds on second attempt — no further calls after a recovery", async () => {
     vi.useFakeTimers();
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
     try {
       const exchange = vi
         .fn()
@@ -118,12 +124,13 @@ describe("runTokenRefreshWithRetry", () => {
         .mockResolvedValueOnce({ access_token: "recovered" });
 
       const promise = runTokenRefreshWithRetry(exchange);
-      // 2s + jitter — generous drain to cover the worst-case jitter.
-      await vi.advanceTimersByTimeAsync(3_000);
+      // With jitter pinned to 0, first retry wait is exactly 2s.
+      await vi.advanceTimersByTimeAsync(2_000);
       const out = await promise;
       expect(out).toEqual({ access_token: "recovered" });
       expect(exchange).toHaveBeenCalledTimes(2);
     } finally {
+      randomSpy.mockRestore();
       vi.useRealTimers();
     }
   });
