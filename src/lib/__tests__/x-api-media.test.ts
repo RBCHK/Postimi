@@ -134,6 +134,49 @@ describe("uploadMediaToX", () => {
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).message).toMatch(/500|gave up/);
   });
+
+  it("retries a transient 5xx on the first APPEND chunk and succeeds", async () => {
+    vi.useFakeTimers();
+    // 2.5MB → 3 chunks. Chunk 0 gets a 503 on the first attempt,
+    // then 200 on the second; chunks 1 and 2 succeed straight away.
+    // Each chunk has its own retry budget (fetchWithRetry is called
+    // per-chunk), so a single transient failure must not abort the
+    // whole upload nor consume the budget of later chunks.
+    const imageBuffer = Buffer.alloc(2.5 * 1024 * 1024, "c");
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ media_id_string: "media_retry" }),
+    });
+
+    // Chunk 0: 503 then 200.
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      text: async () => "service unavailable",
+      headers: { get: () => null },
+    });
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+
+    // Chunks 1, 2: straight 200.
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+
+    // FINALIZE.
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ media_id_string: "media_retry" }),
+    });
+
+    const pending = uploadMediaToX(credentials, imageBuffer, "image/png");
+    await vi.runAllTimersAsync();
+    const mediaId = await pending;
+    vi.useRealTimers();
+
+    expect(mediaId).toBe("media_retry");
+    // INIT + (503 + 200) + 200 + 200 + FINALIZE = 6 calls.
+    expect(mockFetch).toHaveBeenCalledTimes(6);
+  });
 });
 
 describe("postTweet with media", () => {
