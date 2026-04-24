@@ -13,6 +13,13 @@ export const maxDuration = 60;
 
 const REFRESH_DAYS = 7;
 
+// Fraction of `maxDuration` we're willing to burn before bailing on
+// remaining users. Refresh mode paginates up to ~35 X pages per highly
+// active user + batched upserts, so a single stuck user can easily
+// stall the batch close to the Vercel kill line. At 85% we still have
+// ~9s headroom to finish withCronLogging's after() work cleanly.
+const BUDGET_FRACTION = 0.85;
+
 function detectPostType(text: string): "POST" | "REPLY" {
   return text.startsWith("@") ? "REPLY" : "POST";
 }
@@ -28,10 +35,39 @@ export const GET = withCronLogging("x-import", async (req) => {
     updated?: number;
     snapshots?: number;
     skipped?: boolean;
+    budgetExhausted?: boolean;
     error?: string;
   }[] = [];
 
-  for (const user of users) {
+  const start = Date.now();
+  const budgetMs = Math.floor(maxDuration * 1000 * BUDGET_FRACTION);
+
+  for (let userIndex = 0; userIndex < users.length; userIndex++) {
+    const user = users[userIndex]!;
+
+    // Wall-clock guard: once we've consumed 85% of the function
+    // budget, stop taking on new users. Remaining users are marked
+    // `budgetExhausted` in the result so the next scheduled run can
+    // pick them up (Sentry warning surfaces this in ops).
+    const elapsedMs = Date.now() - start;
+    if (elapsedMs > budgetMs) {
+      const remaining = users.length - userIndex;
+      Sentry.captureMessage("x-import budget exhausted", {
+        level: "warning",
+        tags: { area: "x-import", mode: mode ?? "default" },
+        extra: {
+          processedUsers: userIndex,
+          usersRemaining: remaining,
+          elapsedMs,
+          budgetMs,
+        },
+      });
+      for (let j = userIndex; j < users.length; j++) {
+        allResults.push({ userId: users[j]!.id, budgetExhausted: true });
+      }
+      break;
+    }
+
     try {
       // Load per-user X credentials — skip users without connected X account
       const credentials = await getXApiTokenForUser(user.id);
@@ -195,8 +231,10 @@ export const GET = withCronLogging("x-import", async (req) => {
   revalidatePath("/analytics");
 
   const hasErrors = allResults.some((r) => r.error);
+  const hasBudgetSkips = allResults.some((r) => r.budgetExhausted);
+  const status = hasErrors || hasBudgetSkips ? "PARTIAL" : "SUCCESS";
   return {
-    status: hasErrors ? "PARTIAL" : "SUCCESS",
+    status,
     data: { mode: mode ?? "default", results: allResults },
   };
 });
