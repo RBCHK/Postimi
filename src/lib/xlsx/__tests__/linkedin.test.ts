@@ -202,6 +202,36 @@ describe("parseLinkedInXlsx — error handling", () => {
     const parsed = await parseLinkedInXlsx(buf as ArrayBuffer);
     expect(parsed.engagement).toHaveLength(7);
   });
+
+  it("follower back-fill throws when the deltas drive the running count negative", async () => {
+    // Export total 5, with daily deltas summing to 7 — impossible in valid
+    // LinkedIn data and would produce negative counts on the backward walk
+    // (5 → 1 → -2 after subtracting deltas [3, 4]).
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+    buildMinimalValidWorkbook(wb, {
+      window: "4/13/2026 - 4/19/2026",
+      engagementDates: [
+        "4/13/2026",
+        "4/14/2026",
+        "4/15/2026",
+        "4/16/2026",
+        "4/17/2026",
+        "4/18/2026",
+        "4/19/2026",
+      ],
+      followersTotalDate: "4/19/2026",
+      followersTotal: 5,
+      followersDeltas: [
+        ["4/18/2026", 3],
+        ["4/19/2026", 4],
+      ],
+    });
+    const buf = await wb.xlsx.writeBuffer();
+    await expect(parseLinkedInXlsx(buf as ArrayBuffer)).rejects.toThrow(
+      /Follower back-fill produced negative count/
+    );
+  });
 });
 
 /**

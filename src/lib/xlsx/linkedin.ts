@@ -315,6 +315,25 @@ function parseFollowersSheet(ws: ExcelJS.Worksheet): FollowersParseResult {
       deltaFollowers: deltas[i].delta,
     };
     running -= deltas[i].delta;
+    // The walk must never drive the running count below zero — follower
+    // counts are non-negative by construction. A negative here means the
+    // xlsx is internally inconsistent: either the export total is too low
+    // relative to the deltas (truncated data), or LinkedIn is reporting
+    // gains larger than the cumulative total (impossible under the spec).
+    // Fail loud with the row index so an operator can inspect the file
+    // rather than letting corrupt data leak into analytics.
+    if (running < 0) {
+      throw new LinkedInXlsxError(
+        "Follower back-fill produced negative count — xlsx totals inconsistent",
+        {
+          rowIndex: i,
+          running,
+          delta: deltas[i].delta,
+          date: deltas[i].date.toISOString(),
+          exportTotalFollowers,
+        }
+      );
+    }
   }
 
   return { rows, exportTotalFollowers, exportDate };
