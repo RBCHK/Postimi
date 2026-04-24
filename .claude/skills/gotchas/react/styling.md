@@ -56,9 +56,12 @@
 **Tried:** `className="opacity-0 group-hover:opacity-100"` on a delete/edit icon inside a list row, to keep the row clean until hover.
 **Broke:** iOS Safari has no hover pointer — the icon stays invisible forever, so mobile users literally cannot perform the action. Ironically still works on desktop where it was never the real problem.
 **Fix:** Gate both the hide and reveal on `(hover: hover)` so touch devices bypass the effect entirely:
+
 ```tsx
-className="opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
+className =
+  "opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100";
 ```
+
 Order matters — put the touch-visible `opacity-100` first so the hover media query can override it on cursor devices. Always add `aria-label` too.
 **Watch out:** same pattern applies to any pure-hover affordance (tooltips, quick-actions, reveal-on-hover toolbars). Never hide a functional control behind hover-only CSS without a touch fallback.
 
@@ -74,12 +77,14 @@ Order matters — put the touch-visible `opacity-100` first so the hover media q
 **Tried:** `<Label className="text-xs">Name</Label><Input value={...} />` — shadcn Label just styles the element, it doesn't auto-link to the nearest input.
 **Broke:** Screen readers announced "edit text, blank" instead of the label, and tapping the label didn't focus the input. Breaks WCAG 1.3.1.
 **Fix:** Generate stable IDs with `useId()` and wire them:
+
 ```tsx
 const id = useId();
 const nameId = `${id}-name`;
 <Label htmlFor={nameId}>Name</Label>
 <Input id={nameId} ... />
 ```
+
 One parent `useId()` + suffixes keeps IDs unique inside map loops and re-renders.
 **Watch out:** Don't hardcode IDs like `id="name"` — they collide if the form renders twice on the same page.
 
