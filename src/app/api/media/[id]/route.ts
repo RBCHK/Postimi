@@ -35,23 +35,24 @@ export async function DELETE(
       .remove(keysToDelete)
       .catch(() => {}); // non-critical: don't block on storage cleanup
 
-    // Delete from DB
-    await prisma.media.delete({ where: { id } });
-
-    // Reorder remaining media positions
-    const remaining = await prisma.media.findMany({
-      where: { conversationId: media.conversationId, userId },
-      orderBy: { position: "asc" },
-      select: { id: true },
-    });
-    await Promise.all(
-      remaining.map((m, index) =>
-        prisma.media.update({
-          where: { id: m.id },
-          data: { position: index },
-        })
-      )
-    );
+    // Delete from DB and shift remaining positions down by one in a
+    // single transaction. The prior implementation queried the remaining
+    // rows and issued one UPDATE per row in parallel (up to 3 round trips
+    // on top of the DELETE) and was non-atomic — a mid-flight failure
+    // left positions in a half-swapped state. The raw UPDATE collapses
+    // to one round trip and is atomic with the DELETE under the same
+    // transaction. `Media.id`, `Media.conversationId`, `Media.userId` are
+    // TEXT (cuid), not UUID, so no `::uuid` cast is needed.
+    await prisma.$transaction([
+      prisma.media.deleteMany({ where: { id, userId } }),
+      prisma.$executeRaw`
+        UPDATE "Media"
+        SET position = position - 1
+        WHERE "conversationId" = ${media.conversationId}
+          AND "userId" = ${userId}
+          AND position > ${media.position}
+      `,
+    ]);
 
     return NextResponse.json({ ok: true });
   } catch (error) {
