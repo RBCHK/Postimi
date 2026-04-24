@@ -4,52 +4,18 @@
  * would mean a user is disconnected from X/LinkedIn/Threads with no
  * operator signal and no recovery path.
  *
- * Token files refresh via `fetchWithRetry` (maxAttempts=2) inside the
- * per-user advisory-lock mutex, so these tests mock both
- * `fetch-with-retry` (the transport wrapper) and `$transaction` (the
- * mutex machinery).
+ * Uses a real Postgres: the token row's existence/deletion is the
+ * observable behaviour, and mocked Prisma would just regurgitate
+ * whatever we programmed. `fetch-with-retry` is mocked (no HTTP to
+ * X/LinkedIn/Meta) and `@sentry/nextjs` is mocked (no SaaS calls).
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { prisma } from "@/lib/prisma";
+import { encryptToken } from "@/lib/token-encryption";
+import { cleanupByPrefix, createTestUser, randomSuffix } from "@/test/real-prisma";
 
-// ─── Mocks ───────────────────────────────────────────────
+// ─── Mocks (non-DB) ──────────────────────────────────────
 
-const prismaMock = vi.hoisted(() => {
-  // $transaction runs the callback as if the advisory lock was acquired.
-  // $queryRaw within that callback returns { acquired: true }.
-  const transactionFn = vi.fn(
-    <T>(cb: (tx: { $queryRaw: (...args: unknown[]) => Promise<unknown> }) => Promise<T>) =>
-      cb({ $queryRaw: async () => [{ acquired: true }] })
-  );
-  return {
-    xApiToken: {
-      findUnique: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    },
-    linkedInApiToken: {
-      findUnique: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    },
-    threadsApiToken: {
-      findUnique: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    },
-    $transaction: transactionFn,
-  };
-});
-
-vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
-
-vi.mock("@/lib/token-encryption", () => ({
-  encryptToken: (v: string) => `enc:${v}`,
-  decryptToken: (v: string) => v.replace(/^enc:/, ""),
-}));
-
-// The token files now call fetchWithRetry, which internally calls
-// fetchWithTimeout. Mock the outer wrapper directly for deterministic
-// behaviour (no actual retries in tests).
 const fetchWithRetryMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/fetch-with-retry", async () => {
   const actual = (await vi.importActual("@/lib/fetch-with-retry")) as Record<string, unknown>;
@@ -64,20 +30,23 @@ vi.mock("@sentry/nextjs", () => ({
   captureMessage: vi.fn(),
 }));
 
+const PREFIX = `trefr_snt_${randomSuffix()}_`;
+
 beforeEach(() => {
-  vi.resetAllMocks();
-  // vi.resetAllMocks wipes the $transaction default — reinstate it.
-  prismaMock.$transaction.mockImplementation(
-    <T>(cb: (tx: { $queryRaw: (...args: unknown[]) => Promise<unknown> }) => Promise<T>) =>
-      cb({ $queryRaw: async () => [{ acquired: true }] })
-  );
+  vi.clearAllMocks();
   process.env.X_CLIENT_ID = "xid";
   process.env.X_CLIENT_SECRET = "xsec";
   process.env.LINKEDIN_CLIENT_ID = "lid";
   process.env.LINKEDIN_CLIENT_SECRET = "lsec";
+  process.env.TOKEN_ENCRYPTION_KEY =
+    process.env.TOKEN_ENCRYPTION_KEY ??
+    "0000000000000000000000000000000000000000000000000000000000000000";
 });
 
-// Returns a Response-like stub the mocked `fetchWithRetry` can hand back.
+afterEach(async () => {
+  await cleanupByPrefix(PREFIX, { clerkId: true });
+});
+
 function badResponse(status = 401, body = "refresh_denied") {
   return {
     ok: false,
@@ -87,56 +56,57 @@ function badResponse(status = 401, body = "refresh_denied") {
   } as unknown as Response;
 }
 
-describe("x-token refresh — Sentry on terminal failure", () => {
+describe("x-token refresh — Sentry on terminal failure (real DB)", () => {
   it("captures exception to Sentry when both attempts fail, then deletes token", async () => {
-    // Token is already expired so refresh path is taken
-    const expiredToken = {
-      userId: "user-1",
-      accessToken: "enc:at",
-      refreshToken: "enc:rt",
-      xUserId: "x1",
-      xUsername: "alice",
-      expiresAt: new Date(Date.now() - 60_000),
-      updatedAt: new Date(2020, 0, 1),
-      scopes: "",
-    };
-    prismaMock.xApiToken.findUnique.mockResolvedValue(expiredToken);
-    prismaMock.xApiToken.delete.mockResolvedValue(undefined);
+    const user = await createTestUser({
+      clerkId: `${PREFIX}user_${randomSuffix()}`,
+    });
+    await prisma.xApiToken.create({
+      data: {
+        userId: user.id,
+        xUserId: "x1",
+        xUsername: "alice",
+        accessToken: encryptToken("old_access"),
+        refreshToken: encryptToken("old_refresh"),
+        expiresAt: new Date(Date.now() - 60_000),
+        scopes: "",
+      },
+    });
 
-    // Both refresh attempts fail
     fetchWithRetryMock.mockResolvedValue(badResponse(401, "invalid_refresh"));
 
     const { getXApiTokenForUser } = await import("../x-token");
-    const result = await getXApiTokenForUser("user-1");
+    const result = await getXApiTokenForUser(user.id);
     expect(result).toBeNull();
 
+    // Sentry got the failure
     const Sentry = await import("@sentry/nextjs");
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
-    // Tag includes the area + userId so Sentry can filter/triage
     const call = (Sentry.captureException as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(call[1]).toMatchObject({
-      tags: expect.objectContaining({ area: "x-token", userId: "user-1" }),
+      tags: expect.objectContaining({ area: "x-token", userId: user.id }),
     });
 
-    expect(prismaMock.xApiToken.delete).toHaveBeenCalledWith({ where: { userId: "user-1" } });
+    // Token row actually removed from DB (not just mock invocation).
+    const row = await prisma.xApiToken.findUnique({ where: { userId: user.id } });
+    expect(row).toBeNull();
   });
 
-  it("does NOT call Sentry when fetchWithRetry returns a successful response", async () => {
-    // fetchWithRetry handles transient 429/5xx internally; from the
-    // token file's point of view a successful refresh is a single
-    // successful mock call.
-    const expiredToken = {
-      userId: "user-1",
-      accessToken: "enc:at",
-      refreshToken: "enc:rt",
-      xUserId: "x1",
-      xUsername: "alice",
-      expiresAt: new Date(Date.now() - 60_000),
-      updatedAt: new Date(2020, 0, 1),
-      scopes: "",
-    };
-    prismaMock.xApiToken.findUnique.mockResolvedValue(expiredToken);
-    prismaMock.xApiToken.update.mockResolvedValue(undefined);
+  it("does NOT call Sentry nor delete when refresh succeeds", async () => {
+    const user = await createTestUser({
+      clerkId: `${PREFIX}user_ok_${randomSuffix()}`,
+    });
+    await prisma.xApiToken.create({
+      data: {
+        userId: user.id,
+        xUserId: "x1",
+        xUsername: "alice",
+        accessToken: encryptToken("old_access"),
+        refreshToken: encryptToken("old_refresh"),
+        expiresAt: new Date(Date.now() - 60_000),
+        scopes: "",
+      },
+    });
 
     fetchWithRetryMock.mockResolvedValueOnce({
       ok: true,
@@ -150,71 +120,86 @@ describe("x-token refresh — Sentry on terminal failure", () => {
     } as unknown as Response);
 
     const { getXApiTokenForUser } = await import("../x-token");
-    const result = await getXApiTokenForUser("user-1");
+    const result = await getXApiTokenForUser(user.id);
     expect(result).not.toBeNull();
 
     const Sentry = await import("@sentry/nextjs");
     expect(Sentry.captureException).not.toHaveBeenCalled();
-    expect(prismaMock.xApiToken.delete).not.toHaveBeenCalled();
+
+    // Token row still exists and got updated (new expiresAt)
+    const row = await prisma.xApiToken.findUnique({ where: { userId: user.id } });
+    expect(row).not.toBeNull();
+    expect(row!.expiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 });
 
-describe("linkedin-token refresh — Sentry on terminal failure", () => {
-  it("captures exception to Sentry when both attempts fail", async () => {
-    const expiredToken = {
-      userId: "user-2",
-      accessToken: "enc:at",
-      refreshToken: "enc:rt",
-      linkedinUserId: "li1",
-      linkedinName: "Bob",
-      expiresAt: new Date(Date.now() - 60_000),
-      updatedAt: new Date(2020, 0, 1),
-      scopes: "",
-    };
-    prismaMock.linkedInApiToken.findUnique.mockResolvedValue(expiredToken);
-    prismaMock.linkedInApiToken.delete.mockResolvedValue(undefined);
+describe("linkedin-token refresh — Sentry on terminal failure (real DB)", () => {
+  it("captures exception to Sentry when refresh fails", async () => {
+    const user = await createTestUser({
+      clerkId: `${PREFIX}user_li_${randomSuffix()}`,
+    });
+    await prisma.linkedInApiToken.create({
+      data: {
+        userId: user.id,
+        linkedinUserId: "li1",
+        linkedinName: "Bob",
+        accessToken: encryptToken("old_at"),
+        refreshToken: encryptToken("old_rt"),
+        expiresAt: new Date(Date.now() - 60_000),
+        scopes: "",
+      },
+    });
 
     fetchWithRetryMock.mockResolvedValue(badResponse(401, "invalid_refresh"));
 
     const { getLinkedInApiTokenForUser } = await import("../linkedin-token");
-    const result = await getLinkedInApiTokenForUser("user-2");
+    const result = await getLinkedInApiTokenForUser(user.id);
     expect(result).toBeNull();
 
     const Sentry = await import("@sentry/nextjs");
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
     const call = (Sentry.captureException as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(call[1]).toMatchObject({
-      tags: expect.objectContaining({ area: "linkedin-token", userId: "user-2" }),
+      tags: expect.objectContaining({ area: "linkedin-token", userId: user.id }),
     });
+
+    // Token row actually deleted
+    const row = await prisma.linkedInApiToken.findUnique({ where: { userId: user.id } });
+    expect(row).toBeNull();
   });
 });
 
-describe("threads-token refresh — Sentry on terminal failure", () => {
-  it("captures exception to Sentry when both attempts fail", async () => {
-    const expiredToken = {
-      userId: "user-3",
-      accessToken: "enc:at",
-      threadsUserId: "th1",
-      threadsUsername: "carol",
-      expiresAt: new Date(Date.now() - 60_000),
-      updatedAt: new Date(2020, 0, 1),
-      scopes: "",
-      grantedScopes: [],
-    };
-    prismaMock.threadsApiToken.findUnique.mockResolvedValue(expiredToken);
-    prismaMock.threadsApiToken.delete.mockResolvedValue(undefined);
+describe("threads-token refresh — Sentry on terminal failure (real DB)", () => {
+  it("captures exception to Sentry when refresh fails", async () => {
+    const user = await createTestUser({
+      clerkId: `${PREFIX}user_th_${randomSuffix()}`,
+    });
+    await prisma.threadsApiToken.create({
+      data: {
+        userId: user.id,
+        threadsUserId: "th1",
+        threadsUsername: "carol",
+        accessToken: encryptToken("old_at"),
+        expiresAt: new Date(Date.now() - 60_000),
+        scopes: "",
+      },
+    });
 
     fetchWithRetryMock.mockResolvedValue(badResponse(401, "invalid_refresh"));
 
     const { getThreadsApiTokenForUser } = await import("../threads-token");
-    const result = await getThreadsApiTokenForUser("user-3");
+    const result = await getThreadsApiTokenForUser(user.id);
     expect(result).toBeNull();
 
     const Sentry = await import("@sentry/nextjs");
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
     const call = (Sentry.captureException as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(call[1]).toMatchObject({
-      tags: expect.objectContaining({ area: "threads-token", userId: "user-3" }),
+      tags: expect.objectContaining({ area: "threads-token", userId: user.id }),
     });
+
+    // Token row actually deleted
+    const row = await prisma.threadsApiToken.findUnique({ where: { userId: user.id } });
+    expect(row).toBeNull();
   });
 });
