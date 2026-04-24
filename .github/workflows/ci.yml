@@ -108,6 +108,16 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      # Run auth setup explicitly so storageState files exist before the
+      # downstream projects rely on them. Without this, a silently-failed
+      # setup (returning 0 but not writing) would let desktop/mobile run
+      # with missing or stale auth and the failure mode is opaque.
+      - name: Run Playwright auth setup
+        run: npx playwright test --project=setup --project=setup-mobile
+
+      - name: Verify Clerk auth storageState was generated
+        run: test -s tests/.auth/user.json && test -s tests/.auth/mobile-user.json
+
       - name: Run desktop E2E tests
         run: npx playwright test --project=desktop
 
