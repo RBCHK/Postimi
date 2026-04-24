@@ -379,3 +379,20 @@ export interface PlanProposalItem {
   metricsSnapshot?: MetricsSnapshot;
   createdAt: Date;
 }
+
+/**
+ * Slim projection of PlanProposalItem for list views that only render
+ * `summary` / `platform` / `createdAt` / `reviewedAt`. Omits the heavy
+ * `changes` JSON array and `metricsSnapshot` — fetch the full item via
+ * `getAcceptedProposalDetails(id)` when the user expands a row.
+ */
+export interface PlanProposalListItem {
+  id: string;
+  platform: Platform;
+  status: ProposalStatus;
+  proposalType: "config" | "schedule";
+  summary: string;
+  analysisId?: string;
+  createdAt: Date;
+  reviewedAt: Date | null;
+}

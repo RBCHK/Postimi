@@ -7,10 +7,18 @@ import { requireUserId } from "@/lib/auth";
 import { SlotType as PrismaSlotType, type Platform } from "@/generated/prisma";
 import { getScheduleConfig, saveScheduleConfig } from "@/app/actions/schedule";
 import type { ScheduleConfig, DayKey } from "@/lib/server/schedule";
-import type { PlanChange, ConfigChange, MetricsSnapshot, PlanProposalItem } from "@/lib/types";
+import type {
+  PlanChange,
+  ConfigChange,
+  MetricsSnapshot,
+  PlanProposalItem,
+  PlanProposalListItem,
+} from "@/lib/types";
 import {
   savePlanProposal as _savePlanProposal,
   getAcceptedProposals as _getAcceptedProposals,
+  getAcceptedProposalsList as _getAcceptedProposalsList,
+  getAcceptedProposalDetails as _getAcceptedProposalDetails,
   mapProposalRow,
 } from "@/lib/server/plan-proposal";
 
@@ -120,6 +128,28 @@ export async function getAcceptedProposals(
 ): Promise<PlanProposalItem[]> {
   const userId = await requireUserId();
   return _getAcceptedProposals(userId, days, platform);
+}
+
+/**
+ * List variant of {@link getAcceptedProposals}: same filter, trimmed
+ * projection. Use for index/list views; fetch the full item via
+ * {@link getAcceptedProposalDetails} when the user expands a row.
+ */
+export async function getAcceptedProposalsList(
+  days: number,
+  platform?: Platform
+): Promise<PlanProposalListItem[]> {
+  const userId = await requireUserId();
+  return _getAcceptedProposalsList(userId, days, platform);
+}
+
+/**
+ * Detail fetch for an expanded row. Always scoped to the caller's
+ * `userId` — passing someone else's id returns `null`, not the row.
+ */
+export async function getAcceptedProposalDetails(id: string): Promise<PlanProposalItem | null> {
+  const userId = await requireUserId();
+  return _getAcceptedProposalDetails(userId, id);
 }
 
 /**
