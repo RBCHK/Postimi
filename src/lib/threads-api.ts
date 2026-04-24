@@ -498,15 +498,58 @@ export async function postToThreadsWithImage(
 }
 
 /**
- * Wait for a Threads media container to reach FINISHED status.
- * Threads processes images asynchronously — we must poll until ready.
+ * Adaptive backoff schedule for container-ready polling. Starts tight
+ * because single-image Threads usually finish in <3s, stretches out
+ * for slow/degraded Meta states, caps at 8s so we don't overshoot the
+ * total elapsed budget. Any index past the array length reuses the
+ * final value (8s).
  */
-async function waitForContainerReady(
+const CONTAINER_POLL_BACKOFF_MS = [1000, 2000, 3000, 5000, 8000];
+const CONTAINER_POLL_MAX_DELAY_MS = 8000;
+
+/**
+ * Hard wall on how long we'll wait for Meta to finish processing.
+ * Meta's docs quote "up to 2 minutes"; we pick 90s as a pragmatic
+ * middle ground — long enough to absorb a slow carousel-item but
+ * short enough to stay under the Vercel 120s function wall after
+ * subsequent publish calls.
+ */
+const CONTAINER_POLL_TOTAL_MS = 90_000;
+
+function containerPollDelay(iteration: number): number {
+  return CONTAINER_POLL_BACKOFF_MS[iteration] ?? CONTAINER_POLL_MAX_DELAY_MS;
+}
+
+/**
+ * Wait for a Threads media container to reach FINISHED status.
+ *
+ * Threads processes images asynchronously — we must poll until ready.
+ * Uses an adaptive backoff (1s → 2s → 3s → 5s → 8s → 8s …) and a
+ * total elapsed cap of 90s rather than a fixed iteration count, so
+ * slow single-image or carousel uploads don't time out prematurely
+ * while a genuinely stuck container still exits within the function
+ * budget.
+ *
+ * Honours a `Retry-After` header if Meta sends one (clamped to the
+ * normal max delay so a misbehaving upstream can't stall the wait).
+ * Throws immediately on `ERROR` status — Meta has already given up.
+ *
+ * Exported under `_internal` purely for unit testing; production
+ * callers should go through `postToThreadsWithImage(s)`.
+ */
+export async function _waitForContainerReady(
   credentials: ThreadsApiCredentials,
   containerId: string,
-  maxAttempts = 15
+  opts: { totalMs?: number } = {}
 ): Promise<void> {
-  for (let i = 0; i < maxAttempts; i++) {
+  const totalMs = opts.totalMs ?? CONTAINER_POLL_TOTAL_MS;
+  const started = Date.now();
+
+  for (let iteration = 0; ; iteration++) {
+    if (Date.now() - started > totalMs) {
+      throw new Error(`Threads media processing timed out after ${totalMs}ms`);
+    }
+
     const res = await fetchWithTimeout(
       `${BASE_URL}/${containerId}?fields=status,error_message&access_token=${credentials.accessToken}`
     );
@@ -523,10 +566,24 @@ async function waitForContainerReady(
       throw new Error(`Threads media processing failed: ${data.error_message ?? "unknown error"}`);
     }
 
-    // IN_PROGRESS — wait and retry
-    await new Promise((r) => setTimeout(r, 2000));
+    // IN_PROGRESS — wait and retry. Prefer server-supplied Retry-After
+    // when present; otherwise fall back to the adaptive schedule.
+    const retryAfterHeader = res.headers?.get?.("Retry-After") ?? null;
+    let waitMs = containerPollDelay(iteration);
+    if (retryAfterHeader) {
+      const retryAfterSec = Number(retryAfterHeader);
+      if (Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
+        waitMs = Math.min(retryAfterSec * 1000, CONTAINER_POLL_MAX_DELAY_MS);
+      }
+    }
+
+    // Clip the sleep so we don't overshoot the total cap on the tail.
+    const remaining = totalMs - (Date.now() - started);
+    if (remaining <= 0) {
+      throw new Error(`Threads media processing timed out after ${totalMs}ms`);
+    }
+    await new Promise((r) => setTimeout(r, Math.min(waitMs, remaining)));
   }
-  throw new Error("Threads media processing timed out");
 }
 
 /**
@@ -565,7 +622,7 @@ export async function postToThreadsWithImages(
 
   // Step 2: Wait for all items to finish processing
   for (const childId of childIds) {
-    await waitForContainerReady(credentials, childId);
+    await _waitForContainerReady(credentials, childId);
   }
 
   // Step 3: Create carousel container with children (comma-separated)
@@ -588,7 +645,7 @@ export async function postToThreadsWithImages(
   const carousel = (await carouselRes.json()) as { id: string };
 
   // Step 4: Wait for carousel to finish, then publish
-  await waitForContainerReady(credentials, carousel.id);
+  await _waitForContainerReady(credentials, carousel.id);
 
   const publishRes = await threadsPost(
     `${BASE_URL}/${credentials.threadsUserId}/threads_publish`,

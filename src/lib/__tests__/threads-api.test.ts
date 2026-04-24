@@ -4,6 +4,7 @@ import {
   fetchThreadInsights,
   fetchThreadsUserInsights,
   postToThreads,
+  _waitForContainerReady,
   ThreadsAuthError,
   ThreadsScopeError,
   type ThreadsApiCredentials,
@@ -309,5 +310,78 @@ describe("postToThreads — retry", () => {
     expect(result.threadId).toBe("thread-1");
     // INIT(503) + INIT(200) + PUBLISH(200) = 3 calls
     expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("_waitForContainerReady", () => {
+  it("returns after FINISHED and stays under the 90s elapsed cap", async () => {
+    vi.useFakeTimers();
+    // 10 × IN_PROGRESS then FINISHED. The adaptive backoff is
+    // 1+2+3+5+8+8+8+8+8+8 = 59s between polls (plus negligible fetch
+    // latency under fake timers), so elapsed must be < 90_000ms.
+    const inProgress = () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ status: "IN_PROGRESS" }),
+      json: async () => ({ status: "IN_PROGRESS" }),
+      headers: { get: () => null },
+    });
+    for (let i = 0; i < 10; i++) mockFetch.mockResolvedValueOnce(inProgress());
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ status: "FINISHED" }),
+      json: async () => ({ status: "FINISHED" }),
+      headers: { get: () => null },
+    });
+
+    const startedAt = Date.now();
+    const pending = _waitForContainerReady(creds, "container-id");
+    await vi.runAllTimersAsync();
+    await pending;
+    const elapsed = Date.now() - startedAt;
+    vi.useRealTimers();
+
+    expect(mockFetch).toHaveBeenCalledTimes(11);
+    expect(elapsed).toBeLessThan(90_000);
+  });
+
+  it("throws immediately on ERROR status", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ status: "ERROR", error_message: "bad image" }),
+      json: async () => ({ status: "ERROR", error_message: "bad image" }),
+      headers: { get: () => null },
+    });
+
+    await expect(_waitForContainerReady(creds, "container-id")).rejects.toThrow(
+      /bad image|ERROR|failed/i
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts with a timeout error once the total elapsed cap is exceeded", async () => {
+    vi.useFakeTimers();
+    // Always IN_PROGRESS. With totalMs=500ms the first poll body
+    // returns immediately, the wait (1s) exceeds the 500ms cap →
+    // the next iteration throws the elapsed-budget error.
+    const inProgress = () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ status: "IN_PROGRESS" }),
+      json: async () => ({ status: "IN_PROGRESS" }),
+      headers: { get: () => null },
+    });
+    mockFetch.mockImplementation(async () => inProgress());
+
+    const pending = _waitForContainerReady(creds, "container-id", { totalMs: 500 });
+    const settled = pending.catch((e: unknown) => e);
+    await vi.runAllTimersAsync();
+    const err = (await settled) as Error;
+    vi.useRealTimers();
+
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toMatch(/timed out/i);
   });
 });
