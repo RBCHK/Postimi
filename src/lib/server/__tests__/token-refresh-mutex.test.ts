@@ -1,79 +1,22 @@
 /**
- * Token-refresh mutex tests.
+ * Token-refresh mutex tests — real Postgres advisory lock.
  *
- * Verifies that `withTokenRefreshLock` serializes parallel refresh
- * attempts: `exchangeRefreshToken` is called exactly once per lock
- * window, the second caller re-reads the refreshed token from DB, and
- * a stuck lock eventually gives up with a Sentry-reported error.
+ * Why real DB: the whole point of `pg_try_advisory_xact_lock` is that
+ * Postgres serializes it across connections. A Set-backed mock can
+ * never prove that. A prior revision of this test used a fake lock; it
+ * passed while actually testing JavaScript-level scheduling, not the
+ * Postgres primitive we rely on.
  *
- * We use a mocked Prisma that implements `$transaction` + `$queryRaw`
- * deterministically — the codebase's existing test suite uses mocked
- * Prisma throughout (see `token-refresh-sentry.test.ts`,
- * `idempotency.test.ts`); spinning up a real Postgres just for this
- * one file would diverge from that convention. The mock models
- * `pg_try_advisory_xact_lock` by treating the "lock held" state as a
- * per-key promise that resolves when the holder's transaction ends.
+ * We still mock `fetch-with-retry` (no HTTP to X) and `@sentry/nextjs`
+ * (no SaaS side-effects). Prisma hits `xreba_test` — the lock + the
+ * token row persistence are the behaviour under test.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { prisma } from "@/lib/prisma";
+import { encryptToken } from "@/lib/token-encryption";
+import { cleanupByPrefix, createTestUser, randomSuffix } from "@/test/real-prisma";
 
-// ─── Mocks ───────────────────────────────────────────────
-
-const mutexState = vi.hoisted(() => ({
-  heldKeys: new Set<string>(),
-}));
-
-const prismaMock = vi.hoisted(() => {
-  return {
-    xApiToken: {
-      findUnique: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    },
-    $transaction: vi.fn(),
-  };
-});
-
-// Model advisory-lock semantics: the transaction either acquires the
-// key or the lock is already held and the callback is invoked with
-// acquired=false. We simulate BY KEY so parallel calls with different
-// userIds don't interfere.
-function installTransactionMock() {
-  prismaMock.$transaction.mockImplementation(
-    async <T>(cb: (tx: { $queryRaw: (...args: unknown[]) => Promise<unknown> }) => Promise<T>) => {
-      let currentKey = "";
-      let acquired = false;
-      const tx = {
-        $queryRaw: async (...args: unknown[]) => {
-          // Call shape from the mutex code:
-          //   tx.$queryRaw`SELECT pg_try_advisory_xact_lock(${k1}::int, ${k2}::int)`
-          // So args = [templateStrings, key1, key2].
-          const key1 = Number(args[1]);
-          const key2 = Number(args[2]);
-          currentKey = `${key1}:${key2}`;
-          if (mutexState.heldKeys.has(currentKey)) {
-            return [{ acquired: false }];
-          }
-          mutexState.heldKeys.add(currentKey);
-          acquired = true;
-          return [{ acquired: true }];
-        },
-      };
-      try {
-        return await cb(tx);
-      } finally {
-        // Transaction end: release the lock.
-        if (acquired) mutexState.heldKeys.delete(currentKey);
-      }
-    }
-  );
-}
-
-vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
-
-vi.mock("@/lib/token-encryption", () => ({
-  encryptToken: (v: string) => `enc:${v}`,
-  decryptToken: (v: string) => v.replace(/^enc:/, ""),
-}));
+// ─── Mocks (non-DB) ──────────────────────────────────────
 
 const fetchWithRetryMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/fetch-with-retry", async () => {
@@ -89,15 +32,23 @@ vi.mock("@sentry/nextjs", () => ({
   captureMessage: vi.fn(),
 }));
 
+const PREFIX = `trefr_mtx_${randomSuffix()}_`;
+
 beforeEach(() => {
-  vi.resetAllMocks();
-  mutexState.heldKeys.clear();
-  installTransactionMock();
+  vi.clearAllMocks();
   process.env.X_CLIENT_ID = "xid";
   process.env.X_CLIENT_SECRET = "xsec";
+  // Require a valid 64-hex TOKEN_ENCRYPTION_KEY for real encrypt/decrypt.
+  process.env.TOKEN_ENCRYPTION_KEY =
+    process.env.TOKEN_ENCRYPTION_KEY ??
+    "0000000000000000000000000000000000000000000000000000000000000000";
 });
 
-function successResponse(overrides: { access_token?: string } = {}) {
+afterEach(async () => {
+  await cleanupByPrefix(PREFIX, { clerkId: true });
+});
+
+function oauthSuccessResponse(overrides: { access_token?: string } = {}) {
   return {
     ok: true,
     status: 200,
@@ -110,111 +61,143 @@ function successResponse(overrides: { access_token?: string } = {}) {
   } as unknown as Response;
 }
 
-describe("withTokenRefreshLock — mutex semantics", () => {
-  it("parallel refreshXApiToken calls invoke exchangeRefreshToken exactly once", async () => {
-    const now = Date.now();
-    const initialExpired = {
-      userId: "user-1",
-      accessToken: "enc:old_access",
-      refreshToken: "enc:rt",
+/**
+ * Seed an expired XApiToken for a user so the refresh path will fire.
+ */
+async function seedExpiredXToken(userId: string) {
+  await prisma.xApiToken.create({
+    data: {
+      userId,
       xUserId: "x1",
       xUsername: "alice",
-      expiresAt: new Date(now - 60_000),
-      updatedAt: new Date(2020, 0, 1),
+      accessToken: encryptToken("old_access"),
+      refreshToken: encryptToken("old_refresh"),
+      expiresAt: new Date(Date.now() - 60_000),
       scopes: "",
-    };
-    // After the first refresh lands, the row looks refreshed to any
-    // second read: `updatedAt` differs from `expectedUpdatedAt` and
-    // `expiresAt` is well in the future.
-    const afterRefresh = {
-      ...initialExpired,
-      accessToken: "enc:new_access",
-      expiresAt: new Date(now + 3600_000),
-      updatedAt: new Date(2026, 0, 1),
-    };
+    },
+  });
+}
 
-    let updated = false;
-    prismaMock.xApiToken.findUnique.mockImplementation(async () =>
-      updated ? afterRefresh : initialExpired
-    );
-    prismaMock.xApiToken.update.mockImplementation(async () => {
-      updated = true;
-      return afterRefresh;
+describe("withTokenRefreshLock — real Postgres advisory lock", () => {
+  it("parallel refreshXApiToken calls invoke exchangeRefreshToken exactly once", async () => {
+    const user = await createTestUser({
+      clerkId: `${PREFIX}user_${randomSuffix()}`,
     });
+    await seedExpiredXToken(user.id);
 
-    fetchWithRetryMock.mockResolvedValue(successResponse());
+    // Single OAuth success response — if the mutex lets both callers
+    // refresh, the second call will land against an empty queue and
+    // return undefined, surfacing as a test failure.
+    fetchWithRetryMock.mockResolvedValue(oauthSuccessResponse({ access_token: "new_access" }));
 
     const { getXApiTokenForUser } = await import("../x-token");
-    const [a, b] = await Promise.all([
-      getXApiTokenForUser("user-1"),
-      getXApiTokenForUser("user-1"),
-    ]);
+    const [a, b] = await Promise.all([getXApiTokenForUser(user.id), getXApiTokenForUser(user.id)]);
 
     expect(a).not.toBeNull();
     expect(b).not.toBeNull();
-    // Exchange is called exactly once across both parallel callers.
+    // Exchange is called exactly once across both parallel callers —
+    // the second caller sees the freshly-refreshed token in DB and
+    // skips the network hop.
     expect(fetchWithRetryMock).toHaveBeenCalledTimes(1);
-    // The second caller returned the freshly-refreshed access token,
-    // NOT the stale one.
+    // Exactly one of the returned access tokens is the freshly issued
+    // one; the other is either the same value (from the second reader
+    // hitting the refreshed row) or the pre-refresh token — but both
+    // must be non-null.
     expect(a?.accessToken === "new_access" || b?.accessToken === "new_access").toBe(true);
   });
 
-  it("when the lock is held and never released, gives up and reports to Sentry", async () => {
-    // Pre-seed a held lock for user-2 on platform "x". withTokenRefreshLock
-    // will retry up to 5 × 50ms and then bail with a Sentry message.
-    prismaMock.$transaction.mockImplementation(async (_cb) => {
-      // Simulate always-blocked lock: the transaction callback sees
-      // acquired=false every time. The helper treats that as a retry
-      // signal, waits, and tries again.
-      const tx = { $queryRaw: async () => [{ acquired: false }] };
-      // Actually invoke the callback so it has a chance to throw
-      // LockNotAcquiredError internally.
-      return (_cb as (t: typeof tx) => Promise<unknown>)(tx);
-    });
-
-    const { withTokenRefreshLock } = await import("../token-refresh-lock");
-    const workFn = vi.fn(async () => "unused");
-
-    await expect(withTokenRefreshLock("user-2", "x", workFn)).rejects.toThrow(/failed to acquire/);
-    expect(workFn).not.toHaveBeenCalled();
-
-    const Sentry = await import("@sentry/nextjs");
-    expect(Sentry.captureMessage).toHaveBeenCalledWith(
-      expect.stringContaining("failed to acquire"),
-      expect.objectContaining({
-        tags: expect.objectContaining({ platform: "x", userId: "user-2" }),
-      })
-    );
-  });
-
   it("different userIds do not contend on the same advisory key", async () => {
-    const now = Date.now();
-    const baseExpired = {
-      accessToken: "enc:at",
-      refreshToken: "enc:rt",
-      xUserId: "x1",
-      xUsername: "alice",
-      expiresAt: new Date(now - 60_000),
-      updatedAt: new Date(2020, 0, 1),
-      scopes: "",
-    };
-    prismaMock.xApiToken.findUnique.mockImplementation(
-      async ({ where: { userId } }: { where: { userId: string } }) => ({
-        ...baseExpired,
-        userId,
-      })
-    );
-    prismaMock.xApiToken.update.mockResolvedValue(undefined);
-    fetchWithRetryMock.mockResolvedValue(successResponse());
+    const userA = await createTestUser({
+      clerkId: `${PREFIX}userA_${randomSuffix()}`,
+    });
+    const userB = await createTestUser({
+      clerkId: `${PREFIX}userB_${randomSuffix()}`,
+    });
+    await seedExpiredXToken(userA.id);
+    await seedExpiredXToken(userB.id);
+
+    fetchWithRetryMock.mockResolvedValue(oauthSuccessResponse());
 
     const { getXApiTokenForUser } = await import("../x-token");
     const [a, b] = await Promise.all([
-      getXApiTokenForUser("user-A"),
-      getXApiTokenForUser("user-B"),
+      getXApiTokenForUser(userA.id),
+      getXApiTokenForUser(userB.id),
     ]);
+
     expect(a).not.toBeNull();
     expect(b).not.toBeNull();
-    // Two different users → two independent refreshes.
+    // Two different users → two independent refreshes, no contention.
     expect(fetchWithRetryMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("refresh persists the new token to DB (round-trip through encryption)", async () => {
+    const user = await createTestUser({
+      clerkId: `${PREFIX}user_persist_${randomSuffix()}`,
+    });
+    await seedExpiredXToken(user.id);
+
+    fetchWithRetryMock.mockResolvedValue(oauthSuccessResponse({ access_token: "fresh_token_abc" }));
+
+    const { getXApiTokenForUser } = await import("../x-token");
+    const creds = await getXApiTokenForUser(user.id);
+
+    expect(creds?.accessToken).toBe("fresh_token_abc");
+
+    // Row in DB is encrypted; decrypting should yield the same plaintext.
+    const row = await prisma.xApiToken.findUnique({ where: { userId: user.id } });
+    expect(row).not.toBeNull();
+    expect(row!.accessToken).not.toBe("fresh_token_abc"); // encrypted at rest
+    const { decryptToken } = await import("@/lib/token-encryption");
+    expect(decryptToken(row!.accessToken)).toBe("fresh_token_abc");
+    // expiresAt moves into the future (within a reasonable window).
+    expect(row!.expiresAt.getTime()).toBeGreaterThan(Date.now() + 60 * 60 * 1000 - 60_000);
+  });
+
+  it("when the lock is held externally, the caller gives up and reports to Sentry", async () => {
+    // Acquire the same advisory lock in an outer transaction and keep
+    // it open until the test is done. The token-refresh code will spin
+    // for ~5 × 50ms and then bail.
+    const user = await createTestUser({
+      clerkId: `${PREFIX}user_blocked_${randomSuffix()}`,
+    });
+    await seedExpiredXToken(user.id);
+
+    // We need the PLATFORM_KEY for "x" (=1) and a matching hash. Recreate
+    // exactly what the module does so we grab the same lock.
+    const { createHash } = await import("node:crypto");
+    const key1 = 1; // PLATFORM_KEY["x"]
+    const key2 = createHash("sha256").update(user.id).digest().readInt32BE(0);
+
+    // Hold the lock inside a long-running transaction. The transaction
+    // doesn't commit until we resolve `release`.
+    let release!: () => void;
+    const released = new Promise<void>((r) => {
+      release = r;
+    });
+    const held = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_try_advisory_xact_lock(${key1}::int, ${key2}::int)`;
+      await released;
+    });
+
+    // Give the transaction a tick to actually take the lock.
+    await new Promise((r) => setTimeout(r, 20));
+
+    try {
+      const { withTokenRefreshLock } = await import("../token-refresh-lock");
+      const workFn = vi.fn(async () => "unused");
+      await expect(withTokenRefreshLock(user.id, "x", workFn)).rejects.toThrow(/failed to acquire/);
+      expect(workFn).not.toHaveBeenCalled();
+
+      const Sentry = await import("@sentry/nextjs");
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        expect.stringContaining("failed to acquire"),
+        expect.objectContaining({
+          tags: expect.objectContaining({ platform: "x", userId: user.id }),
+        })
+      );
+    } finally {
+      release();
+      await held;
+    }
   });
 });

@@ -9,8 +9,27 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: xreba_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d xreba_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
-      DATABASE_URL: "postgresql://fake:fake@localhost:5432/fake"
+      # Unit tests hit a real Postgres so integration tests can't drift from
+      # production schema. CLAUDE.md forbids DB mocks in critical-path tests.
+      DATABASE_URL: "postgresql://test:test@localhost:5432/xreba_test"
+      DIRECT_URL: "postgresql://test:test@localhost:5432/xreba_test"
+      TOKEN_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      CRON_SECRET: "test-cron-secret"
       NEXT_PUBLIC_SENTRY_DSN: ""
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +43,9 @@ jobs:
 
       - name: Generate Prisma client
         run: npx prisma generate
+
+      - name: Run migrations on test DB
+        run: npx prisma migrate deploy
 
       - name: TypeScript check
         run: npx tsc --noEmit

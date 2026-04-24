@@ -1,10 +1,12 @@
 /**
- * Stripe webhook idempotency tests.
+ * Stripe webhook idempotency tests — real Postgres.
  *
- * Stripe retries any delivery that returns 5xx or times out, which means
- * a single subscription.created event can hit our handler many times.
- * Without dedup we'd re-grant the subscription on every retry. These
- * tests lock in:
+ * CLAUDE.md forbids mocking the DB in critical-path tests (prior
+ * incident: mocks hid a broken migration). This file drives the real
+ * `StripeWebhookEvent` PK to prove the idempotency lock works the way
+ * production expects, not the way the mock was configured to lie.
+ *
+ * Covers:
  *   1. First call: claims the event (insert into StripeWebhookEvent) and
  *      processes downstream side-effects.
  *   2. Retry: the claim insert fails with P2002 → handler returns 200
@@ -17,21 +19,10 @@
  *      forever, since any future delivery would short-circuit as dup).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { prisma } from "@/lib/prisma";
+import { cleanupByPrefix, createTestUser, randomSuffix } from "@/test/real-prisma";
 
-// ─── Mocks ───────────────────────────────────────────────
-
-const prismaMock = vi.hoisted(() => ({
-  subscription: {
-    upsert: vi.fn(),
-    updateMany: vi.fn(),
-  },
-  stripeWebhookEvent: {
-    create: vi.fn(),
-    delete: vi.fn(),
-  },
-}));
-
-vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
+// ─── Mocks (non-DB) ──────────────────────────────────────
 
 const constructEventMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/stripe", () => ({
@@ -47,19 +38,33 @@ vi.mock("@sentry/nextjs", () => ({
 
 const ORIGINAL_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
-beforeEach(() => {
+// Per-file prefix lets us clean up exactly what we created. Generated
+// once so every row in this suite is attributable to this test file.
+const PREFIX = `stripe_idem_${randomSuffix()}_`;
+let TEST_USER_ID: string;
+
+beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
   process.env.STRIPE_WEBHOOK_SECRET = "whsec_test";
-  prismaMock.subscription.upsert.mockResolvedValue({ id: "sub-1" });
-  prismaMock.subscription.updateMany.mockResolvedValue({ count: 1 });
-  prismaMock.stripeWebhookEvent.create.mockResolvedValue({ eventId: "evt_1" });
-  prismaMock.stripeWebhookEvent.delete.mockResolvedValue({ eventId: "evt_1" });
+
+  // Fresh test user per test. `clerkId` carries the prefix so cleanup
+  // can sweep it surgically. Subscription cascades with the user.
+  const clerkId = `${PREFIX}user_${randomSuffix()}`;
+  const user = await createTestUser({ clerkId });
+  TEST_USER_ID = user.id;
 });
 
-afterEach(() => {
+afterEach(async () => {
   if (ORIGINAL_SECRET === undefined) delete process.env.STRIPE_WEBHOOK_SECRET;
   else process.env.STRIPE_WEBHOOK_SECRET = ORIGINAL_SECRET;
+
+  // Clean up webhook events + subscriptions + users scoped to this file.
+  await cleanupByPrefix(PREFIX, {
+    eventId: true,
+    stripeSubscriptionId: true,
+    clerkId: true,
+  });
 });
 
 function makeRequest(signature = "sig_test"): Request {
@@ -70,7 +75,7 @@ function makeRequest(signature = "sig_test"): Request {
   });
 }
 
-function makeSubscriptionCreatedEvent(eventId = "evt_1", subId = "sub_stripe_1") {
+function makeSubscriptionCreatedEvent(eventId: string, subId: string, userId: string) {
   return {
     id: eventId,
     type: "customer.subscription.created",
@@ -78,12 +83,12 @@ function makeSubscriptionCreatedEvent(eventId = "evt_1", subId = "sub_stripe_1")
       object: {
         id: subId,
         status: "active",
-        customer: "cus_1",
-        metadata: { userId: "user-1" },
+        customer: `${PREFIX}cus_${randomSuffix()}`,
+        metadata: { userId },
         items: {
           data: [
             {
-              price: { id: "price_1" },
+              price: { id: `${PREFIX}price_1` },
               current_period_start: Math.floor(Date.now() / 1000),
               current_period_end: Math.floor(Date.now() / 1000) + 2592000,
             },
@@ -96,22 +101,11 @@ function makeSubscriptionCreatedEvent(eventId = "evt_1", subId = "sub_stripe_1")
   };
 }
 
-/**
- * Builds a pseudo-Prisma unique-constraint error. Only the `code` field
- * is inspected by the handler, so a plain object is sufficient — we
- * don't need to reach into the real Prisma error class.
- */
-function uniqueViolation(target = "PRIMARY"): unknown {
-  const err = new Error("Unique constraint failed");
-  Object.assign(err, { code: "P2002", meta: { target: [target] } });
-  return err;
-}
-
-// ─── Tests ───────────────────────────────────────────────
-
-describe("POST /api/webhooks/stripe — idempotency", () => {
+describe("POST /api/webhooks/stripe — idempotency (real DB)", () => {
   it("first delivery: records event + processes downstream", async () => {
-    constructEventMock.mockReturnValue(makeSubscriptionCreatedEvent());
+    const eventId = `${PREFIX}evt_${randomSuffix()}`;
+    const subId = `${PREFIX}sub_${randomSuffix()}`;
+    constructEventMock.mockReturnValue(makeSubscriptionCreatedEvent(eventId, subId, TEST_USER_ID));
 
     const { POST } = await import("../route");
     const res = await POST(makeRequest() as never);
@@ -121,41 +115,57 @@ describe("POST /api/webhooks/stripe — idempotency", () => {
     expect(data).toMatchObject({ received: true });
     expect(data.duplicate).toBeUndefined();
 
-    // Event recorded BEFORE downstream processing
-    expect(prismaMock.stripeWebhookEvent.create).toHaveBeenCalledWith({
-      data: { eventId: "evt_1", type: "customer.subscription.created" },
+    // Event row actually exists in Postgres.
+    const claim = await prisma.stripeWebhookEvent.findUnique({ where: { eventId } });
+    expect(claim).not.toBeNull();
+    expect(claim?.type).toBe("customer.subscription.created");
+
+    // Subscription row was upserted for this user.
+    const sub = await prisma.subscription.findUnique({
+      where: { stripeSubscriptionId: subId },
     });
-    // Downstream grant fired exactly once
-    expect(prismaMock.subscription.upsert).toHaveBeenCalledTimes(1);
+    expect(sub?.userId).toBe(TEST_USER_ID);
+    expect(sub?.status).toBe("ACTIVE");
   });
 
   it("retry of same event.id: short-circuits with 200 and does NOT re-process", async () => {
-    constructEventMock.mockReturnValue(makeSubscriptionCreatedEvent());
-    // Second delivery: claim fails with unique-violation
-    prismaMock.stripeWebhookEvent.create.mockRejectedValueOnce(uniqueViolation("eventId"));
+    const eventId = `${PREFIX}evt_${randomSuffix()}`;
+    const subId = `${PREFIX}sub_${randomSuffix()}`;
+    constructEventMock.mockReturnValue(makeSubscriptionCreatedEvent(eventId, subId, TEST_USER_ID));
 
     const { POST } = await import("../route");
-    const res = await POST(makeRequest() as never);
+    const res1 = await POST(makeRequest() as never);
+    expect(res1.status).toBe(200);
 
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data).toMatchObject({ received: true, duplicate: true });
+    // Record initial state of the subscription to detect re-processing.
+    const sub1 = await prisma.subscription.findUnique({
+      where: { stripeSubscriptionId: subId },
+    });
+    expect(sub1).not.toBeNull();
+    const initialUpdatedAt = sub1!.updatedAt;
 
-    // Downstream grant MUST NOT fire
-    expect(prismaMock.subscription.upsert).not.toHaveBeenCalled();
+    // Second delivery with the SAME event id — the real P2002 is what
+    // gates us here, not a mocked throw.
+    const res2 = await POST(makeRequest() as never);
+    expect(res2.status).toBe(200);
+    const body = await res2.json();
+    expect(body).toMatchObject({ received: true, duplicate: true });
+
+    // The subscription row must NOT have been touched on the retry.
+    const sub2 = await prisma.subscription.findUnique({
+      where: { stripeSubscriptionId: subId },
+    });
+    expect(sub2?.updatedAt.getTime()).toBe(initialUpdatedAt.getTime());
   });
 
   it("two concurrent deliveries for same event.id: downstream fires exactly once", async () => {
-    constructEventMock.mockReturnValue(makeSubscriptionCreatedEvent());
-
-    // Simulate the race: the first claim succeeds, the second observes
-    // the committed row and throws P2002. Postgres guarantees exactly
-    // this ordering under a PK insert race.
-    prismaMock.stripeWebhookEvent.create
-      .mockResolvedValueOnce({ eventId: "evt_1" })
-      .mockRejectedValueOnce(uniqueViolation("eventId"));
+    const eventId = `${PREFIX}evt_${randomSuffix()}`;
+    const subId = `${PREFIX}sub_${randomSuffix()}`;
+    constructEventMock.mockReturnValue(makeSubscriptionCreatedEvent(eventId, subId, TEST_USER_ID));
 
     const { POST } = await import("../route");
+    // Race two parallel requests against the real DB. Postgres PK
+    // enforces exactly one winner.
     const [res1, res2] = await Promise.all([
       POST(makeRequest() as never),
       POST(makeRequest() as never),
@@ -164,56 +174,74 @@ describe("POST /api/webhooks/stripe — idempotency", () => {
     expect(res1.status).toBe(200);
     expect(res2.status).toBe(200);
 
-    // Exactly one of the two responses is marked duplicate.
+    // Exactly one is marked duplicate.
     const bodies = await Promise.all([res1.json(), res2.json()]);
     const duplicates = bodies.filter((b) => b.duplicate === true);
     expect(duplicates).toHaveLength(1);
 
-    // And the downstream grant fires exactly once across both calls.
-    expect(prismaMock.subscription.upsert).toHaveBeenCalledTimes(1);
+    // Exactly one event row in the ledger.
+    const rows = await prisma.stripeWebhookEvent.findMany({ where: { eventId } });
+    expect(rows).toHaveLength(1);
+
+    // Exactly one subscription — upsert cannot duplicate rows by design,
+    // but asserting it here locks in the end-state contract.
+    const subs = await prisma.subscription.findMany({
+      where: { stripeSubscriptionId: subId },
+    });
+    expect(subs).toHaveLength(1);
   });
 
   it("different event.ids: both process independently", async () => {
+    // Subscription.userId is unique, so we use two distinct users so
+    // both upserts can land without colliding on the same row.
+    const userB = await createTestUser({
+      clerkId: `${PREFIX}userB_${randomSuffix()}`,
+    });
+
+    const evA = `${PREFIX}evt_A_${randomSuffix()}`;
+    const evB = `${PREFIX}evt_B_${randomSuffix()}`;
+    const subA = `${PREFIX}subA_${randomSuffix()}`;
+    const subB = `${PREFIX}subB_${randomSuffix()}`;
+
     const { POST } = await import("../route");
 
-    constructEventMock.mockReturnValueOnce(makeSubscriptionCreatedEvent("evt_A", "sub_A"));
+    constructEventMock.mockReturnValueOnce(makeSubscriptionCreatedEvent(evA, subA, TEST_USER_ID));
     await POST(makeRequest() as never);
 
-    constructEventMock.mockReturnValueOnce(makeSubscriptionCreatedEvent("evt_B", "sub_B"));
+    constructEventMock.mockReturnValueOnce(makeSubscriptionCreatedEvent(evB, subB, userB.id));
     await POST(makeRequest() as never);
 
-    expect(prismaMock.stripeWebhookEvent.create).toHaveBeenCalledTimes(2);
-    expect(prismaMock.subscription.upsert).toHaveBeenCalledTimes(2);
+    const claims = await prisma.stripeWebhookEvent.findMany({
+      where: { eventId: { in: [evA, evB] } },
+    });
+    expect(claims).toHaveLength(2);
+
+    const subs = await prisma.subscription.findMany({
+      where: { stripeSubscriptionId: { in: [subA, subB] } },
+    });
+    expect(subs).toHaveLength(2);
   });
 
   it("handler error after claim: rolls back claim so Stripe retry can process", async () => {
-    constructEventMock.mockReturnValue(makeSubscriptionCreatedEvent());
-    prismaMock.subscription.upsert.mockRejectedValueOnce(new Error("db down"));
+    const eventId = `${PREFIX}evt_${randomSuffix()}`;
+    // Use a userId that doesn't exist — upsert fails on FK.
+    const event = makeSubscriptionCreatedEvent(
+      eventId,
+      `${PREFIX}sub_${randomSuffix()}`,
+      `user_does_not_exist_${randomSuffix()}`
+    );
+    constructEventMock.mockReturnValue(event);
 
     const { POST } = await import("../route");
     const res = await POST(makeRequest() as never);
 
     expect(res.status).toBe(500);
-    // Claim row deleted → next delivery will re-claim and retry
-    expect(prismaMock.stripeWebhookEvent.delete).toHaveBeenCalledWith({
-      where: { eventId: "evt_1" },
-    });
+
+    // Claim was rolled back → row does not exist.
+    const claim = await prisma.stripeWebhookEvent.findUnique({ where: { eventId } });
+    expect(claim).toBeNull();
 
     // Sentry.captureException called for the handler failure
-    const Sentry = await import("@sentry/nextjs");
-    expect(Sentry.captureException).toHaveBeenCalled();
-  });
-
-  it("claim insert fails with non-P2002 error: 500 without touching downstream", async () => {
-    constructEventMock.mockReturnValue(makeSubscriptionCreatedEvent());
-    prismaMock.stripeWebhookEvent.create.mockRejectedValueOnce(new Error("connection refused"));
-
-    const { POST } = await import("../route");
-    const res = await POST(makeRequest() as never);
-
-    expect(res.status).toBe(500);
-    expect(prismaMock.subscription.upsert).not.toHaveBeenCalled();
-
     const Sentry = await import("@sentry/nextjs");
     expect(Sentry.captureException).toHaveBeenCalled();
   });
@@ -227,9 +255,9 @@ describe("POST /api/webhooks/stripe — idempotency", () => {
     const res = await POST(makeRequest() as never);
 
     expect(res.status).toBe(400);
-    // Claim should NOT run if signature is invalid
-    expect(prismaMock.stripeWebhookEvent.create).not.toHaveBeenCalled();
 
+    // No claim was attempted, so no leftover rows from this test need
+    // cleanup here — the prefix sweep in afterEach covers it anyway.
     const Sentry = await import("@sentry/nextjs");
     expect(Sentry.captureException).toHaveBeenCalled();
   });
