@@ -24,11 +24,10 @@ This used to look fine because the real network call would abort quickly under a
 
 ```ts
 vi.mock("@/lib/fetch-with-timeout", () => ({
-  fetchWithTimeout: (input, init) =>
-    (globalThis.fetch as typeof fetch)(input, init), // ← resolved when called
+  fetchWithTimeout: (input, init) => (globalThis.fetch as typeof fetch)(input, init), // ← resolved when called
 }));
 ```
 
 By the time the shim actually runs, `vi.stubGlobal("fetch", mockFetch)` has installed the stub on `globalThis.fetch`, so `mockFetch` is what gets called.
 
-**Rule of thumb:** anything that references a global from inside a `vi.mock` factory should read it lazily (at call time) unless you *want* the native version.
+**Rule of thumb:** anything that references a global from inside a `vi.mock` factory should read it lazily (at call time) unless you _want_ the native version.
