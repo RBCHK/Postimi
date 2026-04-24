@@ -229,7 +229,8 @@ export function StrategistView() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="size-6 opacity-0 group-hover:opacity-100 shrink-0 mt-0.5"
+                        aria-label="Delete analysis"
+                        className="size-6 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 shrink-0 mt-0.5"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleDelete(a.id);
