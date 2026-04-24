@@ -132,24 +132,28 @@ describe("daily-insight cron — contract", () => {
   });
 
   it("isolates per-user errors — Sentry captures and loop continues", async () => {
-    // Two users owned by this test. Make AI throw only when called for
-    // userA (keyed on input content), succeed otherwise. This keeps the
-    // mock deterministic even when other parallel tests inject users
-    // into the shared DB.
+    // Two users owned by this test. Drive userA's AI call to throw while
+    // userB succeeds. Route must capture A's exception, release A's
+    // reservation, and still process B.
     const userA = await createTestUser({ clerkId: `${PREFIX}A_${randomSuffix()}` });
     const userB = await createTestUser({ clerkId: `${PREFIX}B_${randomSuffix()}` });
 
-    // Route calls saveDailyInsight(userId, …) and we need to know which
-    // generateText call corresponds to which user. The route calls
-    // saveDailyInsight AFTER generateText, so match via the stable
-    // ordering: observe saveDailyInsight calls for the error-free user
-    // and captureException for the erroring one.
-    //
-    // Simpler strategy: make userA's context-lookup throw. We control
-    // getLatestTrends per-userId.
-    getLatestTrendsMock.mockImplementation(async (uid: string) => {
-      if (uid === userA.id) throw new Error("trends failed for A");
-      return [];
+    // Control generateText per userId via reserveQuota's return shape:
+    // the route calls reserveQuota first, then generateText. We stash the
+    // userId so our generateText mock can branch on it.
+    let currentUserId: string | null = null;
+    reserveQuotaMock.mockImplementation(async ({ userId }: { userId: string }) => {
+      currentUserId = userId;
+      return { reservationId: `res-${userId}` };
+    });
+    generateTextMock.mockImplementation(async () => {
+      if (currentUserId === userA.id) {
+        throw new Error("anthropic 500 for A");
+      }
+      return {
+        text: JSON.stringify(["a", "b", "c", "d", "e"]),
+        usage: { inputTokens: 10, outputTokens: 10 },
+      };
     });
 
     const { GET } = await import("../route");
@@ -169,8 +173,52 @@ describe("daily-insight cron — contract", () => {
     const Sentry = await import("@sentry/nextjs");
     expect(Sentry.captureException).toHaveBeenCalled();
 
-    // Failed reservation was released.
+    // Failed reservation was released for the erroring user.
     expect(failReservationMock).toHaveBeenCalled();
+  });
+
+  it("one rejected subquery does not skip the user — allSettled + Sentry per subtask", async () => {
+    // Regression guard for the Promise.all -> allSettled refactor.
+    // If getLatestTrends throws for a user, the user's insight must
+    // still be computed (with empty trends) and persisted. The subtask
+    // failure is captured to Sentry with the subtask tag so we can
+    // detect recurring sub-failures in ops.
+    const user = await createTestUser({ clerkId: `${PREFIX}sub_${randomSuffix()}` });
+
+    getLatestTrendsMock.mockImplementation(async (uid: string) => {
+      if (uid === user.id) throw new Error("trends service down");
+      return [];
+    });
+
+    const { GET } = await import("../route");
+    const res = await GET(authed());
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    const results = body.results as Array<{ userId: string; insightId?: string; error?: string }>;
+    const ours = results.find((r) => r.userId === user.id);
+
+    // User was NOT skipped — insight persisted despite subquery failure.
+    expect(ours).toBeDefined();
+    expect(ours?.error).toBeUndefined();
+    const callsForOurUser = saveDailyInsightMock.mock.calls.filter((c) => c[0] === user.id);
+    expect(callsForOurUser).toHaveLength(1);
+
+    // Subquery failure reached Sentry with the subtask tag.
+    const Sentry = await import("@sentry/nextjs");
+    const calls = (Sentry.captureException as ReturnType<typeof vi.fn>).mock.calls;
+    const subtaskCall = calls.find((c) => {
+      const ctx = c[1] as { tags?: { area?: string; userId?: string; subtask?: string } };
+      return (
+        ctx?.tags?.area === "daily-insight" &&
+        ctx?.tags?.userId === user.id &&
+        ctx?.tags?.subtask === "getLatestTrends"
+      );
+    });
+    expect(subtaskCall).toBeDefined();
+
+    // Reservation completed normally — not failed, since the user succeeded.
+    expect(completeReservationMock).toHaveBeenCalled();
   });
 
   it("treats QuotaExceededError as soft skip — no Sentry exception for that user", async () => {
