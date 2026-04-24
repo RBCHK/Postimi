@@ -65,87 +65,119 @@ export const GET = withCronLogging("x-import", async (req) => {
       const snapshotDate = new Date();
       snapshotDate.setUTCHours(0, 0, 0, 0);
 
-      for (const tweet of tweets) {
-        const existing = await prisma.socialPost.findUnique({
+      if (tweets.length > 0) {
+        // One findMany replaces N findUnique calls to classify each tweet
+        // as new vs existing.
+        const existingRows = await prisma.socialPost.findMany({
           where: {
-            userId_platform_externalPostId: {
-              userId: user.id,
-              platform: "X",
-              externalPostId: tweet.postId,
-            },
-          },
-          select: { id: true },
-        });
-
-        const apiMetrics = {
-          impressions: tweet.impressions,
-          likes: tweet.likes,
-          engagements: tweet.engagements,
-          bookmarks: tweet.bookmarks,
-          replies: tweet.replies,
-          reposts: tweet.reposts,
-          quoteCount: tweet.quoteCount,
-          urlClicks: tweet.urlClicks,
-          profileVisits: tweet.profileVisits ?? 0,
-        };
-
-        const updateData: Record<string, unknown> = {
-          ...apiMetrics,
-          dataSource: "API",
-        };
-
-        const postType = detectPostType(tweet.text);
-
-        const socialPost = await prisma.socialPost.upsert({
-          where: {
-            userId_platform_externalPostId: {
-              userId: user.id,
-              platform: "X",
-              externalPostId: tweet.postId,
-            },
-          },
-          create: {
             userId: user.id,
             platform: "X",
-            externalPostId: tweet.postId,
-            postedAt: tweet.createdAt,
-            text: tweet.text,
-            postUrl: tweet.postLink,
-            postType,
-            platformMetadata: { platform: "X", postType },
-            ...apiMetrics,
-            dataSource: "API",
+            externalPostId: { in: tweets.map((t) => t.postId) },
           },
-          update: updateData,
-          select: { id: true },
+          select: { externalPostId: true },
         });
+        const existingSet = new Set(existingRows.map((r) => r.externalPostId));
 
-        if (existing) updated++;
-        else imported++;
+        // Postgres caps bound parameters per query near 65k. With ~10 columns
+        // per upsert branch, 200 posts per transaction stays well inside
+        // that limit while collapsing N round-trips into ⌈N/200⌉.
+        const BATCH_SIZE = 200;
 
-        // Save engagement snapshot for velocity tracking (only while the
-        // post is still "young" — older posts don't change meaningfully).
-        const postAgeDays = (Date.now() - tweet.createdAt.getTime()) / (1000 * 60 * 60 * 24);
-        if (postAgeDays < REFRESH_DAYS) {
-          await prisma.socialPostEngagementSnapshot.upsert({
-            where: {
-              userId_platform_postId_snapshotDate: {
-                userId: user.id,
-                platform: "X",
-                postId: socialPost.id,
-                snapshotDate,
-              },
-            },
-            create: {
-              userId: user.id,
-              platform: "X",
-              postId: socialPost.id,
-              snapshotDate,
-              ...apiMetrics,
-            },
-            update: apiMetrics,
-          });
-          snapshots++;
+        for (let start = 0; start < tweets.length; start += BATCH_SIZE) {
+          const chunk = tweets.slice(start, start + BATCH_SIZE);
+
+          const upserted = await prisma.$transaction(
+            chunk.map((tweet) => {
+              const apiMetrics = {
+                impressions: tweet.impressions,
+                likes: tweet.likes,
+                engagements: tweet.engagements,
+                bookmarks: tweet.bookmarks,
+                replies: tweet.replies,
+                reposts: tweet.reposts,
+                quoteCount: tweet.quoteCount,
+                urlClicks: tweet.urlClicks,
+                profileVisits: tweet.profileVisits ?? 0,
+              };
+              const postType = detectPostType(tweet.text);
+              const updateData: Record<string, unknown> = {
+                ...apiMetrics,
+                dataSource: "API",
+              };
+              return prisma.socialPost.upsert({
+                where: {
+                  userId_platform_externalPostId: {
+                    userId: user.id,
+                    platform: "X",
+                    externalPostId: tweet.postId,
+                  },
+                },
+                create: {
+                  userId: user.id,
+                  platform: "X",
+                  externalPostId: tweet.postId,
+                  postedAt: tweet.createdAt,
+                  text: tweet.text,
+                  postUrl: tweet.postLink,
+                  postType,
+                  platformMetadata: { platform: "X", postType },
+                  ...apiMetrics,
+                  dataSource: "API",
+                },
+                update: updateData,
+                select: { id: true, externalPostId: true },
+              });
+            })
+          );
+
+          const snapshotOps: ReturnType<typeof prisma.socialPostEngagementSnapshot.upsert>[] = [];
+          for (let i = 0; i < chunk.length; i++) {
+            const tweet = chunk[i]!;
+            const sp = upserted[i]!;
+
+            if (existingSet.has(sp.externalPostId)) updated++;
+            else imported++;
+
+            const postAgeDays = (Date.now() - tweet.createdAt.getTime()) / (1000 * 60 * 60 * 24);
+            if (postAgeDays < REFRESH_DAYS) {
+              const apiMetrics = {
+                impressions: tweet.impressions,
+                likes: tweet.likes,
+                engagements: tweet.engagements,
+                bookmarks: tweet.bookmarks,
+                replies: tweet.replies,
+                reposts: tweet.reposts,
+                quoteCount: tweet.quoteCount,
+                urlClicks: tweet.urlClicks,
+                profileVisits: tweet.profileVisits ?? 0,
+              };
+              snapshotOps.push(
+                prisma.socialPostEngagementSnapshot.upsert({
+                  where: {
+                    userId_platform_postId_snapshotDate: {
+                      userId: user.id,
+                      platform: "X",
+                      postId: sp.id,
+                      snapshotDate,
+                    },
+                  },
+                  create: {
+                    userId: user.id,
+                    platform: "X",
+                    postId: sp.id,
+                    snapshotDate,
+                    ...apiMetrics,
+                  },
+                  update: apiMetrics,
+                })
+              );
+              snapshots++;
+            }
+          }
+
+          if (snapshotOps.length > 0) {
+            await prisma.$transaction(snapshotOps);
+          }
         }
       }
 

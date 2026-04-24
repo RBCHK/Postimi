@@ -16,9 +16,14 @@ vi.mock("@sentry/nextjs", () => sentryMock);
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
+// `$transaction([...])` forwards the array to `Promise.all` in tests so
+// each upsert inside the chunk returns whatever `upsert.mockResolvedValue`
+// is configured to return — same semantics as the real client when every
+// operation resolves.
 const prismaMock = vi.hoisted(() => ({
   socialPost: {
     findUnique: vi.fn(),
+    findMany: vi.fn(),
     upsert: vi.fn(),
   },
   socialDailyStats: {
@@ -27,6 +32,7 @@ const prismaMock = vi.hoisted(() => ({
   socialFollowersSnapshot: {
     upsert: vi.fn(),
   },
+  $transaction: vi.fn(async (ops: unknown[]) => Promise.all(ops)),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
@@ -58,9 +64,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   (requireUserId as ReturnType<typeof vi.fn>).mockResolvedValue(USER_ID);
   prismaMock.socialPost.findUnique.mockResolvedValue(null);
+  prismaMock.socialPost.findMany.mockResolvedValue([]);
   prismaMock.socialPost.upsert.mockResolvedValue({ id: "sp-1" });
   prismaMock.socialDailyStats.upsert.mockResolvedValue({});
   prismaMock.socialFollowersSnapshot.upsert.mockResolvedValue({});
+  prismaMock.$transaction.mockImplementation(async (ops: unknown[]) => Promise.all(ops));
 });
 
 describe("importLinkedInXlsx — guards", () => {
@@ -154,22 +162,25 @@ describe("importLinkedInXlsx — happy path", () => {
 
 describe("importLinkedInXlsx — idempotency and isolation", () => {
   it("returns updated count when SocialPost already exists for this user+platform+postId", async () => {
-    prismaMock.socialPost.findUnique.mockResolvedValue({
-      id: "prev-1",
-      impressions: 0,
-      engagements: 0,
-    });
+    // The refactored path fetches all existing IDs in one findMany call
+    // before upserting; return each fixture post as pre-existing.
+    prismaMock.socialPost.findMany.mockResolvedValue([
+      { externalPostId: "1000000000000000001", impressions: 0, engagements: 0 },
+      { externalPostId: "1000000000000000002", impressions: 0, engagements: 0 },
+      { externalPostId: "1000000000000000003", impressions: 0, engagements: 0 },
+    ]);
     const result = await importLinkedInXlsx(formDataWith(loadFile(WEEKLY_PATH)));
     expect(result.postsImported).toBe(0);
     expect(result.postsUpdated).toBe(3);
   });
 
   it("keeps the larger of existing vs incoming metrics so a quarterly re-import never regresses a weekly one", async () => {
-    prismaMock.socialPost.findUnique.mockResolvedValue({
-      id: "prev-1",
-      impressions: 10000, // previously imported from a larger quarterly
-      engagements: 50,
-    });
+    prismaMock.socialPost.findMany.mockResolvedValue([
+      // Previously imported from a larger quarterly — 10000/50 must win.
+      { externalPostId: "1000000000000000001", impressions: 10000, engagements: 50 },
+      { externalPostId: "1000000000000000002", impressions: 10000, engagements: 50 },
+      { externalPostId: "1000000000000000003", impressions: 10000, engagements: 50 },
+    ]);
     await importLinkedInXlsx(formDataWith(loadFile(WEEKLY_PATH)));
     // Weekly fixture's max impressions for any post is 14; existing 10000
     // must win on every upsert.
@@ -180,7 +191,9 @@ describe("importLinkedInXlsx — idempotency and isolation", () => {
   });
 
   it("reports unexpected prisma errors to Sentry with action + userId tags", async () => {
-    prismaMock.socialPost.upsert.mockRejectedValueOnce(new Error("DB gone"));
+    // Fail the batch transaction (used for upsert chunks) so the action
+    // goes through the Sentry.captureException branch.
+    prismaMock.$transaction.mockRejectedValueOnce(new Error("DB gone"));
     await expect(importLinkedInXlsx(formDataWith(loadFile(WEEKLY_PATH)))).rejects.toThrow(
       "DB gone"
     );
@@ -196,5 +209,23 @@ describe("importLinkedInXlsx — idempotency and isolation", () => {
     const file = new File(["nope"], "notxlsx.xlsx", { type: "text/csv" });
     await expect(importLinkedInXlsx(formDataWith(file))).rejects.toThrow();
     expect(sentryMock.captureException).not.toHaveBeenCalled();
+  });
+
+  it("routes upserts through $transaction batches (not per-row round-trips)", async () => {
+    await importLinkedInXlsx(formDataWith(loadFile(WEEKLY_PATH)));
+
+    // Weekly fixture carries 3 top posts + 7 daily-engagement rows + 7
+    // follower-snapshot rows — each group goes through one $transaction
+    // per batch (all fit in a single chunk at BATCH_SIZE=200).
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(3);
+
+    // Every $transaction call must receive an Array of upsert promises;
+    // a regression to a nested Promise.all or a bare await loop would
+    // either pass non-array args or not touch $transaction at all.
+    for (const call of prismaMock.$transaction.mock.calls) {
+      const ops = call[0] as unknown[];
+      expect(Array.isArray(ops)).toBe(true);
+      expect(ops.length).toBeGreaterThan(0);
+    }
   });
 });
