@@ -7,10 +7,18 @@ import { requireUserId } from "@/lib/auth";
 import { SlotType as PrismaSlotType, type Platform } from "@/generated/prisma";
 import { getScheduleConfig, saveScheduleConfig } from "@/app/actions/schedule";
 import type { ScheduleConfig, DayKey } from "@/lib/server/schedule";
-import type { PlanChange, ConfigChange, MetricsSnapshot, PlanProposalItem } from "@/lib/types";
+import type {
+  PlanChange,
+  ConfigChange,
+  MetricsSnapshot,
+  PlanProposalItem,
+  PlanProposalListItem,
+} from "@/lib/types";
 import {
   savePlanProposal as _savePlanProposal,
   getAcceptedProposals as _getAcceptedProposals,
+  getAcceptedProposalsList as _getAcceptedProposalsList,
+  getAcceptedProposalDetails as _getAcceptedProposalDetails,
   mapProposalRow,
 } from "@/lib/server/plan-proposal";
 
@@ -123,6 +131,28 @@ export async function getAcceptedProposals(
 }
 
 /**
+ * List variant of {@link getAcceptedProposals}: same filter, trimmed
+ * projection. Use for index/list views; fetch the full item via
+ * {@link getAcceptedProposalDetails} when the user expands a row.
+ */
+export async function getAcceptedProposalsList(
+  days: number,
+  platform?: Platform
+): Promise<PlanProposalListItem[]> {
+  const userId = await requireUserId();
+  return _getAcceptedProposalsList(userId, days, platform);
+}
+
+/**
+ * Detail fetch for an expanded row. Always scoped to the caller's
+ * `userId` — passing someone else's id returns `null`, not the row.
+ */
+export async function getAcceptedProposalDetails(id: string): Promise<PlanProposalItem | null> {
+  const userId = await requireUserId();
+  return _getAcceptedProposalDetails(userId, id);
+}
+
+/**
  * Accept a proposal — apply changes based on proposalType:
  * - "config": update ScheduleConfig (recurring template) → auto-regenerate slots
  * - "schedule" (legacy): apply one-time ScheduledSlot changes
@@ -183,7 +213,10 @@ export async function acceptProposal(id: string, selectedIndices?: number[]): Pr
         });
       }
     }
-    revalidatePath("/");
+    // Legacy "schedule" proposals write ScheduledSlot rows, which only
+    // affect /schedule (not /strategist, which is the proposal banner
+    // host — handled by revalidate of /strategist elsewhere).
+    revalidatePath("/schedule");
   }
 
   // Defense-in-depth: scope the state transition by userId AND current status
@@ -207,5 +240,8 @@ export async function rejectProposal(id: string): Promise<void> {
     where: { id, userId },
     data: { status: "REJECTED", reviewedAt: new Date() },
   });
+  // Pending proposal banner renders on the home route; revalidate so the
+  // banner clears on next visit. /strategist also surfaces proposals in
+  // future UI — keep it cheap today, only / is needed.
   revalidatePath("/");
 }

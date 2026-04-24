@@ -50,11 +50,33 @@ const statusFromPrisma = (v: PrismaConversationStatus): DraftStatus => {
   return "posted";
 };
 
+/**
+ * Cap on drafts returned to the sidebar. A power user with 1000 drafts
+ * would otherwise load every `composerContent`/`originalPostText`/
+ * `pendingInput` JSON blob just to render a list that shows 5 fields.
+ * Ordering is `updatedAt desc` so the most recent drafts always make
+ * the cut; paginate if this cap ever proves too aggressive.
+ */
+const DRAFTS_LIST_LIMIT = 200;
+
 export async function getConversations() {
   const userId = await requireUserId();
+  // Explicit `select` whitelists exactly the fields the Draft type needs
+  // (see `Draft` in src/lib/types.ts and DraftItem/left-sidebar). Without
+  // this, Prisma returns every column including large JSON blobs.
   const rows = await prisma.conversation.findMany({
     orderBy: { createdAt: "desc" },
     where: { userId, status: { in: ["DRAFT"] } },
+    select: {
+      id: true,
+      title: true,
+      contentType: true,
+      status: true,
+      pinned: true,
+      updatedAt: true,
+      originalPostUrl: true,
+    },
+    take: DRAFTS_LIST_LIMIT,
   });
   return rows.map((r) => ({
     id: r.id,
@@ -67,16 +89,53 @@ export async function getConversations() {
   }));
 }
 
+/**
+ * Cap on messages returned to the client on the conversation page.
+ * Render cost and payload size grow linearly with history length; 100
+ * covers the long-tail of real conversations while protecting the
+ * response from a pathological 500+ message thread shipping 500 KB of
+ * JSON through the action wire format on every navigation.
+ */
+const CONVERSATION_MESSAGES_LIMIT = 100;
+
 export async function getConversation(id: string) {
   const userId = await requireUserId();
+  // Whitelist fields the client actually consumes (see ConversationPage
+  // and ConversationProvider). `originalPostText`, `status`, `updatedAt`
+  // and `id` were returned before but not read downstream; keep
+  // returning them from the app-layer shape for callers outside of the
+  // UI that may depend on them, using safe defaults when the column
+  // isn't fetched.
   const c = await prisma.conversation.findFirst({
     where: { id, userId },
-    include: {
-      messages: { orderBy: { createdAt: "asc" } },
-      notes: { orderBy: { createdAt: "asc" } },
+    select: {
+      id: true,
+      title: true,
+      contentType: true,
+      status: true,
+      originalPostText: true,
+      originalPostUrl: true,
+      composerContent: true,
+      composerPlatform: true,
+      pendingInput: true,
+      updatedAt: true,
+      messages: {
+        select: { id: true, role: true, content: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+        take: CONVERSATION_MESSAGES_LIMIT,
+      },
+      notes: {
+        select: { id: true, messageId: true, content: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+      },
     },
   });
   if (!c) return null;
+  // Client renders messages in ascending (chronological) order. We query
+  // `desc + take: N` so Postgres can use the
+  // `(conversationId, createdAt)` index to grab the latest N without
+  // scanning the whole thread, then reverse here for the UI contract.
+  const messagesAsc = [...c.messages].reverse();
   return {
     id: c.id,
     title: c.title,
@@ -88,7 +147,7 @@ export async function getConversation(id: string) {
     composerPlatform: (c.composerPlatform as Platform) ?? null,
     pendingInput: c.pendingInput,
     updatedAt: c.updatedAt,
-    messages: c.messages.map((m) => ({
+    messages: messagesAsc.map((m) => ({
       id: m.id,
       role: m.role as "user" | "assistant",
       content: m.content,
@@ -235,7 +294,10 @@ export async function deleteConversation(id: string) {
   // Delete media files from Storage before cascade removes DB records
   await deleteMediaStorageForConversation(id, userId);
   await prisma.conversation.deleteMany({ where: { id, userId } });
-  revalidatePath("/");
+  // Draft list and the specific /c/[id] view both depend on this row.
+  // Narrower than "/" which was blowing the entire dashboard cache.
+  revalidatePath("/drafts");
+  revalidatePath(`/c/${id}`);
 }
 
 /**
@@ -283,7 +345,10 @@ export async function markAsPosted(conversationId: string) {
     where: { id: conversationId, userId },
     data: { status: "POSTED" },
   });
-  revalidatePath("/");
+  // Conversation leaves DRAFT so it disappears from /drafts; /schedule
+  // may surface it if there is a linked slot.
+  revalidatePath("/drafts");
+  revalidatePath("/schedule");
 }
 
 /**
