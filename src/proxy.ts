@@ -12,8 +12,16 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
 
-const APP_HOSTS = new Set(["app.postimi.com", "app.lvh.me"]);
-const MARKETING_HOSTS = new Set(["postimi.com", "www.postimi.com", "lvh.me"]);
+// `*.localhost` is added alongside `lvh.me` because Chromium-family browsers
+// resolve every `*.localhost` to 127.0.0.1 (RFC 6761) without /etc/hosts edits,
+// while many headless-browser environments don't have DNS for `lvh.me`.
+const APP_HOSTS = new Set(["app.postimi.com", "app.lvh.me", "app.localhost"]);
+const MARKETING_HOSTS = new Set([
+  "postimi.com",
+  "www.postimi.com",
+  "lvh.me",
+  "marketing.localhost",
+]);
 
 // APIs that only exist on the app host. Marketing must 404 these to avoid
 // leaking internal surfaces (OAuth callbacks, cron, AI streaming, webhooks, debug).
