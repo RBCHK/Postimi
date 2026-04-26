@@ -11,6 +11,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-fraunces);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -47,75 +48,160 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
+
+  /* Landing-only color slots (exposed to Tailwind so we can use bg-bg-1, text-text-2 etc.) */
+  --color-bg-0: var(--bg-0);
+  --color-bg-1: var(--bg-1);
+  --color-bg-2: var(--bg-2);
+  --color-bg-3: var(--bg-3);
+  --color-bg-elev: var(--bg-elev);
+  --color-text-0: var(--text-0);
+  --color-text-1: var(--text-1);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-text-4: var(--text-4);
+  --color-border-strong: var(--border-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-border: var(--accent-border);
+  --color-accent-text: var(--accent-text);
+  --color-success: var(--success);
+  --color-warn: var(--warn);
 }
 
+/* ──────────────────────────────────────────────────────────────────
+   Light theme (default — :root)
+   Uses Postimi landing palette: warm off-white surfaces, purple-285 accent.
+   Both the shadcn semantic slots (--background, --foreground, --primary…)
+   and the landing-specific slots (--bg-0..3, --text-0..4, --accent-…) are
+   sourced from the same OKLCH palette so app and landing stay in sync.
+   ────────────────────────────────────────────────────────────────── */
 :root {
-  --radius: 0.5rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --radius: 0.625rem;
+
+  /* Landing surfaces */
+  --bg-0: oklch(0.985 0.003 90);
+  --bg-1: oklch(0.97 0.004 90);
+  --bg-2: oklch(0.94 0.005 90);
+  --bg-3: oklch(0.9 0.006 90);
+  --bg-elev: oklch(1 0 0);
+  --border: oklch(0.89 0.008 90);
+  --border-strong: oklch(0.82 0.01 90);
+
+  /* Landing text */
+  --text-0: oklch(0.18 0.01 270);
+  --text-1: oklch(0.3 0.012 270);
+  --text-2: oklch(0.48 0.012 270);
+  --text-3: oklch(0.62 0.012 270);
+  --text-4: oklch(0.74 0.01 270);
+
+  /* Accent (purple, hue 285) */
+  --accent-h: 285;
+  --accent-color: oklch(0.65 0.19 285);
+  --accent-color-2: oklch(0.72 0.16 285);
+  --accent-soft: oklch(0.65 0.19 285 / 0.14);
+  --accent-border: oklch(0.65 0.19 285 / 0.4);
+  --accent-text: oklch(0.5 0.19 285);
+
+  /* Semantic */
+  --success: oklch(0.62 0.16 150);
+  --warn: oklch(0.7 0.15 75);
+
+  /* Shadcn semantic slots — mapped to landing palette */
+  --background: var(--bg-0);
+  --foreground: var(--text-0);
+  --card: var(--bg-elev);
+  --card-foreground: var(--text-0);
+  --popover: var(--bg-elev);
+  --popover-foreground: var(--text-0);
+  --primary: var(--accent-color);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: var(--bg-2);
+  --secondary-foreground: var(--text-0);
+  --muted: var(--bg-1);
+  --muted-foreground: var(--text-2);
+  --accent: var(--bg-2);
+  --accent-foreground: var(--text-0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --input: var(--border);
+  --ring: oklch(0.65 0.19 285 / 0.5);
+
+  /* Charts (kept from prior palette) */
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+
+  /* Sidebar (kept neutral) */
+  --sidebar: var(--bg-1);
+  --sidebar-foreground: var(--text-0);
+  --sidebar-primary: var(--accent-color);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: var(--bg-2);
+  --sidebar-accent-foreground: var(--text-0);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  /* Shadows */
+  --shadow-md: 0 6px 22px rgba(20, 20, 40, 0.06), 0 1px 2px rgba(20, 20, 40, 0.04);
+  --shadow-lg: 0 24px 60px rgba(20, 20, 40, 0.1), 0 4px 14px rgba(20, 20, 40, 0.06);
+  --shadow-glow: 0 0 0 1px var(--accent-border), 0 30px 60px -20px oklch(0.55 0.19 285 / 0.3);
 }
 
+/* Dark theme */
 .dark {
-  --background: #1c1e21;
-  --foreground: #ffffff;
-  --card: #232528;
-  --card-foreground: #ffffff;
-  --popover: #232528;
-  --popover-foreground: #ffffff;
-  --primary: #5e6ad2;
-  --primary-foreground: #ffffff;
-  --secondary: #2a2d31;
-  --secondary-foreground: #ffffff;
-  --muted: #232528;
-  --muted-foreground: #b0b0b0;
-  --accent: #232528;
-  --accent-foreground: #ffffff;
+  --bg-0: oklch(0.16 0.006 270);
+  --bg-1: oklch(0.19 0.007 270);
+  --bg-2: oklch(0.22 0.008 270);
+  --bg-3: oklch(0.26 0.009 270);
+  --bg-elev: oklch(0.21 0.008 270);
+  --border: oklch(0.3 0.01 270);
+  --border-strong: oklch(0.38 0.012 270);
+
+  --text-0: oklch(0.98 0.003 270);
+  --text-1: oklch(0.88 0.005 270);
+  --text-2: oklch(0.66 0.008 270);
+  --text-3: oklch(0.5 0.01 270);
+  --text-4: oklch(0.38 0.01 270);
+
+  --accent-text: oklch(0.8 0.13 285);
+
+  --background: var(--bg-0);
+  --foreground: var(--text-0);
+  --card: var(--bg-2);
+  --card-foreground: var(--text-0);
+  --popover: var(--bg-elev);
+  --popover-foreground: var(--text-0);
+  --primary: var(--accent-color);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: var(--bg-2);
+  --secondary-foreground: var(--text-0);
+  --muted: var(--bg-1);
+  --muted-foreground: var(--text-2);
+  --accent: var(--bg-2);
+  --accent-foreground: var(--text-0);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: rgba(255, 255, 255, 0.05);
-  --input: rgba(255, 255, 255, 0.08);
-  --ring: rgba(94, 106, 210, 0.5);
+  --input: var(--border);
+  --ring: oklch(0.65 0.19 285 / 0.5);
+
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: #17191c;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #202443;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #232528;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgba(255, 255, 255, 0.05);
-  --sidebar-ring: rgba(94, 106, 210, 0.5);
+
+  --sidebar: var(--bg-1);
+  --sidebar-foreground: var(--text-0);
+  --sidebar-primary: var(--accent-color);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: var(--bg-2);
+  --sidebar-accent-foreground: var(--text-0);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  --shadow-md: 0 6px 22px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.5), 0 4px 14px rgba(0, 0, 0, 0.3);
+  --shadow-glow: 0 0 0 1px var(--accent-border), 0 30px 60px -20px oklch(0.55 0.19 285 / 0.4);
 }
 
 @layer base {
@@ -158,4 +244,175 @@
     letter-spacing: -0.02em;
     font-weight: 500;
   }
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   Landing — primitives ported from design-handoff/landing
+   Scoped by [data-landing] on <main> to avoid leaking onto app pages.
+   ────────────────────────────────────────────────────────────────── */
+
+[data-landing] .reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+[data-landing] .reveal.in {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-landing] .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}
+
+[data-landing] .grid-backdrop {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+[data-landing] .hero-glow {
+  position: absolute;
+  pointer-events: none;
+  top: -200px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1200px;
+  height: 800px;
+  background: radial-gradient(
+    ellipse at center,
+    oklch(0.55 0.19 285 / 0.25) 0%,
+    oklch(0.55 0.19 285 / 0.1) 30%,
+    transparent 65%
+  );
+  filter: blur(40px);
+  z-index: 0;
+}
+
+[data-landing] .pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 0 var(--success);
+  animation: landing-pulse-dot 2s infinite;
+}
+@keyframes landing-pulse-dot {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 oklch(0.74 0.16 150 / 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 6px oklch(0.74 0.16 150 / 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-landing] .pulse-dot {
+    animation: none;
+  }
+}
+
+[data-landing] .cursor-blink::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--accent-color);
+  margin-left: 2px;
+  vertical-align: -2px;
+  animation: landing-blink 1s step-end infinite;
+}
+@keyframes landing-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-landing] .cursor-blink::after {
+    animation: none;
+  }
+}
+
+[data-landing] .logo-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent-color), oklch(0.62 0.18 320));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: -0.04em;
+  box-shadow: inset 0 1px 0 oklch(0.85 0.1 285 / 0.3);
+  flex-shrink: 0;
+}
+
+[data-landing] .nav-elevated {
+  background: oklch(0.985 0.003 90 / 0.75);
+  border-bottom: 1px solid var(--border);
+}
+.dark [data-landing] .nav-elevated {
+  background: oklch(0.16 0.006 270 / 0.7);
+}
+
+/* Landing scoped utility classes for typography that don't fit the in-app
+   text-xl/text-sm/text-xs scale. Display/section sizes are display-only. */
+[data-landing] .h-display {
+  font-size: clamp(40px, 7vw, 84px);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  font-weight: 600;
+  color: var(--text-0);
+  margin: 0;
+}
+[data-landing] .h-section {
+  font-size: clamp(32px, 4.4vw, 54px);
+  line-height: 1.05;
+  letter-spacing: -0.028em;
+  font-weight: 600;
+  color: var(--text-0);
+  margin: 0;
+}
+[data-landing] .h-card {
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: -0.018em;
+  font-weight: 600;
+  color: var(--text-0);
+  margin: 0;
+}
+[data-landing] .lead {
+  font-size: clamp(16px, 1.4vw, 19px);
+  line-height: 1.55;
+  color: var(--text-2);
+  letter-spacing: -0.005em;
+  margin: 0;
+}
+[data-landing] .eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+[data-landing] .display-italic {
+  font-family: var(--font-display), "Geist", serif;
+  font-style: italic;
+  font-weight: 500;
+  color: var(--accent-text);
 }
