@@ -540,6 +540,58 @@ export async function fetchTweetMetrics(
   return data.data ?? null;
 }
 
+/**
+ * Parse X API's `post_count` field. As of 2026-04 the
+ * `/users/personalized_trends` endpoint returns this as a human-formatted
+ * STRING ("1K posts", "2.1K posts", "43K posts", "1.2M posts",
+ * "5,432 posts") rather than a numeric value. The legacy code typed it as
+ * `number` and passed it through; that lands the string in
+ * `prisma.trendSnapshot.createMany` which fails with "expected Int".
+ *
+ * Defensive against:
+ *   - already-numeric values (older API responses, future revert)
+ *   - K / M / B suffixes (case-insensitive)
+ *   - " posts" / " post" trailers (X also strips these on small counts)
+ *   - thousands separators ("," and " ")
+ *   - unparseable strings → 0 (we'd rather log a 0-count trend than drop it)
+ */
+export function parseXPostCount(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value));
+  }
+  if (typeof value !== "string") return 0;
+
+  // Strip trailing "posts" / "post" and any whitespace around it.
+  const trimmed = value.trim().replace(/\s*posts?$/i, "");
+  if (!trimmed) return 0;
+
+  // Capture: numeric prefix + optional decimal + optional K/M/B suffix.
+  // Allow comma OR space as thousands separator inside the numeric part.
+  const match = trimmed.match(/^([\d,\s]+(?:\.\d+)?)\s*([KMB])?$/i);
+  if (!match) return 0;
+
+  const numericPart = match[1]!.replace(/[,\s]/g, "");
+  const base = parseFloat(numericPart);
+  if (!Number.isFinite(base)) return 0;
+
+  const suffix = match[2]?.toUpperCase();
+  const multiplier =
+    suffix === "K" ? 1_000 : suffix === "M" ? 1_000_000 : suffix === "B" ? 1_000_000_000 : 1;
+
+  return Math.round(base * multiplier);
+}
+
+/** Validate `trending_since`. X has been seen returning the literal string
+ * "Invalid Date" or omitting the field entirely. Returns undefined when
+ * the value can't be parsed into a real Date — callers normalize that to
+ * a NULL DB column so the row still saves. */
+export function parseXTrendingSince(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value) return undefined;
+  const t = Date.parse(value);
+  if (!Number.isFinite(t)) return undefined;
+  return new Date(t).toISOString();
+}
+
 /** Fetch personalized trends */
 export async function fetchPersonalizedTrends(
   credentials: XApiCredentials,
@@ -555,7 +607,9 @@ export async function fetchPersonalizedTrends(
   const data = await xFetch<{
     data?: Array<{
       trend_name: string;
-      post_count?: number;
+      // X started returning this as a human-formatted string ("1K posts")
+      // in 2026-04. We accept either shape; parseXPostCount normalises.
+      post_count?: number | string;
       category?: string;
       trending_since?: string;
     }>;
@@ -567,9 +621,9 @@ export async function fetchPersonalizedTrends(
 
   const trends = data.data.map((t) => ({
     trendName: t.trend_name,
-    postCount: t.post_count ?? 0,
+    postCount: parseXPostCount(t.post_count),
     category: t.category,
-    trendingSince: t.trending_since,
+    trendingSince: parseXTrendingSince(t.trending_since),
   }));
 
   logXApiCall({
