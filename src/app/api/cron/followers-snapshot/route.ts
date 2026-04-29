@@ -3,12 +3,16 @@ import { prisma } from "@/lib/prisma";
 import { fetchUserData } from "@/lib/x-api";
 import { getXApiTokenForUser } from "@/lib/server/x-token";
 import { saveFollowersSnapshot } from "@/lib/server/followers";
+import { excludeSystemUser } from "@/lib/server/system-user";
 import { withCronLogging } from "@/lib/cron-helpers";
 
 export const maxDuration = 10;
 
 export const GET = withCronLogging("followers-snapshot", async () => {
-  const users = await prisma.user.findMany({ select: { id: true } });
+  const users = await prisma.user.findMany({
+    where: excludeSystemUser(),
+    select: { id: true },
+  });
   const results: {
     userId: string;
     followers?: number;

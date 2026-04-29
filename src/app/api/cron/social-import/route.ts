@@ -5,6 +5,7 @@ import { withCronLogging } from "@/lib/cron-helpers";
 import { listImportablePlatforms } from "@/lib/platform/registry";
 import { parsePlatformMetadata } from "@/lib/platform/types";
 import { ThreadsScopeError } from "@/lib/threads-api";
+import { excludeSystemUser } from "@/lib/server/system-user";
 import type { Platform } from "@/lib/types";
 
 // ADR-008 Phase 2 / Phase 1b (in progress).
@@ -32,7 +33,10 @@ export const maxDuration = 60;
 const REFRESH_DAYS = 7;
 
 export const GET = withCronLogging("social-import", async () => {
-  const users = await prisma.user.findMany({ select: { id: true } });
+  const users = await prisma.user.findMany({
+    where: excludeSystemUser(),
+    select: { id: true },
+  });
   const platforms = listImportablePlatforms();
 
   const results: Array<{

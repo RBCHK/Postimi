@@ -6,6 +6,7 @@ import { Plus, Trash2, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -22,6 +23,7 @@ import {
   removeVoiceBankEntry,
 } from "@/app/actions/voice-bank";
 import { getScheduleConfig, saveScheduleConfig } from "@/app/actions/schedule";
+import { getUserNiche, setUserNiche } from "@/app/actions/user-settings";
 import type { DayKey, SlotRow, ScheduleConfig } from "@/lib/server/schedule";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage, type LanguageSettings } from "@/lib/types";
 import { getStoredLanguageSettings, LANGUAGE_STORAGE_KEY } from "@/lib/language";
@@ -1019,9 +1021,16 @@ function ConnectionsTab() {
   );
 }
 
-type SettingsSection = "voice-bank" | "strategy" | "connections" | "language" | "appearance";
+type SettingsSection =
+  | "profile"
+  | "voice-bank"
+  | "strategy"
+  | "connections"
+  | "language"
+  | "appearance";
 
 const SETTINGS_NAV: { value: SettingsSection; label: string }[] = [
+  { value: "profile", label: "Profile" },
   { value: "strategy", label: "Strategy" },
   { value: "connections", label: "Connections" },
   { value: "voice-bank", label: "Voice Bank" },
@@ -1038,10 +1047,102 @@ const OAUTH_KEYS = [
   "linkedin_error",
 ];
 
+// ─── Profile tab — niche / focus area ─────────────────────
+//
+// Niche feeds the per-user research cron (see researcher Phase B).
+// Empty input = "no niche set, use only global per-platform research".
+// Sanitization (Zod regex, control-char strip, reserved-token reject)
+// happens server-side in setUserNiche; client only manages UX state.
+
+type NicheSaveStatus = "idle" | "saving" | "saved" | "error";
+
+function ProfileTab() {
+  const [niche, setNiche] = useState<string>("");
+  const [loaded, setLoaded] = useState(false);
+  const [status, setStatus] = useState<NicheSaveStatus>("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    getUserNiche()
+      .then((value) => {
+        setNiche(value ?? "");
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+  }, []);
+
+  function scheduleSave(value: string) {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setStatus("saving");
+    setErrorMsg(null);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const trimmed = value.trim();
+        await setUserNiche(trimmed.length === 0 ? null : trimmed);
+        setStatus("saved");
+        // Fade "Saved" back to idle after a beat — keeps the affordance
+        // present long enough to read but doesn't pin it forever.
+        setTimeout(() => setStatus((s) => (s === "saved" ? "idle" : s)), 1500);
+      } catch (err) {
+        setStatus("error");
+        setErrorMsg(err instanceof Error ? err.message : "Failed to save");
+      }
+    }, 300);
+  }
+
+  function handleChange(value: string) {
+    setNiche(value);
+    scheduleSave(value);
+  }
+
+  const charCount = niche.length;
+  const charCountClass =
+    charCount > 90
+      ? "text-amber-500"
+      : charCount > 0
+        ? "text-muted-foreground"
+        : "text-muted-foreground/50";
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <label htmlFor="niche-input" className="text-sm font-medium">
+            Your niche
+          </label>
+          <span className={`text-xs tabular-nums ${charCountClass}`}>{charCount} / 100</span>
+        </div>
+        <Input
+          id="niche-input"
+          className="text-base"
+          maxLength={100}
+          placeholder="AI tools, fitness coaching, indie game dev…"
+          value={niche}
+          onChange={(e) => handleChange(e.target.value)}
+          disabled={!loaded}
+          aria-describedby="niche-helper"
+        />
+        <p id="niche-helper" className="text-xs text-muted-foreground">
+          What you write about. Drives weekly research tailored to your topic. Leave empty to use
+          only general platform research.
+        </p>
+        <div className="h-4 text-xs text-muted-foreground" aria-live="polite">
+          {status === "saving" && "Saving…"}
+          {status === "saved" && "Saved"}
+          {status === "error" && (
+            <span className="text-destructive">{errorMsg ?? "Failed to save"}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsView() {
   const searchParams = useSearchParams();
   const initialSection = useMemo<SettingsSection>(
-    () => (OAUTH_KEYS.some((k) => searchParams.has(k)) ? "connections" : "strategy"),
+    () => (OAUTH_KEYS.some((k) => searchParams.has(k)) ? "connections" : "profile"),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
@@ -1058,6 +1159,7 @@ export function SettingsView() {
         links={[{ href: "/settings/billing", label: "Billing" }]}
       >
         <div className="max-w-2xl pb-8">
+          {active === "profile" && <ProfileTab />}
           {active === "voice-bank" && <VoiceBankTab />}
           {active === "strategy" && <StrategyConfigTab />}
           {active === "connections" && <ConnectionsTab />}

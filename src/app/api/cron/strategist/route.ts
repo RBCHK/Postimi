@@ -13,6 +13,9 @@ import { getFollowersHistory } from "@/lib/server/followers";
 import { getLatestTrends } from "@/lib/server/trends";
 import { getScheduleConfig } from "@/lib/server/schedule";
 import { getRecentResearchNotes } from "@/lib/server/research";
+// getRecentResearchNotes now returns a mix of GLOBAL platform notes and
+// USER niche notes for the user (post-2026-04 refactor) — fetched per
+// platform inside the strategist loop, not once per user.
 import { saveAnalysis, getAnalyses } from "@/lib/server/strategist";
 import { savePlanProposal, getAcceptedProposals } from "@/lib/server/plan-proposal";
 import { getConnectedPlatforms } from "@/lib/server/platforms";
@@ -21,6 +24,7 @@ import { getOutputLanguage } from "@/lib/server/user-settings";
 import { prisma } from "@/lib/prisma";
 import { fetchUserData } from "@/lib/x-api";
 import { getXApiTokenForUser } from "@/lib/server/x-token";
+import { excludeSystemUser } from "@/lib/server/system-user";
 import { withCronLogging } from "@/lib/cron-helpers";
 import { reserveQuota, completeReservation, failReservation } from "@/lib/ai-quota";
 import { PLANS } from "@/lib/plans";
@@ -178,7 +182,10 @@ export const GET = withCronLogging("strategist", async () => {
     throw new Error("TAVILY_API_KEY not configured");
   }
 
-  const users = await prisma.user.findMany({ select: { id: true } });
+  const users = await prisma.user.findMany({
+    where: excludeSystemUser(),
+    select: { id: true },
+  });
   const results: {
     userId: string;
     platform?: Platform;
@@ -199,13 +206,12 @@ export const GET = withCronLogging("strategist", async () => {
 
     if (connected.platforms.length === 0) continue;
 
-    // Pull user-scoped context once (language + research + schedule) —
-    // these don't vary per platform so we don't re-query inside the loop.
+    // Pull user-scoped context once (language + schedule) — these don't
+    // vary per platform. Research notes ARE per-platform after the
+    // 2026-04 researcher refactor (mix of GLOBAL X|LinkedIn|Threads
+    // notes + USER niche notes), so they're fetched inside the loop.
     const outputLanguage = (await getOutputLanguage(user.id)) ?? DEFAULT_LANGUAGE;
-    const [researchNotes, scheduleConfig] = await Promise.all([
-      getRecentResearchNotes(user.id, 3),
-      getScheduleConfig(user.id),
-    ]);
+    const scheduleConfig = await getScheduleConfig(user.id);
 
     for (const platform of connected.platforms) {
       let reservationId: string | undefined;
@@ -224,10 +230,11 @@ export const GET = withCronLogging("strategist", async () => {
           continue;
         }
 
-        const [previousAnalyses, acceptedProposals, benchmarks] = await Promise.all([
+        const [previousAnalyses, acceptedProposals, benchmarks, researchNotes] = await Promise.all([
           getAnalyses(user.id, platform),
           getAcceptedProposals(user.id, 30, platform),
           getBenchmarks(platform, getAudienceSize(context.latestFollowersCount)),
+          getRecentResearchNotes(user.id, platform, 3),
         ]);
 
         const previousAnalysis = previousAnalyses[0]?.recommendation ?? undefined;
