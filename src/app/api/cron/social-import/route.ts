@@ -8,11 +8,12 @@ import { ThreadsScopeError } from "@/lib/threads-api";
 import { excludeSystemUser } from "@/lib/server/system-user";
 import type { Platform } from "@/lib/types";
 
-// ADR-008 Phase 2 / Phase 1b (in progress).
+// ADR-008 Phase 2 / 2026-04 refactor.
 //
 // Unified importer cron. Iterates every platform that registered a
-// `PlatformImporter` in the registry. Today that's Threads; Phase 1b
-// folds X into the same loop and retires the legacy `x-import` route.
+// `PlatformImporter` in the registry. As of the 2026-04 refactor, X is
+// folded into the same loop alongside Threads — the legacy
+// `/api/cron/x-import` route is removed.
 //
 // Why sequential, not Promise.all:
 //   - AiQuota reservations use row-level locks; parallel writes across
@@ -24,6 +25,14 @@ import type { Platform } from "@/lib/types";
 //   - A Threads 500 must not wipe an X success inside the same user's run.
 //   - Each catch writes to Sentry with `{ platform, userId }` tags so
 //     ops can filter platform-wide incidents from per-user anomalies.
+//
+// Wall-clock budget guard (migrated from legacy x-import):
+//   - At the start of each outer-loop user iteration, we check elapsed
+//     time. Past 85% of `maxDuration`, remaining users get marked
+//     `budgetExhausted` and we exit. Sentry warning surfaces the gap.
+//   - X pagination (~35 pages on a busy account) plus three platforms
+//     per user is the realistic worst case for stalling close to the
+//     Vercel kill line; the guard keeps next runs from inheriting state.
 
 // Side-effect import: populates the registry.
 import "@/lib/platform/init";
@@ -31,6 +40,7 @@ import "@/lib/platform/init";
 export const maxDuration = 60;
 
 const REFRESH_DAYS = 7;
+const BUDGET_FRACTION = 0.85;
 
 export const GET = withCronLogging("social-import", async () => {
   const users = await prisma.user.findMany({
@@ -48,10 +58,45 @@ export const GET = withCronLogging("social-import", async () => {
     followersDelta?: number;
     skipped?: boolean;
     skipReason?: string;
+    budgetExhausted?: boolean;
     error?: string;
   }> = [];
 
-  for (const user of users) {
+  const start = Date.now();
+  const budgetMs = Math.floor(maxDuration * 1000 * BUDGET_FRACTION);
+
+  for (let userIdx = 0; userIdx < users.length; userIdx++) {
+    const user = users[userIdx]!;
+
+    // Wall-clock guard: once we've consumed 85% of the function budget,
+    // stop taking on new users. Each remaining user is marked
+    // `budgetExhausted` per platform so the next scheduled run picks
+    // them up. A Sentry warning surfaces the gap for ops visibility.
+    const elapsedMs = Date.now() - start;
+    if (elapsedMs > budgetMs) {
+      const usersRemaining = users.length - userIdx;
+      Sentry.captureMessage("social-import budget exhausted", {
+        level: "warning",
+        tags: { area: "social-import" },
+        extra: {
+          processedUsers: userIdx,
+          usersRemaining,
+          elapsedMs,
+          budgetMs,
+        },
+      });
+      for (let j = userIdx; j < users.length; j++) {
+        for (const entry of platforms) {
+          results.push({
+            userId: users[j]!.id,
+            platform: entry.token.platform,
+            budgetExhausted: true,
+          });
+        }
+      }
+      break;
+    }
+
     for (const entry of platforms) {
       const platform = entry.token.platform;
       try {
@@ -115,8 +160,9 @@ export const GET = withCronLogging("social-import", async () => {
 
   revalidatePath("/analytics");
   const hasErrors = results.some((r) => r.error);
+  const hasBudgetSkips = results.some((r) => r.budgetExhausted);
   return {
-    status: hasErrors ? "PARTIAL" : "SUCCESS",
+    status: hasErrors || hasBudgetSkips ? "PARTIAL" : "SUCCESS",
     data: { results },
   };
 });
@@ -152,6 +198,12 @@ async function importForUser(args: {
   // Buffer the stream so we can batch DB writes in one transaction per
   // chunk rather than issuing 3 round-trips per post (findUnique + upsert +
   // snapshot upsert). See `BATCH_SIZE` below for chunking rationale.
+  //
+  // Metrics shape combines cross-platform fields with optional X-specific
+  // ones (engagements/quoteCount/urlClicks/profileVisits). When the
+  // importer doesn't set them, they're left out of the upsert so Prisma
+  // keeps the existing column value (or applies the schema default for
+  // new rows).
   const buffered: Array<{
     externalPostId: string;
     postedAt: Date;
@@ -159,15 +211,7 @@ async function importForUser(args: {
     postUrl: string | null;
     metadata: ReturnType<typeof parsePlatformMetadata>;
     postType: string;
-    metrics: {
-      impressions: number;
-      likes: number;
-      replies: number;
-      reposts: number;
-      shares: number;
-      bookmarks: number;
-      views: number;
-    };
+    metrics: Record<string, number>;
   }> = [];
 
   for await (const post of importer.fetchPosts(creds, { since })) {
@@ -181,15 +225,7 @@ async function importForUser(args: {
       postUrl: post.postUrl,
       metadata,
       postType: derivePostType(metadata),
-      metrics: {
-        impressions: post.metrics.impressions,
-        likes: post.metrics.likes,
-        replies: post.metrics.replies,
-        reposts: post.metrics.reposts,
-        shares: post.metrics.shares,
-        bookmarks: post.metrics.bookmarks,
-        views: post.metrics.impressions, // Threads exposes views as the headline metric
-      },
+      metrics: buildMetrics(post.metrics, platform),
     });
   }
 
@@ -353,4 +389,51 @@ function derivePostType(metadata: ReturnType<typeof parsePlatformMetadata>): str
   if (metadata.replyToId) return "REPLY";
   if (metadata.mediaType === "REPOST_FACADE") return "REPOST";
   return "POST";
+}
+
+/**
+ * Build the metrics record for upsert. Cross-platform fields are always
+ * present; per-platform fields are conditional:
+ *   - Threads writes `views = impressions` (Threads' headline metric is
+ *     "views" — we mirror it on both columns to make UI queries simpler).
+ *   - X writes `engagements / quoteCount / urlClicks / profileVisits`
+ *     when the importer provided them. Other platforms leave them at
+ *     the schema default (0 on insert, untouched on update).
+ *
+ * The function returns a plain `Record<string, number>` because the
+ * SocialPost upsert spreads it into both `create` and `update` — Prisma
+ * accepts unknown extra keys as long as they match column names, which
+ * is checked at compile time on the upsert call site below.
+ */
+function buildMetrics(
+  m: {
+    impressions: number;
+    likes: number;
+    replies: number;
+    reposts: number;
+    shares: number;
+    bookmarks: number;
+    engagements?: number;
+    quoteCount?: number;
+    urlClicks?: number;
+    profileVisits?: number;
+  },
+  platform: Platform
+): Record<string, number> {
+  const out: Record<string, number> = {
+    impressions: m.impressions,
+    likes: m.likes,
+    replies: m.replies,
+    reposts: m.reposts,
+    shares: m.shares,
+    bookmarks: m.bookmarks,
+  };
+  if (platform === "THREADS") {
+    out.views = m.impressions;
+  }
+  if (m.engagements !== undefined) out.engagements = m.engagements;
+  if (m.quoteCount !== undefined) out.quoteCount = m.quoteCount;
+  if (m.urlClicks !== undefined) out.urlClicks = m.urlClicks;
+  if (m.profileVisits !== undefined) out.profileVisits = m.profileVisits;
+  return out;
 }

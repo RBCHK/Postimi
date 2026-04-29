@@ -41,21 +41,21 @@ describe("runCronJob", () => {
   it("requires admin (wrapper throws if not admin)", async () => {
     requireAdminMock.mockRejectedValueOnce(new Error("Not admin"));
     const { runCronJob } = await import("../admin");
-    await expect(runCronJob("x-import")).rejects.toThrow("Not admin");
+    await expect(runCronJob("social-import")).rejects.toThrow("Not admin");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("attaches Authorization: Bearer ${CRON_SECRET} and ?manual=1", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true, status: "SUCCESS" }));
     const { runCronJob } = await import("../admin");
-    const result = await runCronJob("x-import");
+    const result = await runCronJob("social-import");
     expect(result.ok).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0]!;
     // `?manual=1` signals withCronLogging to bypass the enabled toggle for
     // admin-triggered runs. Without it, a paused cron returns "Job disabled"
     // and the UI shows "unknown error".
-    expect(url).toBe("https://app.example.com/api/cron/x-import?manual=1");
+    expect(url).toBe("https://app.example.com/api/cron/social-import?manual=1");
     expect((init as RequestInit).headers).toMatchObject({
       Authorization: "Bearer test-secret",
     });
@@ -87,7 +87,7 @@ describe("runCronJob", () => {
       jsonResponse({ ok: false, skipped: true, reason: "Job disabled" }, 200)
     );
     const { runCronJob } = await import("../admin");
-    const result = await runCronJob("x-import");
+    const result = await runCronJob("social-import");
     expect(result.ok).toBe(false);
     expect("skipped" in result && result.skipped).toBe(true);
     expect("reason" in result && result.reason).toBe("Job disabled");
@@ -96,7 +96,7 @@ describe("runCronJob", () => {
   it("returns ok:false when the cron route returns non-2xx", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ error: "Unauthorized" }, 401));
     const { runCronJob } = await import("../admin");
-    const result = await runCronJob("x-import");
+    const result = await runCronJob("social-import");
     expect(result.ok).toBe(false);
     expect(result.error).toBe("Unauthorized");
   });
@@ -105,7 +105,7 @@ describe("runCronJob", () => {
     // withCronLogging returns HTTP 200 with ok:false on handler failure.
     fetchMock.mockResolvedValueOnce(jsonResponse({ ok: false, error: "boom" }, 200));
     const { runCronJob } = await import("../admin");
-    const result = await runCronJob("x-import");
+    const result = await runCronJob("social-import");
     expect(result.ok).toBe(false);
     expect(result.error).toBe("boom");
   });
@@ -113,7 +113,7 @@ describe("runCronJob", () => {
   it("returns error when CRON_SECRET is missing (fails loud, not silent 500)", async () => {
     delete process.env.CRON_SECRET;
     const { runCronJob } = await import("../admin");
-    const result = await runCronJob("x-import");
+    const result = await runCronJob("social-import");
     expect(result.ok).toBe(false);
     expect(result.error).toContain("CRON_SECRET");
     expect(fetchMock).not.toHaveBeenCalled();
@@ -122,7 +122,7 @@ describe("runCronJob", () => {
   it("catches fetch errors and returns them as ok:false", async () => {
     fetchMock.mockRejectedValueOnce(new Error("ECONNREFUSED"));
     const { runCronJob } = await import("../admin");
-    const result = await runCronJob("x-import");
+    const result = await runCronJob("social-import");
     expect(result.ok).toBe(false);
     expect(result.error).toBe("ECONNREFUSED");
   });
@@ -132,10 +132,10 @@ describe("runCronJob", () => {
       "followers-snapshot",
       "trend-snapshot",
       "daily-insight",
-      "x-import",
       "social-import",
       "researcher",
       "strategist",
+      "auto-publish",
     ];
     const { runCronJob } = await import("../admin");
     for (const job of jobs) {

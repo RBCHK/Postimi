@@ -13,7 +13,7 @@ import { NextRequest } from "next/server";
 const CRON_SECRET = "test-secret";
 process.env.CRON_SECRET = CRON_SECRET;
 
-const sentryMock = { captureException: vi.fn() };
+const sentryMock = { captureException: vi.fn(), captureMessage: vi.fn() };
 vi.mock("@sentry/nextjs", () => sentryMock);
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
@@ -161,6 +161,76 @@ function registerThreads(
   return { fetchPosts, fetchFollowers };
 }
 
+function xPost(overrides: Record<string, unknown> = {}) {
+  return {
+    platform: "X" as const,
+    externalPostId: "xp-1",
+    text: "hello x",
+    postedAt: new Date(),
+    postUrl: "https://x.com/u/status/xp-1",
+    metadata: {
+      platform: "X" as const,
+      postType: "POST" as const,
+    },
+    metrics: {
+      impressions: 200,
+      likes: 20,
+      replies: 1,
+      reposts: 5,
+      shares: 0,
+      bookmarks: 3,
+      engagements: 22,
+      quoteCount: 1,
+      urlClicks: 4,
+      profileVisits: 7,
+    },
+    ...overrides,
+  };
+}
+
+function xFollowers(overrides: Record<string, unknown> = {}) {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  return {
+    platform: "X" as const,
+    date: today,
+    followersCount: 999,
+    followingCount: 100,
+    ...overrides,
+  };
+}
+
+function registerX(
+  fetchPostsImpl?: () => AsyncIterable<unknown>,
+  fetchFollowersImpl?: () => Promise<unknown>
+) {
+  const fetchPosts = vi.fn(
+    fetchPostsImpl ??
+      async function* () {
+        yield xPost();
+      }
+  );
+  const fetchFollowers = vi.fn(fetchFollowersImpl ?? (async () => xFollowers()));
+  registryEntries.push({
+    token: {
+      platform: "X",
+      getForUser: vi.fn().mockResolvedValue({
+        platform: "X",
+        accessToken: "x-tok",
+        xUserId: "xid",
+        xUsername: "u",
+      }),
+      disconnect: vi.fn(),
+    },
+    importer: {
+      platform: "X",
+      fetchPosts,
+      fetchFollowers,
+    },
+  });
+  return { fetchPosts, fetchFollowers };
+}
+
 describe("social-import cron", () => {
   it("upserts SocialPost, snapshot, and followers for each Threads post", async () => {
     registerThreads();
@@ -291,6 +361,151 @@ describe("social-import cron", () => {
     const args = prismaMock.socialFollowersSnapshot.upsert.mock.calls[0]![0];
     expect(args.create.deltaFollowers).toBe(20); // 500 - 480
     expect(args.create.followingCount).toBeNull();
+  });
+
+  // ─── X platform path (post-2026-04 refactor) ────────────
+
+  describe("X platform via registry", () => {
+    it("upserts X SocialPost with X postType and X-specific metric columns", async () => {
+      registerX();
+      const { GET } = await import("../route");
+      await GET(buildRequest());
+
+      expect(prismaMock.socialPost.upsert).toHaveBeenCalledTimes(1);
+      const args = prismaMock.socialPost.upsert.mock.calls[0]![0];
+      expect(args.where.userId_platform_externalPostId).toEqual({
+        userId: "user-1",
+        platform: "X",
+        externalPostId: "xp-1",
+      });
+      expect(args.create.platform).toBe("X");
+      expect(args.create.platformMetadata).toEqual({ platform: "X", postType: "POST" });
+      // postType derived from metadata.postType (not Threads' replyToId logic)
+      expect(args.create.postType).toBe("POST");
+      // X-specific metrics flow through buildMetrics + spread
+      expect(args.create.engagements).toBe(22);
+      expect(args.create.quoteCount).toBe(1);
+      expect(args.create.urlClicks).toBe(4);
+      expect(args.create.profileVisits).toBe(7);
+      // Cross-platform fields preserved
+      expect(args.create.impressions).toBe(200);
+      expect(args.create.likes).toBe(20);
+      // X must NOT set views (legacy x-import behavior — Threads-only field)
+      expect(args.create).not.toHaveProperty("views");
+    });
+
+    it("derives postType=REPLY from X metadata when set", async () => {
+      registerX(async function* () {
+        yield xPost({
+          externalPostId: "xp-reply",
+          metadata: { platform: "X" as const, postType: "REPLY" as const },
+        });
+      });
+      const { GET } = await import("../route");
+      await GET(buildRequest());
+
+      const args = prismaMock.socialPost.upsert.mock.calls[0]![0];
+      expect(args.create.postType).toBe("REPLY");
+    });
+
+    it("classifies X posts as imported vs updated based on findMany lookup", async () => {
+      registerX(async function* () {
+        yield xPost({ externalPostId: "existing-1" });
+        yield xPost({ externalPostId: "new-1" });
+      });
+      // First post is already in the DB; second is new.
+      prismaMock.socialPost.findMany.mockResolvedValueOnce([{ externalPostId: "existing-1" }]);
+      prismaMock.socialPost.upsert
+        .mockResolvedValueOnce({ id: "sp-existing", externalPostId: "existing-1" })
+        .mockResolvedValueOnce({ id: "sp-new", externalPostId: "new-1" });
+
+      const { GET } = await import("../route");
+      const res = (await GET(buildRequest())) as unknown as {
+        data: {
+          results: Array<{
+            userId: string;
+            platform: string;
+            imported?: number;
+            updated?: number;
+          }>;
+        };
+      };
+
+      const xResult = res.data.results.find((r) => r.platform === "X")!;
+      expect(xResult.imported).toBe(1);
+      expect(xResult.updated).toBe(1);
+    });
+
+    it("records followers snapshot for X with computed delta", async () => {
+      prismaMock.socialFollowersSnapshot.findFirst.mockResolvedValueOnce({
+        followersCount: 950,
+        followingCount: 100,
+      });
+      registerX();
+      const { GET } = await import("../route");
+      await GET(buildRequest());
+
+      const args = prismaMock.socialFollowersSnapshot.upsert.mock.calls[0]![0];
+      expect(args.where.userId_platform_date.platform).toBe("X");
+      expect(args.create.followersCount).toBe(999);
+      expect(args.create.followingCount).toBe(100);
+      expect(args.create.deltaFollowers).toBe(49); // 999 - 950
+    });
+  });
+
+  // ─── Wall-clock budget guard (migrated from legacy x-import) ──
+
+  describe("wall-clock budget guard", () => {
+    it("bails on remaining users once elapsed exceeds 85% of maxDuration", async () => {
+      // Three users; first one consumes the whole budget, the rest must
+      // be marked budgetExhausted across all platforms without the
+      // importer being called.
+      prismaMock.user.findMany.mockResolvedValue([
+        { id: "user-slow" },
+        { id: "user-2" },
+        { id: "user-3" },
+      ]);
+      const { fetchPosts: fetchXPosts } = registerX();
+
+      // Date.now sequence — minimum advance pattern:
+      // [0] handler start
+      // [1] iter 0 wall-clock check — under budget
+      // [2] iter 1 wall-clock check — over budget (55s > 0.85 * 60s = 51s)
+      const base = 1_000_000;
+      const sequence = [base, base + 1_000, base + 55_000];
+      let callIdx = 0;
+      const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => {
+        const v = sequence[Math.min(callIdx, sequence.length - 1)]!;
+        callIdx++;
+        return v;
+      });
+
+      try {
+        const { GET } = await import("../route");
+        const res = (await GET(buildRequest())) as unknown as {
+          status: string;
+          data: {
+            results: Array<{
+              userId: string;
+              platform: string;
+              budgetExhausted?: boolean;
+            }>;
+          };
+        };
+
+        // Only user-slow ran; the other two get budgetExhausted markers
+        // for every registered platform.
+        expect(fetchXPosts).toHaveBeenCalledTimes(1);
+        const exhausted = res.data.results.filter((r) => r.budgetExhausted);
+        expect(exhausted.map((r) => r.userId).sort()).toEqual(["user-2", "user-3"]);
+        // Status degrades to PARTIAL — next run picks the skipped users.
+        expect(res.status).toBe("PARTIAL");
+
+        expect(sentryMock.captureException).not.toHaveBeenCalled();
+      } finally {
+        nowSpy.mockRestore();
+      }
+    });
   });
 
   it("batches SocialPost + snapshot writes through $transaction (not per-post round-trips)", async () => {

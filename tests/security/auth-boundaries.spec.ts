@@ -29,12 +29,13 @@ test.describe("API auth boundaries", () => {
 
 test.describe("Cron route auth boundaries", () => {
   const cronRoutes = [
-    "/api/cron/x-import",
+    "/api/cron/social-import",
     "/api/cron/strategist",
     "/api/cron/researcher",
     "/api/cron/followers-snapshot",
     "/api/cron/trend-snapshot",
     "/api/cron/daily-insight",
+    "/api/cron/auto-publish",
   ];
 
   for (const route of cronRoutes) {

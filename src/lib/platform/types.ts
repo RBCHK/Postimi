@@ -66,7 +66,10 @@ export interface SocialPostInput {
   postedAt: Date;
   postUrl: string | null;
   metadata: PlatformMetadata;
-  /** Per-post metrics at import time. May be updated later via engagement snapshots. */
+  /** Per-post metrics at import time. May be updated later via engagement snapshots.
+   * Cross-platform fields are required; platform-specific fields are optional and
+   * upserted only when present (e.g. X exposes engagements / quoteCount / urlClicks /
+   * profileVisits which other platforms don't surface). */
   metrics: {
     impressions: number;
     likes: number;
@@ -74,6 +77,14 @@ export interface SocialPostInput {
     reposts: number;
     shares: number;
     bookmarks: number;
+    /** X-only: composite engagement metric from non-public metrics. */
+    engagements?: number;
+    /** X-only: count of times this tweet was quoted. */
+    quoteCount?: number;
+    /** X-only: outbound URL clicks. */
+    urlClicks?: number;
+    /** X-only: profile visits attributed to this tweet. */
+    profileVisits?: number;
   };
 }
 

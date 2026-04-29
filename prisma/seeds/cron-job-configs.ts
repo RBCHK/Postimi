@@ -43,14 +43,9 @@ const SEEDS: CronConfigSeed[] = [
     schedule: "30 16 * * *",
   },
   {
-    jobName: "x-import",
-    description: "X post + metrics import. Weekly full + daily refresh.",
-    schedule: "0 4 * * 1; 0 12 * * * (refresh)",
-  },
-  {
     jobName: "social-import",
     description:
-      "Multi-platform post + metrics import (currently Threads; LinkedIn via CSV). Weekly full + daily refresh.",
+      "Multi-platform post + metrics import (X, Threads via API; LinkedIn via CSV). Weekly full + daily refresh.",
     schedule: "15 4 * * 1; 15 12 * * *",
   },
   {
