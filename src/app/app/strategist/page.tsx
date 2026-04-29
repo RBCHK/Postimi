@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { getAnalyses } from "@/app/actions/strategist";
-import { getAllResearchNotes } from "@/app/actions/research";
+import { getAllUserResearchNotes } from "@/app/actions/research";
 import { getConnectedPlatforms } from "@/app/actions/platforms";
 import { StrategistProvider } from "@/contexts/strategist-context";
 import { StrategistView } from "./strategist-view";
@@ -9,7 +9,7 @@ import { StrategistView } from "./strategist-view";
 export default async function StrategistPage() {
   const [analyses, researchNotes, connected] = await Promise.all([
     getAnalyses(),
-    getAllResearchNotes(),
+    getAllUserResearchNotes(),
     getConnectedPlatforms(),
   ]);
 

@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { saveDailyInsight } from "@/lib/server/daily-insight";
 import { getLatestTrends } from "@/lib/server/trends";
 import { getLatestFollowersSnapshot } from "@/lib/server/followers";
+import { getRecentResearchNotes } from "@/lib/server/research";
+import { excludeSystemUser } from "@/lib/server/system-user";
 import { withCronLogging } from "@/lib/cron-helpers";
 import {
   reserveQuota,
@@ -27,7 +29,10 @@ export const GET = withCronLogging("daily-insight", async () => {
   await sweepStaleReservations().catch((err) =>
     Sentry.captureException(err, { tags: { area: "ai-quota", step: "sweep" } })
   );
-  const users = await prisma.user.findMany({ select: { id: true } });
+  const users = await prisma.user.findMany({
+    where: excludeSystemUser(),
+    select: { id: true },
+  });
   const results: { userId: string; insightId?: string; error?: string }[] = [];
 
   for (const user of users) {
@@ -43,12 +48,10 @@ export const GET = withCronLogging("daily-insight", async () => {
         orderBy: { createdAt: "desc" },
       });
 
-      // 2. Last 3 ResearchNotes
-      const researchNotes = await prisma.researchNote.findMany({
-        where: { userId: user.id },
-        orderBy: { createdAt: "desc" },
-        take: 3,
-      });
+      // 2. Last 3 ResearchNotes — mix of GLOBAL X notes + USER niche
+      // notes (post-2026-04 researcher refactor). Daily-insight stays
+      // X-only until PR #3 makes it multi-platform.
+      const researchNotes = await getRecentResearchNotes(user.id, "X", 3);
 
       // 3. Last 7 days of daily stats (X-platform only — daily-insight
       //    is X-specific today. Phase 1b moved this off the legacy

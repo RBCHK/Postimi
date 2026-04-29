@@ -53,6 +53,10 @@ model User {
   monthlyAiQuotaUsd             Decimal?                       @db.Decimal(10, 2)
   rateLimitWindowStart          DateTime?
   rateLimitRequestCount         Int                            @default(0)
+
+  // User-declared niche / topic focus (e.g. "AI tools", "fitness coaching").
+  // Drives per-user niche research; null = use only global per-platform notes.
+  niche String? @db.VarChar(100)
 }
 
 // ─── Waitlist (open-registration path — see ADR 007) ─────
@@ -622,22 +626,38 @@ model StrategyAnalysis {
   @@index([userId, createdAt(sort: Desc)])
 }
 
+// ResearchNote has two scopes:
+//   GLOBAL — platform-wide industry research, shared across all users.
+//            `userId` is null, `platform` is required.
+//   USER   — per-user niche research. `userId` is required, `niche`
+//            captures the user's declared focus area at write time.
+// Strategist/daily-insight read both: global notes for the platform
+// being analysed plus the user's own niche notes.
+enum ResearchScope {
+  GLOBAL
+  USER
+}
+
 model ResearchNote {
-  id        String   @id @default(cuid())
-  userId    String
+  id        String        @id @default(cuid())
+  scope     ResearchScope @default(USER)
+  userId    String?
+  platform  Platform?
+  niche     String?       @db.VarChar(100)
   topic     String
   summary   String
   sources   Json // [{ title, url, snippet }]
   queries   String[]
-  createdAt DateTime @default(now())
+  createdAt DateTime      @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
-  // Strategist/daily-insight fetches recent notes per user ordered by
-  // createdAt DESC — the existing `[userId]` index can't satisfy the
-  // sort, forcing a per-user re-sort.
+  // Per-user lookup (USER scope) — strategist/daily-insight read 3 latest
+  // for the current user.
   @@index([userId, createdAt(sort: Desc)])
+  // Per-platform lookup (GLOBAL scope) — strategist reads the latest 1–2
+  // for whichever platform it's analysing.
+  @@index([scope, platform, createdAt(sort: Desc)])
 }
 
 model DailyInsight {

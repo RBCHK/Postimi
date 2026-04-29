@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Research actions are thin wrappers over `@/lib/server/research`. The
-// public Server Action must authenticate first and forward userId to the
-// helper — any bypass here leaks one user's research notes to another.
+// public Server Action surface is intentionally narrow (post-2026-04
+// refactor): only `getAllUserResearchNotes` is exposed for the strategist
+// page. Save/delete/mixed-read are cron-only and import from the lib
+// directly — adding them here would make them callable RPC endpoints.
 
 const { USER_ID } = vi.hoisted(() => ({ USER_ID: "user-research-1" }));
 
@@ -11,75 +13,37 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 const serverResearchMock = vi.hoisted(() => ({
-  saveResearchNote: vi.fn(),
-  getRecentResearchNotes: vi.fn(),
-  getAllResearchNotes: vi.fn(),
-  deleteResearchNote: vi.fn(),
+  getAllUserResearchNotes: vi.fn(),
 }));
 vi.mock("@/lib/server/research", () => serverResearchMock);
 
 import { requireUserId } from "@/lib/auth";
-import {
-  saveResearchNote,
-  getRecentResearchNotes,
-  getAllResearchNotes,
-  deleteResearchNote,
-} from "../research";
+import { getAllUserResearchNotes } from "../research";
 
 beforeEach(() => {
   vi.clearAllMocks();
   (requireUserId as ReturnType<typeof vi.fn>).mockResolvedValue(USER_ID);
-  serverResearchMock.saveResearchNote.mockResolvedValue({
-    id: "note-1",
-    topic: "t",
-    summary: "s",
-    sources: [],
-    queries: [],
-    createdAt: new Date(),
-  });
-  serverResearchMock.getRecentResearchNotes.mockResolvedValue([]);
-  serverResearchMock.getAllResearchNotes.mockResolvedValue([]);
-  serverResearchMock.deleteResearchNote.mockResolvedValue(undefined);
+  serverResearchMock.getAllUserResearchNotes.mockResolvedValue([]);
 });
 
-describe("saveResearchNote", () => {
-  it("authenticates and forwards (userId, data)", async () => {
-    const data = {
-      topic: "ai-scene",
-      summary: "sum",
-      sources: [{ url: "https://x", title: "t", snippet: null } as never],
-      queries: ["q1"],
-    };
-
-    await saveResearchNote(data);
-
+describe("getAllUserResearchNotes", () => {
+  it("authenticates and forwards userId — never accepts userId from caller", async () => {
+    await getAllUserResearchNotes();
     expect(requireUserId).toHaveBeenCalledTimes(1);
-    expect(serverResearchMock.saveResearchNote).toHaveBeenCalledWith(USER_ID, data);
+    expect(serverResearchMock.getAllUserResearchNotes).toHaveBeenCalledWith(USER_ID);
+    expect(serverResearchMock.getAllUserResearchNotes).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("getRecentResearchNotes", () => {
-  it("defaults limit to 3 when omitted", async () => {
-    await getRecentResearchNotes();
-    expect(serverResearchMock.getRecentResearchNotes).toHaveBeenCalledWith(USER_ID, 3);
-  });
-
-  it("forwards an explicit limit", async () => {
-    await getRecentResearchNotes(10);
-    expect(serverResearchMock.getRecentResearchNotes).toHaveBeenCalledWith(USER_ID, 10);
-  });
-});
-
-describe("getAllResearchNotes", () => {
-  it("forwards userId", async () => {
-    await getAllResearchNotes();
-    expect(serverResearchMock.getAllResearchNotes).toHaveBeenCalledWith(USER_ID);
-  });
-});
-
-describe("deleteResearchNote", () => {
-  it("forwards (userId, id) — ownership enforced downstream", async () => {
-    await deleteResearchNote("note-xyz");
-    expect(serverResearchMock.deleteResearchNote).toHaveBeenCalledWith(USER_ID, "note-xyz");
+describe("research action surface (regression — keep this narrow)", () => {
+  it("does NOT export internal helpers as Server Actions", async () => {
+    const mod = (await import("../research")) as Record<string, unknown>;
+    // If a future change accidentally re-adds save/delete/mixed-read as
+    // Server Actions, this test fails — forcing a deliberate decision.
+    expect(mod).not.toHaveProperty("saveResearchNote");
+    expect(mod).not.toHaveProperty("saveUserResearchNote");
+    expect(mod).not.toHaveProperty("deleteResearchNote");
+    expect(mod).not.toHaveProperty("deleteUserResearchNote");
+    expect(mod).not.toHaveProperty("getRecentResearchNotes");
   });
 });

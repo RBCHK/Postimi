@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { fetchPersonalizedTrends } from "@/lib/x-api";
 import { getXApiTokenForUser } from "@/lib/server/x-token";
 import { saveTrendSnapshots, cleanupOldTrends } from "@/lib/server/trends";
+import { excludeSystemUser } from "@/lib/server/system-user";
 import { withCronLogging } from "@/lib/cron-helpers";
 
 const TREND_RETENTION_DAYS = 10;
@@ -10,7 +11,10 @@ const TREND_RETENTION_DAYS = 10;
 export const maxDuration = 30;
 
 export const GET = withCronLogging("trend-snapshot", async () => {
-  const users = await prisma.user.findMany({ select: { id: true } });
+  const users = await prisma.user.findMany({
+    where: excludeSystemUser(),
+    select: { id: true },
+  });
   const results: {
     userId: string;
     trendsFound?: number;
