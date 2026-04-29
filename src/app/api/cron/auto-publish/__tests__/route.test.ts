@@ -297,6 +297,88 @@ describe("auto-publish cron — error paths", () => {
   });
 });
 
+describe("auto-publish cron — media handling", () => {
+  function makeMedia(count: number) {
+    return Array.from({ length: count }, (_, i) => ({
+      id: `m-${i}`,
+      url: `https://cdn/${i}.jpg`,
+      thumbnailUrl: null,
+      filename: `${i}.jpg`,
+      mimeType: "image/jpeg",
+      width: 100,
+      height: 100,
+      position: i,
+      alt: "",
+    }));
+  }
+
+  function postWithConv(overrides?: { content?: string }) {
+    return {
+      id: "post-1",
+      userId: "user-1",
+      content: overrides?.content ?? "with media",
+      conversationId: "conv-1",
+    };
+  }
+
+  it("forwards loaded media to publisher when conversationId is set", async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([makeClaim({ platform: "X" })]);
+    prismaMock.post.findUnique.mockResolvedValueOnce(postWithConv());
+    const media = makeMedia(2);
+    getMediaMock.mockResolvedValueOnce(media);
+
+    const { GET } = await import("../route");
+    await GET(authedReq());
+
+    expect(getMediaMock).toHaveBeenCalledWith("conv-1", "user-1");
+    expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ media }));
+  });
+
+  it("does not call getMediaForConversation when post has no conversationId", async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([makeClaim()]);
+    prismaMock.post.findUnique.mockResolvedValueOnce(makePost());
+
+    const { GET } = await import("../route");
+    await GET(authedReq());
+
+    expect(getMediaMock).not.toHaveBeenCalled();
+    expect(publishMock).toHaveBeenCalledWith(
+      expect.not.objectContaining({ media: expect.anything() })
+    );
+  });
+
+  it("rejects media count over the platform's limit before publisher runs (X=4)", async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([makeClaim({ platform: "X" })]);
+    prismaMock.post.findUnique.mockResolvedValueOnce(postWithConv());
+    getMediaMock.mockResolvedValueOnce(makeMedia(5));
+
+    const { GET } = await import("../route");
+    const res = (await GET(authedReq())) as unknown as {
+      status: string;
+      data: { details: Array<{ status: string; error?: string }> };
+    };
+    expect(res.data.details[0]!.status).toBe("FAILED");
+    expect(res.data.details[0]!.error).toMatch(/X.*media|media.*X/i);
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it("media fetch failure (Prisma error) → retry path, not terminal", async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([makeClaim({ attemptCount: 0 })]);
+    prismaMock.post.findUnique.mockResolvedValueOnce(postWithConv());
+    getMediaMock.mockRejectedValueOnce(new Error("DB unreachable"));
+
+    const { GET } = await import("../route");
+    await GET(authedReq());
+
+    expect(prismaMock.scheduledPublish.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "PENDING", attemptCount: 1 }),
+      })
+    );
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("auto-publish cron — multi-platform isolation", () => {
   it("processes each claimed row independently — one failure doesn't affect others", async () => {
     prismaMock.$queryRaw.mockResolvedValueOnce([

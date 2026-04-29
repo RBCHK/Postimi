@@ -1,18 +1,28 @@
-import { postToThreads, ThreadsScopeError } from "@/lib/threads-api";
+import {
+  postToThreads,
+  postToThreadsWithImage,
+  postToThreadsWithImages,
+  ThreadsScopeError,
+} from "@/lib/threads-api";
 import { PlatformDisconnectedError } from "@/lib/platform/errors";
 import type { PlatformPublisher, PublishArgs, PublishResult } from "./types";
 
 /**
- * Threads publisher — adapter over the existing `postToThreads` client.
+ * Threads publisher — adapter over the existing `postToThreads` family.
  *
  * Threads is two-step (create media container, then publish). The
- * existing `postToThreads` handles both steps internally and waits
- * for the container to become ready. If step 1 succeeds but step 2
- * times out on the network, the container can be re-published from
- * `resumeContainerId` on retry — but `postToThreads` doesn't expose
+ * existing helpers handle both steps internally and wait for the
+ * container to become ready. If step 1 succeeds but step 2 times out
+ * on the network, the container can be re-published from
+ * `resumeContainerId` on retry — but the helpers don't expose
  * the container id today, so retry-from-step-2 lives as a future
  * improvement (the schema's `platformContainerId` column is the home
  * for it). For now a retry repeats both steps.
+ *
+ * Media: Threads accepts CDN URLs directly — no pre-upload step. We
+ * route to single-image vs carousel based on count. Threads supports
+ * 2–20 images in a carousel; a single image goes through the IMAGE
+ * container path.
  *
  * Stateless: nothing is held on the publisher singleton.
  *
@@ -26,7 +36,26 @@ export const threadsPublisher: PlatformPublisher<"THREADS"> = {
 
   async publish(args: PublishArgs<"THREADS">): Promise<PublishResult> {
     try {
-      const { threadId, threadUrl } = await postToThreads(args.creds, args.content);
+      const media = args.media ?? [];
+      let threadId: string;
+      let threadUrl: string;
+
+      if (media.length === 0) {
+        ({ threadId, threadUrl } = await postToThreads(args.creds, args.content));
+      } else if (media.length === 1) {
+        ({ threadId, threadUrl } = await postToThreadsWithImage(
+          args.creds,
+          args.content,
+          media[0]!.url
+        ));
+      } else {
+        ({ threadId, threadUrl } = await postToThreadsWithImages(
+          args.creds,
+          args.content,
+          media.map((m) => m.url)
+        ));
+      }
+
       return { externalPostId: threadId, externalUrl: threadUrl };
     } catch (err) {
       if (err instanceof ThreadsScopeError) {

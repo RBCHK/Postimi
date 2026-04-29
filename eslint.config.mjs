@@ -18,6 +18,8 @@ const eslintConfig = defineConfig([
     "src/generated/**",
     // Vitest v8 coverage output:
     "coverage/**",
+    // Untracked design-only source kept outside the runtime tree.
+    "design-handoff/**",
   ]),
 ]);
 
