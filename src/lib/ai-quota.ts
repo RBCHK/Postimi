@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { AiUsageStatus } from "@/generated/prisma";
 import { isAdminClerkId } from "@/lib/auth";
+import { SYSTEM_USER_CLERK_ID } from "@/lib/server/system-user";
 import { requireActiveSubscription } from "@/lib/subscription";
 import { calculateCost } from "@/lib/ai-cost";
 import { PLANS } from "@/lib/plans";
@@ -120,8 +121,15 @@ export async function reserveQuota(params: {
   if (!user) throw new Error("User not found");
 
   const isAdmin = isAdminClerkId(user.clerkId);
+  // SYSTEM_USER is the synthetic owner of platform-wide AiUsage records
+  // (researcher Phase A — global per-platform research). It has no
+  // subscription, no rate-limit history, and shouldn't be charged
+  // against any real user's quota. Treat it like an admin: still write
+  // the AiUsage row for cost auditability, but skip subscription /
+  // quota / rate-limit gates.
+  const isSystem = user.clerkId === SYSTEM_USER_CLERK_ID;
 
-  if (!isAdmin) {
+  if (!isAdmin && !isSystem) {
     await checkRateLimit(params.userId);
     const subscription = await requireActiveSubscription(params.userId);
 
@@ -163,7 +171,9 @@ export async function reserveQuota(params: {
     return { reservationId: reservation.id, model: estimate.model };
   }
 
-  // Admin: reservation without quota/rate-limit check (still tracked in dashboard)
+  // Admin or SYSTEM_USER: reservation without quota/rate-limit/subscription
+  // checks. Still tracked in AiUsage so the admin dashboard can see
+  // platform-research and admin-triggered spend.
   const reservation = await prisma.aiUsage.create({
     data: {
       userId: params.userId,

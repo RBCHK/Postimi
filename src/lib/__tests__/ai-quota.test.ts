@@ -43,6 +43,11 @@ vi.mock("@/lib/auth", () => ({
   isAdminClerkId: (id: string | null | undefined) => id === "admin-clerk-id",
 }));
 
+// system-user constant — must match the value reserveQuota checks against.
+vi.mock("@/lib/server/system-user", () => ({
+  SYSTEM_USER_CLERK_ID: "system_global_research",
+}));
+
 // Sentry mock — silence
 vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
@@ -153,6 +158,39 @@ describe("reserveQuota", () => {
     expect(result).toEqual({ reservationId: "res-admin", model: "claude-sonnet-4-6" });
     expect(requireActiveSubscriptionMock).not.toHaveBeenCalled();
     expect(aiUsageMock.aggregate).not.toHaveBeenCalled();
+  });
+
+  it("SYSTEM_USER bypasses rate limit, subscription, and quota checks", async () => {
+    // Researcher Phase A reserves AiUsage under SYSTEM_USER. SYSTEM_USER
+    // has no subscription and no rate-limit row; without the bypass,
+    // requireActiveSubscription would reject and Phase A would fail with
+    // "Active subscription required" (regression PR fixed in 2026-04
+    // when researcher cron was first re-enabled in prod).
+    userMock.findUnique.mockResolvedValueOnce({
+      clerkId: "system_global_research",
+      monthlyAiQuotaUsd: null,
+    });
+    aiUsageMock.create.mockResolvedValueOnce({ id: "res-system" });
+
+    const { reserveQuota } = await import("../ai-quota");
+    const result = await reserveQuota({
+      userId: "system-user-id",
+      operation: "researcher",
+    });
+    expect(result).toEqual({ reservationId: "res-system", model: "claude-sonnet-4-6" });
+    expect(requireActiveSubscriptionMock).not.toHaveBeenCalled();
+    expect(aiUsageMock.aggregate).not.toHaveBeenCalled();
+    // AiUsage row still created — cost stays auditable in admin dashboard.
+    expect(aiUsageMock.create).toHaveBeenCalledWith({
+      data: {
+        userId: "system-user-id",
+        operation: "researcher",
+        model: "claude-sonnet-4-6",
+        costUsd: 0,
+        status: AiUsageStatus.RESERVED,
+      },
+      select: { id: true },
+    });
   });
 
   it("creates RESERVED row with estimated cost when within quota", async () => {
