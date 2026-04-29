@@ -15,8 +15,13 @@ const PREFIX = `posts_${randomSuffix()}_`;
 
 async function cleanupPosts(userIds: string[]): Promise<void> {
   if (userIds.length === 0) return;
-  await prisma.scheduledPublish.deleteMany({ where: { userId: { in: userIds } } });
-  await prisma.post.deleteMany({ where: { userId: { in: userIds } } });
+  // Swallow per-table failures: if one of the tables doesn't exist in
+  // the local DB (migration not yet applied), we still want the
+  // afterEach `cleanupByPrefix(... clerkId: true)` to run and remove
+  // the test users themselves. Otherwise pre-migration test runs
+  // leave 24+ orphan users in the DB until someone notices manually.
+  await prisma.scheduledPublish.deleteMany({ where: { userId: { in: userIds } } }).catch(() => {});
+  await prisma.post.deleteMany({ where: { userId: { in: userIds } } }).catch(() => {});
 }
 
 describe("createPostWithSchedules", () => {
@@ -28,6 +33,11 @@ describe("createPostWithSchedules", () => {
   });
 
   afterEach(async () => {
+    // Order matters: child rows first, then User rows. cleanupByPrefix
+    // uses User.deleteMany with onDelete: Cascade — it would handle
+    // descendants, but we also wrap each step in .catch() inside
+    // cleanupPosts so a missing-table error pre-migration doesn't strand
+    // the User row in afterEach.
     await cleanupPosts([userId]);
     await cleanupByPrefix(PREFIX, { clerkId: true });
   });
@@ -122,6 +132,9 @@ describe("retryScheduledPublish", () => {
   });
 
   afterEach(async () => {
+    // See cleanupPosts for the rationale: per-table catch ensures
+    // cleanupByPrefix runs even when a downstream table is missing
+    // (e.g. against a not-yet-migrated local DB).
     await cleanupPosts([userA.id, userB.id]);
     await cleanupByPrefix(PREFIX, { clerkId: true });
   });
