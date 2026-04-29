@@ -14,7 +14,6 @@ const ALLOWED_CRON_PATHS: Record<string, string> = {
   "followers-snapshot": "/api/cron/followers-snapshot",
   "trend-snapshot": "/api/cron/trend-snapshot",
   "daily-insight": "/api/cron/daily-insight",
-  "x-import": "/api/cron/x-import",
   "social-import": "/api/cron/social-import",
   researcher: "/api/cron/researcher",
   strategist: "/api/cron/strategist",

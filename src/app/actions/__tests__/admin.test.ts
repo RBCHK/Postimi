@@ -51,7 +51,7 @@ describe("getCronConfigs", () => {
   it("returns configs joined with each job's most recent run", async () => {
     prismaMock.cronJobConfig.findMany.mockResolvedValue([
       {
-        jobName: "x-import",
+        jobName: "social-import",
         enabled: true,
         description: "X import",
         schedule: "0 * * * *",
@@ -67,7 +67,7 @@ describe("getCronConfigs", () => {
     ]);
     prismaMock.cronJobRun.findMany.mockResolvedValue([
       {
-        jobName: "x-import",
+        jobName: "social-import",
         status: "SUCCESS",
         startedAt: new Date("2026-04-20T10:00:00.000Z"),
         durationMs: 1234,
@@ -78,9 +78,9 @@ describe("getCronConfigs", () => {
     const result = await getCronConfigs();
 
     expect(result).toHaveLength(2);
-    // Joined — x-import has a lastRun, strategist does not.
+    // Joined — social-import has a lastRun, strategist does not.
     expect(result[0]).toMatchObject({
-      jobName: "x-import",
+      jobName: "social-import",
       enabled: true,
       lastRun: expect.objectContaining({ status: "SUCCESS" }),
     });
@@ -93,7 +93,13 @@ describe("getCronConfigs", () => {
 
   it("asks Prisma for latest-run-per-jobName via distinct", async () => {
     prismaMock.cronJobConfig.findMany.mockResolvedValue([
-      { jobName: "x-import", enabled: true, description: "", schedule: "", updatedAt: new Date() },
+      {
+        jobName: "social-import",
+        enabled: true,
+        description: "",
+        schedule: "",
+        updatedAt: new Date(),
+      },
     ]);
 
     const { getCronConfigs } = await import("../admin");
@@ -101,7 +107,7 @@ describe("getCronConfigs", () => {
 
     expect(prismaMock.cronJobRun.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { jobName: { in: ["x-import"] } },
+        where: { jobName: { in: ["social-import"] } },
         distinct: ["jobName"],
         orderBy: { startedAt: "desc" },
       })
@@ -114,7 +120,7 @@ describe("toggleCronJob", () => {
     requireAdminMock.mockRejectedValueOnce(new Error("Not admin"));
     const { toggleCronJob } = await import("../admin");
 
-    await expect(toggleCronJob("x-import", false)).rejects.toThrow("Not admin");
+    await expect(toggleCronJob("social-import", false)).rejects.toThrow("Not admin");
 
     expect(prismaMock.cronJobConfig.update).not.toHaveBeenCalled();
   });
@@ -122,13 +128,13 @@ describe("toggleCronJob", () => {
   it("updates the config with the new flag and audit clerkId", async () => {
     const { toggleCronJob } = await import("../admin");
 
-    const result = await toggleCronJob("x-import", false);
+    const result = await toggleCronJob("social-import", false);
 
     expect(prismaMock.cronJobConfig.update).toHaveBeenCalledWith({
-      where: { jobName: "x-import" },
+      where: { jobName: "social-import" },
       data: { enabled: false, updatedBy: "clerk-admin-1" },
     });
-    expect(result).toEqual({ jobName: "x-import", enabled: false });
+    expect(result).toEqual({ jobName: "social-import", enabled: false });
   });
 });
 
@@ -157,11 +163,11 @@ describe("getCronRuns", () => {
 
   it("passes an explicit jobName filter through", async () => {
     const { getCronRuns } = await import("../admin");
-    await getCronRuns({ jobName: "x-import", limit: 10 });
+    await getCronRuns({ jobName: "social-import", limit: 10 });
 
     expect(prismaMock.cronJobRun.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { jobName: "x-import" },
+        where: { jobName: "social-import" },
         take: 10,
       })
     );

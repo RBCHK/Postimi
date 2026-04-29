@@ -1,5 +1,6 @@
 import { getXApiTokenForUser } from "@/lib/server/x-token";
 import { prisma } from "@/lib/prisma";
+import { xImporter } from "@/lib/x-importer";
 import { registerPlatform } from "../registry";
 import type { PlatformTokenClient } from "../types";
 
@@ -7,6 +8,10 @@ import type { PlatformTokenClient } from "../types";
 // shape (ADR-008). Imports from `@/lib/server/x-token` — never from
 // `@/app/actions/x-token`, because every export from a "use server" file
 // becomes a public Server Action.
+//
+// 2026-04 refactor: registers `xImporter` so `social-import` handles X
+// via `listImportablePlatforms()` like Threads. The legacy
+// `/api/cron/x-import` route is removed.
 
 export const xTokenClient: PlatformTokenClient<"X"> = {
   platform: "X",
@@ -20,4 +25,4 @@ export const xTokenClient: PlatformTokenClient<"X"> = {
   },
 };
 
-registerPlatform({ token: xTokenClient });
+registerPlatform({ token: xTokenClient, importer: xImporter });
