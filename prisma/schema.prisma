@@ -57,6 +57,12 @@ model User {
   // User-declared niche / topic focus (e.g. "AI tools", "fitness coaching").
   // Drives per-user niche research; null = use only global per-platform notes.
   niche String? @db.VarChar(100)
+
+  // 2026-04 refactor: Post → ScheduledPublish[] replaces ScheduledSlot
+  // for multi-platform publishing. ScheduledSlot stays for one release
+  // with @@ignore (data backfilled by data-migration script).
+  posts             Post[]
+  scheduledPublishes ScheduledPublish[]
 }
 
 // ─── Waitlist (open-registration path — see ADR 007) ─────
@@ -282,6 +288,18 @@ enum SlotStatus {
   POSTED
 }
 
+// 2026-04 refactor: per-platform publishing state. PUBLISHING is the
+// claim lock — the auto-publish cron transitions PENDING → PUBLISHING
+// atomically (FOR UPDATE SKIP LOCKED) so two concurrent ticks can't
+// double-publish. A stale-PUBLISHING sweep resets rows that have been
+// in flight > 5 min back to PENDING with attemptCount++.
+enum ScheduledPublishStatus {
+  PENDING
+  PUBLISHING
+  PUBLISHED
+  FAILED
+}
+
 enum VoiceBankType {
   REPLY
   POST
@@ -340,6 +358,7 @@ model Conversation {
   messages Message[]
   notes    Note[]
   slots    ScheduledSlot[]
+  posts    Post[]
   media    Media[]
 
   @@index([userId])
@@ -437,6 +456,76 @@ model ScheduledSlot {
   // `(status, date)` lets Postgres both filter by status and skip slots
   // that aren't due yet in one index walk.
   @@index([status, date])
+}
+
+// 2026-04 refactor: a logical post (content + media) that may be
+// published to N platforms with independent timing and status. Replaces
+// the X-only ScheduledSlot model. Per-platform state lives on
+// ScheduledPublish — Post has no `status` column; UI computes it on
+// read from the aggregation of ScheduledPublish rows. Avoids the
+// race-condition vector where concurrent platform publishers race to
+// update Post.status.
+model Post {
+  id             String        @id @default(cuid())
+  userId         String
+  content        String
+  conversationId String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation     Conversation?     @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  scheduledPublishes ScheduledPublish[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([conversationId])
+}
+
+// One ScheduledPublish per (post, platform). userId is denormalized
+// from Post for direct isolation queries — every ad-hoc lookup is one
+// filter away from being properly user-scoped, no Post-join required.
+//
+// No unique [postId, platform] constraint: a re-schedule after FAILED
+// must be able to insert a new row for the same (post, platform). The
+// cron query filters PENDING rows by scheduledAt — the natural
+// progression FAILED → new PENDING is fine.
+model ScheduledPublish {
+  id                  String                 @id @default(cuid())
+  userId              String
+  postId              String
+  platform            Platform
+  scheduledAt         DateTime
+  status              ScheduledPublishStatus @default(PENDING)
+  externalPostId      String?
+  externalUrl         String?
+  // Threads two-step publish: container id from step 1 lets a retry
+  // resume from step 2 if step 1 succeeded but step 2 timed out.
+  // Other platforms leave this null.
+  platformContainerId String?
+  publishedAt         DateTime?
+  // attemptCount: incremented on every cron-side retry. Capped at 3 —
+  // beyond that the row stays FAILED until a manual retry resets it.
+  attemptCount        Int                    @default(0)
+  // manualRetryCount: incremented on user-driven retry. Uncapped, but
+  // each manual retry resets attemptCount so the cron picks it up again.
+  manualRetryCount    Int                    @default(0)
+  lastError           String?
+  lastAttemptAt       DateTime?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  // Cron claim query: WHERE status='PENDING' AND scheduledAt <= now()
+  // Index drives the FOR UPDATE SKIP LOCKED scan.
+  @@index([status, scheduledAt])
+  // Per-user calendar view: list publishes for a user, ordered by time.
+  @@index([userId, scheduledAt])
+  // Per-post lookup for the schedule UI's expand-by-Post path.
+  @@index([postId])
+  // Stale PUBLISHING sweep: WHERE status='PUBLISHING' AND lastAttemptAt < now() - 5min
+  @@index([status, lastAttemptAt])
 }
 
 model StrategyConfig {

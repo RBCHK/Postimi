@@ -1,284 +1,324 @@
+/**
+ * Contract test for the post-2026-04 auto-publish cron.
+ *
+ * Covers the invariants the new cron must uphold:
+ *   1. Bearer auth — 401 on missing/wrong token (covered by e2e auth-
+ *      boundaries spec; not duplicated here).
+ *   2. Empty claim → SUCCESS, no publisher calls.
+ *   3. Happy path → publisher invoked, row marked PUBLISHED.
+ *   4. PlatformDisconnectedError → FAILED terminal (attemptCount cap),
+ *      no retry. Sentry warning fired.
+ *   5. Static-rules validation rejects the row before publisher runs.
+ *   6. Transient error increments attemptCount and resets to PENDING.
+ *   7. attemptCount cap reached → FAILED, not retried.
+ *   8. Backfill is invoked at the top of every tick (idempotent on
+ *      runs without orphans).
+ *   9. Per-platform isolation — one row's failure does not affect others.
+ */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
-
-// Regression coverage for the PR that wired auto-publish into vercel.json +
-// withCronLogging + CronJobConfig. Asserts:
-//   1. handler iterates due SCHEDULED slots, posts to X, flips them to POSTED.
-//   2. Conversation status update is scoped by userId (defense-in-depth).
-//   3. Zero due slots → SUCCESS with published=0, no side effects.
-//   4. Media downloads run in parallel with a timeout; any fetch
-//      failure aborts the slot (X requires all-or-nothing media) and
-//      Sentry captures with per-item tags.
+import type { Platform } from "@/lib/types";
 
 const CRON_SECRET = "test-secret";
 process.env.CRON_SECRET = CRON_SECRET;
 
-const captureExceptionMock = vi.hoisted(() => vi.fn());
-vi.mock("@sentry/nextjs", () => ({ captureException: captureExceptionMock }));
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-
-// Passthrough wrapper so we test the handler directly.
+vi.mock("next/server", async () => {
+  const actual = (await vi.importActual("next/server")) as Record<string, unknown>;
+  return {
+    ...actual,
+    after: (cb: () => Promise<void> | void) => {
+      void Promise.resolve()
+        .then(cb)
+        .catch(() => {});
+    },
+  };
+});
 vi.mock("@/lib/cron-helpers", () => ({
   withCronLogging:
     (_name: string, handler: (req: NextRequest) => Promise<unknown>) => (req: NextRequest) =>
       handler(req),
 }));
+const sentryMock = vi.hoisted(() => ({
+  captureException: vi.fn(),
+  captureMessage: vi.fn(),
+}));
+vi.mock("@sentry/nextjs", () => sentryMock);
 
-vi.mock("@/lib/server/x-token", () => ({
-  getXApiTokenForUser: vi.fn().mockResolvedValue({ accessToken: "x" }),
+const backfillMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/server/auto-publish-backfill", () => ({
+  backfillOrphanScheduledSlots: backfillMock,
 }));
 
-const postTweetMock = vi.hoisted(() =>
-  vi.fn().mockResolvedValue({ tweetUrl: "https://x.com/u/status/1" })
-);
-const uploadMediaToXMock = vi.hoisted(() => vi.fn().mockResolvedValue("media-id-1"));
-vi.mock("@/lib/x-api", () => ({
-  postTweet: postTweetMock,
-  uploadMediaToX: uploadMediaToXMock,
-}));
+const xTokenMock = vi.hoisted(() => vi.fn());
+const liTokenMock = vi.hoisted(() => vi.fn());
+const thTokenMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/server/x-token", () => ({ getXApiTokenForUser: xTokenMock }));
+vi.mock("@/lib/server/linkedin-token", () => ({ getLinkedInApiTokenForUser: liTokenMock }));
+vi.mock("@/lib/server/threads-token", () => ({ getThreadsApiTokenForUser: thTokenMock }));
 
-const getMediaForConversationMock = vi.hoisted(() => vi.fn().mockResolvedValue([]));
-vi.mock("@/lib/server/media", () => ({
-  getMediaForConversation: getMediaForConversationMock,
-}));
+const getMediaMock = vi.hoisted(() => vi.fn().mockResolvedValue([]));
+vi.mock("@/lib/server/media", () => ({ getMediaForConversation: getMediaMock }));
 
-// Media downloads go through fetchWithTimeout. The cron route calls it
-// directly for image bytes; mock at that boundary so we can assert
-// parallelism + timeout propagation without hitting the network.
-const fetchWithTimeoutMock = vi.hoisted(() => vi.fn());
+const uploadMediaToXMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/x-api", () => ({ uploadMediaToX: uploadMediaToXMock }));
+
 vi.mock("@/lib/fetch-with-timeout", () => ({
-  fetchWithTimeout: fetchWithTimeoutMock,
+  fetchWithTimeout: vi.fn(),
 }));
 
-// Real slotToUtcDate is timezone-sensitive; return the raw slot date so the
-// handler's `dueSlots` filter is driven by the date we choose in the fixture.
-vi.mock("@/lib/date-utils", () => ({
-  slotToUtcDate: (d: Date) => d,
-}));
+const publishMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/platform/publishers", async () => {
+  return {
+    getPublisher: () => ({ publish: publishMock }),
+  };
+});
 
 const prismaMock = {
-  scheduledSlot: {
-    findMany: vi.fn(),
-    update: vi.fn().mockResolvedValue({}),
+  scheduledPublish: {
+    updateMany: vi.fn(),
+    update: vi.fn(),
   },
-  conversation: {
-    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-    update: vi.fn().mockResolvedValue({}),
+  post: {
+    findUnique: vi.fn(),
   },
+  $queryRaw: vi.fn(),
 };
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
+interface ClaimedRow {
+  id: string;
+  userId: string;
+  postId: string;
+  platform: Platform;
+  attemptCount: number;
+}
+
+function makeClaim(overrides?: Partial<ClaimedRow>): ClaimedRow {
+  return {
+    id: "sp-1",
+    userId: "user-1",
+    postId: "post-1",
+    platform: "X",
+    attemptCount: 0,
+    ...overrides,
+  };
+}
+
+function makePost(overrides?: { content?: string; userId?: string }) {
+  return {
+    id: "post-1",
+    userId: overrides?.userId ?? "user-1",
+    content: overrides?.content ?? "hello world",
+    conversationId: null,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  // Default: no media rows. Specific tests override.
-  getMediaForConversationMock.mockResolvedValue([]);
-  uploadMediaToXMock.mockResolvedValue("media-id-default");
-  postTweetMock.mockResolvedValue({ tweetUrl: "https://x.com/u/status/1" });
+  backfillMock.mockResolvedValue(0);
+  prismaMock.scheduledPublish.updateMany.mockResolvedValue({ count: 0 });
+  prismaMock.scheduledPublish.update.mockResolvedValue({});
+  prismaMock.$queryRaw.mockResolvedValue([]);
+  prismaMock.post.findUnique.mockResolvedValue(null);
+  xTokenMock.mockResolvedValue({ accessToken: "x", xUserId: "u", xUsername: "u" });
+  liTokenMock.mockResolvedValue({
+    accessToken: "li",
+    linkedinUserId: "u",
+    linkedinName: "u",
+  });
+  thTokenMock.mockResolvedValue({
+    accessToken: "th",
+    threadsUserId: "u",
+    threadsUsername: "u",
+  });
+  publishMock.mockResolvedValue({
+    externalPostId: "ext-1",
+    externalUrl: "https://example.com/p/ext-1",
+  });
 });
 
-function req() {
+function authedReq() {
   return new NextRequest("http://localhost/api/cron/auto-publish", {
     headers: { authorization: `Bearer ${CRON_SECRET}` },
   });
 }
 
-describe("auto-publish cron", () => {
-  it("returns SUCCESS and no side effects when nothing is due", async () => {
-    prismaMock.scheduledSlot.findMany.mockResolvedValueOnce([]);
+describe("auto-publish cron — structure", () => {
+  it("invokes backfill and stale-sweep on every tick (even with empty claim)", async () => {
+    const { GET } = await import("../route");
+    const res = (await GET(authedReq())) as unknown as {
+      status: string;
+      data: { published: number; due: number };
+    };
+    expect(res.status).toBe("SUCCESS");
+    expect(res.data.published).toBe(0);
+    expect(res.data.due).toBe(0);
+    expect(backfillMock).toHaveBeenCalledTimes(1);
+    expect(prismaMock.scheduledPublish.updateMany).toHaveBeenCalledTimes(1);
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("auto-publish cron — happy path", () => {
+  it("publishes a claimed row and marks it PUBLISHED with externalPostId", async () => {
+    const claim = makeClaim();
+    prismaMock.$queryRaw.mockResolvedValueOnce([claim]);
+    prismaMock.post.findUnique.mockResolvedValueOnce(makePost());
 
     const { GET } = await import("../route");
-    const result = (await GET(req())) as unknown as {
+    const res = (await GET(authedReq())) as unknown as {
       status: string;
-      data: { published: number };
+      data: { published: number; details: Array<{ status: string }> };
     };
+    expect(res.status).toBe("SUCCESS");
+    expect(res.data.published).toBe(1);
+    expect(res.data.details[0]!.status).toBe("PUBLISHED");
 
-    expect(result.status).toBe("SUCCESS");
-    expect(result.data.published).toBe(0);
-    expect(prismaMock.scheduledSlot.update).not.toHaveBeenCalled();
-    expect(prismaMock.conversation.updateMany).not.toHaveBeenCalled();
-  });
-
-  it("scopes Conversation update by userId (defense-in-depth)", async () => {
-    const past = new Date("2020-01-01T00:00:00Z");
-    prismaMock.scheduledSlot.findMany.mockResolvedValueOnce([
-      {
-        id: "slot-1",
-        conversationId: "conv-1",
+    expect(publishMock).toHaveBeenCalledTimes(1);
+    expect(publishMock).toHaveBeenCalledWith(
+      expect.objectContaining({
         content: "hello world",
-        date: past,
-        timeSlot: "9:00 AM",
-        status: "SCHEDULED",
-        user: { id: "user-1", timezone: "UTC" },
-      },
-    ]);
-
-    const { GET } = await import("../route");
-    await GET(req());
-
-    // Slot flipped to POSTED
-    expect(prismaMock.scheduledSlot.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "slot-1" },
-        data: expect.objectContaining({ status: "POSTED" }),
+        userId: "user-1",
+        callerJob: "auto-publish",
       })
     );
-
-    // Conversation update MUST be updateMany scoped by userId — not update()
-    expect(prismaMock.conversation.updateMany).toHaveBeenCalledWith(
+    expect(prismaMock.scheduledPublish.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ id: "conv-1", userId: "user-1" }),
-        data: expect.objectContaining({ status: "POSTED" }),
+        where: { id: "sp-1" },
+        data: expect.objectContaining({
+          status: "PUBLISHED",
+          externalPostId: "ext-1",
+          externalUrl: "https://example.com/p/ext-1",
+        }),
       })
     );
-    expect(prismaMock.conversation.update).not.toHaveBeenCalled();
   });
+});
 
-  it("skips slots whose scheduled time is still in the future", async () => {
-    const future = new Date(Date.now() + 24 * 3600_000);
-    prismaMock.scheduledSlot.findMany.mockResolvedValueOnce([
-      {
-        id: "slot-future",
-        conversationId: null,
-        content: "later",
-        date: future,
-        timeSlot: "9:00 AM",
-        status: "SCHEDULED",
-        user: { id: "user-1", timezone: "UTC" },
-      },
-    ]);
-
-    const { GET } = await import("../route");
-    const result = (await GET(req())) as unknown as { data: { published: number } };
-
-    expect(result.data.published).toBe(0);
-    expect(prismaMock.scheduledSlot.update).not.toHaveBeenCalled();
-  });
-
-  it("downloads media in parallel and uploads all to X on happy path", async () => {
-    const past = new Date("2020-01-01T00:00:00Z");
-    prismaMock.scheduledSlot.findMany.mockResolvedValueOnce([
-      {
-        id: "slot-media-ok",
-        conversationId: "conv-media-ok",
-        content: "tweet with images",
-        date: past,
-        timeSlot: "9:00 AM",
-        status: "SCHEDULED",
-        user: { id: "user-1", timezone: "UTC" },
-      },
-    ]);
-
-    const media = [
-      { id: "m-1", url: "https://cdn.test/a.jpg", mimeType: "image/jpeg" },
-      { id: "m-2", url: "https://cdn.test/b.jpg", mimeType: "image/jpeg" },
-      { id: "m-3", url: "https://cdn.test/c.jpg", mimeType: "image/jpeg" },
-    ];
-    getMediaForConversationMock.mockResolvedValueOnce(media);
-
-    // Track concurrent in-flight calls so we can assert parallelism —
-    // not all three have to peak at once (the loop may still be
-    // queueing), but the max concurrency must exceed 1. Sequential
-    // fetches would plateau at 1.
-    let inFlight = 0;
-    let maxInFlight = 0;
-    fetchWithTimeoutMock.mockImplementation(async () => {
-      inFlight++;
-      maxInFlight = Math.max(maxInFlight, inFlight);
-      await new Promise((r) => setTimeout(r, 5));
-      inFlight--;
-      return {
-        ok: true,
-        status: 200,
-        arrayBuffer: async () => new ArrayBuffer(8),
-      };
-    });
-    uploadMediaToXMock
-      .mockResolvedValueOnce("x-media-a")
-      .mockResolvedValueOnce("x-media-b")
-      .mockResolvedValueOnce("x-media-c");
-
-    const { GET } = await import("../route");
-    const result = (await GET(req())) as unknown as {
-      status: string;
-      data: { published: number };
-    };
-
-    expect(result.status).toBe("SUCCESS");
-    expect(result.data.published).toBe(1);
-    expect(fetchWithTimeoutMock).toHaveBeenCalledTimes(3);
-    // The three timeouts must all be explicit (not the 30s default).
-    for (const call of fetchWithTimeoutMock.mock.calls) {
-      const [, init] = call as [string, { timeoutMs?: number }];
-      expect(init?.timeoutMs).toBeGreaterThan(0);
-      expect(init?.timeoutMs).toBeLessThanOrEqual(30_000);
-    }
-    expect(maxInFlight).toBeGreaterThan(1);
-
-    // All three medias uploaded to X in order.
-    expect(uploadMediaToXMock).toHaveBeenCalledTimes(3);
-    expect(postTweetMock).toHaveBeenCalledWith(
-      expect.anything(),
-      "tweet with images",
-      expect.objectContaining({ mediaIds: ["x-media-a", "x-media-b", "x-media-c"] })
-    );
-    expect(captureExceptionMock).not.toHaveBeenCalled();
-  });
-
-  it("aborts the slot and captures per-item Sentry when one media fetch fails", async () => {
-    const past = new Date("2020-01-01T00:00:00Z");
-    prismaMock.scheduledSlot.findMany.mockResolvedValueOnce([
-      {
-        id: "slot-media-partial",
-        conversationId: "conv-media-partial",
-        content: "tweet with one bad image",
-        date: past,
-        timeSlot: "9:00 AM",
-        status: "SCHEDULED",
-        user: { id: "user-1", timezone: "UTC" },
-      },
-    ]);
-
-    const media = [
-      { id: "m-good", url: "https://cdn.test/good.jpg", mimeType: "image/jpeg" },
-      { id: "m-bad", url: "https://cdn.test/bad.jpg", mimeType: "image/jpeg" },
-    ];
-    getMediaForConversationMock.mockResolvedValueOnce(media);
-
-    fetchWithTimeoutMock.mockImplementation(async (url: string) => {
-      if (url === "https://cdn.test/bad.jpg") {
-        throw new Error("simulated timeout");
-      }
-      return {
-        ok: true,
-        status: 200,
-        arrayBuffer: async () => new ArrayBuffer(8),
-      };
-    });
-
-    const { GET } = await import("../route");
-    const result = (await GET(req())) as unknown as {
-      status: string;
-      data: { published: number; errors: number };
-    };
-
-    // Slot failed — but overall-cron status propagates the error.
-    expect(result.data.published).toBe(0);
-    expect(result.data.errors).toBe(1);
-    // Neither media uploaded (all-or-nothing) and no tweet posted.
-    expect(uploadMediaToXMock).not.toHaveBeenCalled();
-    expect(postTweetMock).not.toHaveBeenCalled();
-    // Slot NOT flipped to POSTED.
-    expect(prismaMock.scheduledSlot.update).not.toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: "POSTED" }) })
+describe("auto-publish cron — error paths", () => {
+  it("PlatformDisconnectedError marks FAILED terminal, no retry", async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([makeClaim()]);
+    prismaMock.post.findUnique.mockResolvedValueOnce(makePost());
+    const { PlatformDisconnectedError } = await import("@/lib/platform/errors");
+    publishMock.mockRejectedValueOnce(
+      new PlatformDisconnectedError("X", "user-1", "token revoked")
     );
 
-    // Sentry captures: one for the specific media item (tagged with
-    // mediaId + url), plus one for the slot-level error thrown from the
-    // try/catch. We assert the per-item capture landed at minimum.
-    const perItemCalls = captureExceptionMock.mock.calls.filter((c) => {
-      const opts = c[1] as { tags?: { area?: string; mediaId?: string } } | undefined;
-      return opts?.tags?.area === "auto-publish-media" && opts?.tags?.mediaId === "m-bad";
-    });
-    expect(perItemCalls).toHaveLength(1);
+    const { GET } = await import("../route");
+    const res = (await GET(authedReq())) as unknown as {
+      status: string;
+      data: { errors: number; details: Array<{ status: string }> };
+    };
+    expect(res.status).toBe("FAILURE");
+    expect(res.data.errors).toBe(1);
+    expect(res.data.details[0]!.status).toBe("FAILED");
+    expect(prismaMock.scheduledPublish.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "FAILED", attemptCount: 3 }),
+      })
+    );
+    expect(sentryMock.captureException).toHaveBeenCalled();
+  });
+
+  it("rejects content over the platform's textLimit before publisher runs", async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([makeClaim({ platform: "X" })]);
+    prismaMock.post.findUnique.mockResolvedValueOnce(makePost({ content: "x".repeat(281) }));
+
+    const { GET } = await import("../route");
+    const res = (await GET(authedReq())) as unknown as {
+      status: string;
+      data: { details: Array<{ status: string; error?: string }> };
+    };
+    expect(res.status).toBe("FAILURE");
+    expect(res.data.details[0]!.status).toBe("FAILED");
+    expect(res.data.details[0]!.error).toMatch(/X limit/);
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it("transient error increments attemptCount, resets to PENDING", async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([makeClaim({ attemptCount: 0 })]);
+    prismaMock.post.findUnique.mockResolvedValueOnce(makePost());
+    publishMock.mockRejectedValueOnce(new Error("transient network blip"));
+
+    const { GET } = await import("../route");
+    await GET(authedReq());
+
+    expect(prismaMock.scheduledPublish.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "PENDING", attemptCount: 1 }),
+      })
+    );
+  });
+
+  it("attemptCount approaching cap → next failure marks FAILED", async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([makeClaim({ attemptCount: 2 })]);
+    prismaMock.post.findUnique.mockResolvedValueOnce(makePost());
+    publishMock.mockRejectedValueOnce(new Error("still failing"));
+
+    const { GET } = await import("../route");
+    await GET(authedReq());
+
+    expect(prismaMock.scheduledPublish.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "FAILED", attemptCount: 3 }),
+      })
+    );
+  });
+
+  it("missing creds (token revoked) → FAILED with platform_disconnected, no publish", async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([makeClaim({ platform: "LINKEDIN" })]);
+    prismaMock.post.findUnique.mockResolvedValueOnce(makePost());
+    liTokenMock.mockResolvedValueOnce(null);
+
+    const { GET } = await import("../route");
+    const res = (await GET(authedReq())) as unknown as {
+      data: { details: Array<{ status: string; error?: string }> };
+    };
+    expect(res.data.details[0]!.status).toBe("FAILED");
+    expect(res.data.details[0]!.error).toBe("platform_disconnected");
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it("post.userId / scheduled-publish.userId mismatch → FAILED + Sentry error", async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([makeClaim({ userId: "user-A" })]);
+    prismaMock.post.findUnique.mockResolvedValueOnce(makePost({ userId: "user-B" }));
+
+    const { GET } = await import("../route");
+    const res = (await GET(authedReq())) as unknown as {
+      data: { details: Array<{ status: string; error?: string }> };
+    };
+    expect(res.data.details[0]!.status).toBe("FAILED");
+    expect(res.data.details[0]!.error).toBe("userId_mismatch");
+    expect(publishMock).not.toHaveBeenCalled();
+    expect(sentryMock.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining("userId / scheduled-publish.userId mismatch"),
+      expect.objectContaining({ level: "error" })
+    );
+  });
+});
+
+describe("auto-publish cron — multi-platform isolation", () => {
+  it("processes each claimed row independently — one failure doesn't affect others", async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      makeClaim({ id: "sp-x", platform: "X" }),
+      makeClaim({ id: "sp-li", platform: "LINKEDIN" }),
+      makeClaim({ id: "sp-th", platform: "THREADS" }),
+    ]);
+    prismaMock.post.findUnique.mockResolvedValue(makePost());
+    publishMock
+      .mockResolvedValueOnce({ externalPostId: "x-1", externalUrl: "u" })
+      .mockRejectedValueOnce(new Error("LinkedIn 500"))
+      .mockResolvedValueOnce({ externalPostId: "th-1", externalUrl: "u" });
+
+    const { GET } = await import("../route");
+    const res = (await GET(authedReq())) as unknown as {
+      status: string;
+      data: { published: number; errors: number; details: Array<{ status: string }> };
+    };
+    expect(res.status).toBe("PARTIAL");
+    expect(res.data.published).toBe(2);
+    expect(res.data.errors).toBe(1);
+    const statuses = res.data.details.map((d) => d.status).sort();
+    expect(statuses).toEqual(["PUBLISHED", "PUBLISHED", "RETRY"]);
   });
 });
