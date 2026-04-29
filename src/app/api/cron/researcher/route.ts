@@ -42,7 +42,7 @@ import { ensureSystemUser, excludeSystemUser } from "@/lib/server/system-user";
 const TAVILY_TIMEOUT_MS = 15_000;
 const STEP_LIMIT = 10;
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 export const GET = withCronLogging("researcher", async () => {
   const tavilyApiKey = process.env.TAVILY_API_KEY;
