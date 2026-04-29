@@ -106,14 +106,18 @@ const JOB_MODEL_KEY: Record<string, AgentKey> = {
   strategist: "strategist",
 };
 
-/** Maps CronJobConfig.jobName → cron API path */
-const CRON_PATHS: Record<string, string> = {
+/** Maps CronJobConfig.jobName → cron API path.
+ * Exported so the drift-guard test can verify this UI map and the
+ * server-side `ALLOWED_CRON_PATHS` whitelist (in `@/app/actions/admin`)
+ * stay in sync — silent drift means the Run Now button 404s. */
+export const CRON_PATHS: Record<string, string> = {
   "followers-snapshot": "/api/cron/followers-snapshot",
   "trend-snapshot": "/api/cron/trend-snapshot",
   "daily-insight": "/api/cron/daily-insight",
   "social-import": "/api/cron/social-import",
   researcher: "/api/cron/researcher",
   strategist: "/api/cron/strategist",
+  "auto-publish": "/api/cron/auto-publish",
 };
 
 /** Schedule times from vercel.json, displayed as UTC (PST) */
@@ -132,6 +136,7 @@ const JOB_SCHEDULES: Record<string, string[]> = {
   ],
   researcher: ["Mon 04:30 UTC (Sun 20:30 PST)"],
   strategist: ["Mon 14:00 UTC (06:00 PST)"],
+  "auto-publish": ["Every minute"],
 };
 
 // ─── Helpers ───────────────────────────────────────────────
