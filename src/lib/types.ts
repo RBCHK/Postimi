@@ -257,16 +257,65 @@ export interface ResearchNoteItem {
   createdAt: Date;
 }
 
+// 2026-04 refactor: Daily Insight is platform-aware, model-driven.
+// Output is a structured "card feed" — model decides 1–7 cards/day:
+//   - 1 headline (always)
+//   - 0–3 platform-tagged tactical tips (if signal exists)
+//   - 0–1 opportunity (live trend window)
+//   - 0–1 warning (declining metric, etc.)
+//   - 0–1 encouragement (only on bad days)
+//
+// Stored in DailyInsight.insights as JSON. Reader code accepts either
+// shape during transition (legacy `string[]` from pre-refactor rows or
+// the new `DailyInsightCards` object) — see `<InsightFeed>`.
+
+export interface DailyInsightTacticalCard {
+  platform: Platform;
+  text: string;
+}
+
+export interface DailyInsightOpportunityCard {
+  platform: Platform;
+  text: string;
+}
+
+export interface DailyInsightWarningCard {
+  platform: Platform;
+  text: string;
+}
+
+export interface DailyInsightCards {
+  /** Always exactly 1 — the main focus today. */
+  headline: string;
+  /** 0–3 platform-specific tips. Only present when signal exists. */
+  tactical: DailyInsightTacticalCard[];
+  /** 0–1 trend window if it's live AND relevant. */
+  opportunity: DailyInsightOpportunityCard | null;
+  /** 0–1 alert if a metric is declining. */
+  warning: DailyInsightWarningCard | null;
+  /** 0–1 motivational note. Only on bad days. */
+  encouragement: string | null;
+}
+
+/** Legacy 5-bullet shape (pre-2026-04). Reader supports both. */
+export type DailyInsightLegacy = string[];
+
+/** Discriminator-free union — readers narrow via Array.isArray. */
+export type DailyInsightPayload = DailyInsightCards | DailyInsightLegacy;
+
 export interface DailyInsightContext {
-  strategyAnalysisId: string | null;
+  /** Per-platform: which Strategy analysis informed this insight. */
+  strategyAnalysisIds: Partial<Record<Platform, string>>;
+  /** All research notes (GLOBAL + USER niche) consumed by the prompt. */
   researchNoteIds: string[];
-  daysOfStats: number;
+  /** Per-platform: how many days of recent stats were available. */
+  daysOfStatsByPlatform: Partial<Record<Platform, number>>;
 }
 
 export interface DailyInsightItem {
   id: string;
   date: Date;
-  insights: string[];
+  insights: DailyInsightPayload;
   context: DailyInsightContext;
   createdAt: Date;
 }

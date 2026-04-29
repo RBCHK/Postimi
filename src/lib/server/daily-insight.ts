@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { DailyInsightItem, DailyInsightContext } from "@/lib/types";
+import type { DailyInsightContext, DailyInsightItem, DailyInsightPayload } from "@/lib/types";
 
 function toUtcMidnight(d: Date): Date {
   return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -15,7 +15,11 @@ function toItem(row: {
   return {
     id: row.id,
     date: row.date,
-    insights: row.insights as unknown as string[],
+    // The DB stores `insights` as JSON. Pre-2026-04 rows are `string[]`,
+    // post-refactor rows are the new `DailyInsightCards` object. The
+    // reader (InsightFeed) discriminates via Array.isArray, so we just
+    // forward the parsed JSON unchanged.
+    insights: row.insights as unknown as DailyInsightPayload,
     context: row.context as unknown as DailyInsightContext,
     createdAt: row.createdAt,
   };
@@ -25,7 +29,7 @@ export async function saveDailyInsight(
   userId: string,
   data: {
     date: Date;
-    insights: string[];
+    insights: DailyInsightPayload;
     context: DailyInsightContext;
   }
 ): Promise<DailyInsightItem> {

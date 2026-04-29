@@ -1,13 +1,20 @@
 import * as Sentry from "@sentry/nextjs";
 import { anthropic } from "@ai-sdk/anthropic";
-import { generateText } from "ai";
-import { getDailyInsightPrompt, buildDailyInsightUserMessage } from "@/prompts/daily-insight";
+import { generateObject, NoObjectGeneratedError } from "ai";
+import {
+  DAILY_INSIGHT_CARDS_SCHEMA,
+  buildDailyInsightUserMessage,
+  getDailyInsightPrompt,
+  type PerPlatformContext,
+} from "@/prompts/daily-insight";
 import { prisma } from "@/lib/prisma";
 import { saveDailyInsight } from "@/lib/server/daily-insight";
 import { getLatestTrends } from "@/lib/server/trends";
 import { getLatestFollowersSnapshot } from "@/lib/server/followers";
 import { getRecentResearchNotes } from "@/lib/server/research";
+import { getConnectedPlatforms } from "@/lib/server/platforms";
 import { excludeSystemUser } from "@/lib/server/system-user";
+import { getOutputLanguage } from "@/lib/server/user-settings";
 import { withCronLogging } from "@/lib/cron-helpers";
 import {
   reserveQuota,
@@ -21,9 +28,110 @@ import {
   RateLimitExceededError,
   SubscriptionRequiredError,
 } from "@/lib/errors";
-import type { DailyInsightContext } from "@/lib/types";
+import { DEFAULT_LANGUAGE, languageName } from "@/lib/i18n/language-names";
+import type {
+  DailyInsightCards,
+  DailyInsightContext,
+  DailyInsightPayload,
+  Platform,
+} from "@/lib/types";
 
 export const maxDuration = 30;
+
+const STATS_DAYS = 7;
+
+/**
+ * Per-platform context build. Wrapped in `Promise.allSettled` at the
+ * caller — one rejected sub-fetch (e.g. Trends API down) shouldn't
+ * abort the user's whole insight; we degrade and Sentry the failure.
+ */
+async function buildPlatformContext(
+  userId: string,
+  platform: Platform
+): Promise<PerPlatformContext> {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - STATS_DAYS);
+
+  const [statsResult, strategyResult, followersResult, notesResult, trendsResult] =
+    await Promise.allSettled([
+      prisma.socialDailyStats.findMany({
+        where: { userId, platform, date: { gte: sevenDaysAgo } },
+        orderBy: { date: "desc" },
+      }),
+      prisma.strategyAnalysis.findFirst({
+        where: { userId, platform },
+        orderBy: { createdAt: "desc" },
+      }),
+      // followers snapshot helper is X-only today — for other platforms
+      // pull the latest SocialFollowersSnapshot row directly.
+      platform === "X"
+        ? getLatestFollowersSnapshot(userId)
+        : prisma.socialFollowersSnapshot.findFirst({
+            where: { userId, platform },
+            orderBy: { date: "desc" },
+          }),
+      getRecentResearchNotes(userId, platform, 3),
+      // Trends are X-only by design (other platforms have no trend feed).
+      platform === "X" ? getLatestTrends(userId) : Promise.resolve([]),
+    ]);
+
+  if (statsResult.status === "rejected") {
+    Sentry.captureException(statsResult.reason, {
+      tags: { area: "daily-insight", userId, platform, subtask: "stats" },
+    });
+  }
+  if (strategyResult.status === "rejected") {
+    Sentry.captureException(strategyResult.reason, {
+      tags: { area: "daily-insight", userId, platform, subtask: "strategy" },
+    });
+  }
+  if (followersResult.status === "rejected") {
+    Sentry.captureException(followersResult.reason, {
+      tags: { area: "daily-insight", userId, platform, subtask: "followers" },
+    });
+  }
+  if (notesResult.status === "rejected") {
+    Sentry.captureException(notesResult.reason, {
+      tags: { area: "daily-insight", userId, platform, subtask: "notes" },
+    });
+  }
+  if (trendsResult.status === "rejected") {
+    Sentry.captureException(trendsResult.reason, {
+      tags: { area: "daily-insight", userId, platform, subtask: "trends" },
+    });
+  }
+
+  const stats = statsResult.status === "fulfilled" ? statsResult.value : [];
+  const strategy = strategyResult.status === "fulfilled" ? strategyResult.value : null;
+  const followersRow = followersResult.status === "fulfilled" ? followersResult.value : null;
+  const researchNotes = notesResult.status === "fulfilled" ? notesResult.value : [];
+  const trends = trendsResult.status === "fulfilled" ? trendsResult.value : [];
+
+  return {
+    platform,
+    recentStats: stats.map((d) => ({
+      date: d.date.toISOString().split("T")[0]!,
+      impressions: d.impressions,
+      newFollows: d.newFollows,
+      unfollows: d.unfollows,
+      profileVisits: d.profileVisits,
+      engagements: d.engagements,
+    })),
+    latestFollowers: followersRow
+      ? {
+          id: "id" in followersRow ? followersRow.id : `${userId}-${platform}-current`,
+          date: followersRow.date,
+          followersCount: followersRow.followersCount,
+          followingCount: followersRow.followingCount ?? 0,
+          deltaFollowers: followersRow.deltaFollowers,
+          deltaFollowing: followersRow.deltaFollowing ?? 0,
+        }
+      : null,
+    strategyRecommendation: strategy?.recommendation ?? null,
+    researchNotes: researchNotes.map((n) => ({ topic: n.topic, summary: n.summary })),
+    trends: platform === "X" ? trends : undefined,
+  };
+}
 
 export const GET = withCronLogging("daily-insight", async () => {
   await sweepStaleReservations().catch((err) =>
@@ -42,121 +150,102 @@ export const GET = withCronLogging("daily-insight", async () => {
       const reservation = await reserveQuota({ userId: user.id, operation: "daily_insight" });
       reservationId = reservation.reservationId;
 
-      // 1. Latest StrategyAnalysis
-      const latestStrategy = await prisma.strategyAnalysis.findFirst({
-        where: { userId: user.id },
-        orderBy: { createdAt: "desc" },
-      });
+      const connected = await getConnectedPlatforms(user.id);
+      const outputLang = (await getOutputLanguage(user.id)) ?? DEFAULT_LANGUAGE;
 
-      // 2. Last 3 ResearchNotes — mix of GLOBAL X notes + USER niche
-      // notes (post-2026-04 researcher refactor). Daily-insight stays
-      // X-only until PR #3 makes it multi-platform.
-      const researchNotes = await getRecentResearchNotes(user.id, "X", 3);
+      // Build per-platform context for every connected platform in
+      // parallel. One platform's failure during sub-fetches is logged
+      // (per buildPlatformContext) but doesn't drop the platform from
+      // the prompt — the model just sees an empty stats section.
+      const perPlatformContexts = await Promise.all(
+        connected.platforms.map((p) => buildPlatformContext(user.id, p))
+      );
 
-      // 3. Last 7 days of daily stats (X-platform only — daily-insight
-      //    is X-specific today. Phase 1b moved this off the legacy
-      //    DailyAccountStats onto SocialDailyStats.)
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 7);
-      const recentStats = await prisma.socialDailyStats.findMany({
-        where: { userId: user.id, platform: "X", date: { gte: sevenDaysAgo } },
-        orderBy: { date: "desc" },
-      });
-
-      // 4. Latest trends and followers snapshot.
-      //
-      // Both inputs are optional context for the insight prompt — a
-      // missing trends array or a missing followers snapshot is
-      // acceptable. Using allSettled so one sub-fetch failing doesn't
-      // abort the whole user's insight; we fall back to null/[] and
-      // log the rejection per-subtask for ops visibility.
-      const [trendsResult, followersResult] = await Promise.allSettled([
-        getLatestTrends(user.id),
-        getLatestFollowersSnapshot(user.id),
-      ]);
-      const trends = trendsResult.status === "fulfilled" ? trendsResult.value : [];
-      const latestFollowers = followersResult.status === "fulfilled" ? followersResult.value : null;
-      if (trendsResult.status === "rejected") {
-        Sentry.captureException(trendsResult.reason, {
-          tags: { area: "daily-insight", userId: user.id, subtask: "getLatestTrends" },
-        });
-      }
-      if (followersResult.status === "rejected") {
-        Sentry.captureException(followersResult.reason, {
-          tags: {
-            area: "daily-insight",
-            userId: user.id,
-            subtask: "getLatestFollowersSnapshot",
-          },
-        });
-      }
-
-      // 5. Generate insights with Haiku
-      const insightModel = "claude-haiku-4-5-20251001";
-      const result = await generateText({
-        model: anthropic(insightModel),
-        maxOutputTokens: PLANS.pro.maxOutputTokensPerRequest,
-        system: getDailyInsightPrompt(),
-        messages: [
-          {
-            role: "user",
-            content: buildDailyInsightUserMessage(
-              latestStrategy?.recommendation ?? null,
-              researchNotes.map((n) => ({
-                topic: n.topic,
-                summary: n.summary,
-              })),
-              recentStats.map((d) => ({
-                date: d.date.toISOString().split("T")[0],
-                impressions: d.impressions,
-                newFollows: d.newFollows,
-                unfollows: d.unfollows,
-                profileVisits: d.profileVisits,
-                engagements: d.engagements,
-              })),
-              trends,
-              latestFollowers
-            ),
-          },
-        ],
-      });
-
-      await completeReservation({
-        reservationId,
-        model: insightModel,
-        tokensIn: result.usage.inputTokens ?? 0,
-        tokensOut: result.usage.outputTokens ?? 0,
-      });
-      reservationCompleted = true;
-
-      // 6. Parse JSON array from response
-      let insights: string[];
+      const insightModel = "claude-sonnet-4-6";
+      let cards: DailyInsightCards;
       try {
-        const parsed = JSON.parse(result.text.trim());
-        if (!Array.isArray(parsed) || parsed.length !== 5) {
-          throw new Error("Expected array of 5 strings");
+        const result = await generateObject({
+          model: anthropic(insightModel),
+          maxOutputTokens: PLANS.pro.maxOutputTokensPerRequest,
+          schema: DAILY_INSIGHT_CARDS_SCHEMA,
+          system: getDailyInsightPrompt({
+            outputLanguageName: languageName(outputLang),
+            connectedPlatforms: connected.platforms,
+          }),
+          prompt: buildDailyInsightUserMessage(perPlatformContexts),
+        });
+
+        await completeReservation({
+          reservationId,
+          model: insightModel,
+          tokensIn: result.usage.inputTokens ?? 0,
+          tokensOut: result.usage.outputTokens ?? 0,
+        });
+        reservationCompleted = true;
+
+        cards = result.object;
+      } catch (err) {
+        if (err instanceof NoObjectGeneratedError) {
+          // Schema-fit failure after the SDK's retries. Save a minimal
+          // fallback so the UI still renders something. Cap the headline
+          // length so a runaway model can't hose the home page.
+          Sentry.captureMessage("daily-insight schema-fit failed", {
+            level: "warning",
+            tags: { area: "daily-insight", userId: user.id, model: insightModel },
+            extra: { connectedCount: connected.platforms.length },
+          });
+          cards = {
+            headline: (err.text ?? "Today is a quiet day — keep your rhythm.").slice(0, 500),
+            tactical: [],
+            opportunity: null,
+            warning: null,
+            encouragement: null,
+          };
+          // Reservation still got token usage — close it with rough usage.
+          // Real usage is in `err.usage` if the SDK populated it.
+          if (!reservationCompleted && reservationId) {
+            await completeReservation({
+              reservationId,
+              model: insightModel,
+              tokensIn: err.usage?.inputTokens ?? 0,
+              tokensOut: err.usage?.outputTokens ?? 0,
+            });
+            reservationCompleted = true;
+          }
+        } else {
+          throw err;
         }
-        insights = parsed.map((s: unknown) => String(s));
-      } catch {
-        // Fallback: extract JSON array from text
-        const match = result.text.match(/\[[\s\S]*\]/);
-        if (!match) {
-          throw new Error(`Failed to parse insights from: ${result.text}`);
-        }
-        const parsed = JSON.parse(match[0]);
-        insights = parsed.map((s: unknown) => String(s));
       }
 
-      // 7. Save to DB
       const context: DailyInsightContext = {
-        strategyAnalysisId: latestStrategy?.id ?? null,
-        researchNoteIds: researchNotes.map((n) => n.id),
-        daysOfStats: recentStats.length,
+        strategyAnalysisIds: Object.fromEntries(
+          await Promise.all(
+            perPlatformContexts.map(async (ctx) => {
+              const sa = await prisma.strategyAnalysis.findFirst({
+                where: { userId: user.id, platform: ctx.platform },
+                orderBy: { createdAt: "desc" },
+                select: { id: true },
+              });
+              return [ctx.platform, sa?.id] as const;
+            })
+          ).then((rows) => rows.filter(([, id]) => id !== undefined && id !== null))
+        ) as Partial<Record<Platform, string>>,
+        researchNoteIds: perPlatformContexts.flatMap((ctx) =>
+          // Research notes are denormalized into the prompt; we record
+          // the topics that landed in the prompt for traceability. If
+          // we ever need exact note IDs we'd thread them through
+          // PerPlatformContext, but that's coupling the prompt builder
+          // to DB IDs unnecessarily.
+          ctx.researchNotes.map((n) => `${ctx.platform}:${n.topic.slice(0, 60)}`)
+        ),
+        daysOfStatsByPlatform: Object.fromEntries(
+          perPlatformContexts.map((ctx) => [ctx.platform, ctx.recentStats.length] as const)
+        ) as Partial<Record<Platform, number>>,
       };
 
       const saved = await saveDailyInsight(user.id, {
         date: new Date(),
-        insights,
+        insights: cards as DailyInsightPayload,
         context,
       });
 
@@ -172,7 +261,9 @@ export const GET = withCronLogging("daily-insight", async () => {
         results.push({ userId: user.id, error: err.name });
         continue;
       }
-      Sentry.captureException(err);
+      Sentry.captureException(err, {
+        tags: { area: "daily-insight", userId: user.id },
+      });
       console.error(`[daily-insight] user=${user.id}`, err);
       results.push({
         userId: user.id,
