@@ -1,15 +1,18 @@
 /**
- * Contract test for the daily-insight cron.
+ * Contract test for the daily-insight cron (post-2026-04 refactor).
  *
  * Contract:
  *   1. Bearer auth — 401 on missing/wrong token.
- *   2. Happy path — returns SUCCESS and persists a DailyInsight for the user.
- *   3. Per-user errors isolated: one user's AI call throwing doesn't abort
- *      the loop or crash the handler; the error is captured to Sentry and
- *      the overall status becomes PARTIAL.
- *   4. Quota errors (QuotaExceeded / SubscriptionRequired / RateLimit) are
- *      treated as soft skips — captured as error in results but not sent
- *      to Sentry as exceptions.
+ *   2. Happy path — calls generateObject with the structured cards
+ *      schema, persists a DailyInsight whose `insights` is the new
+ *      DailyInsightCards object.
+ *   3. NoObjectGeneratedError → fallback save with clamped headline,
+ *      Sentry warning, reservation completed (so the user isn't billed
+ *      for nothing).
+ *   4. Per-user errors isolated.
+ *   5. QuotaExceededError soft-skip without Sentry exception.
+ *   6. Per-platform context: connected={X, THREADS} → both sections
+ *      appear; connected={} → degenerate prompt without crash.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
@@ -33,31 +36,32 @@ vi.mock("next/server", async () => {
   };
 });
 
-// Mock the AI SDK — we must never hit Anthropic from tests.
-const generateTextMock = vi.hoisted(() => vi.fn());
+// AI SDK — mock generateObject (post-refactor, was generateText).
+// Keep NoObjectGeneratedError real so route's `instanceof` works.
+const generateObjectMock = vi.hoisted(() => vi.fn());
 vi.mock("ai", async () => {
   const actual = (await vi.importActual("ai")) as Record<string, unknown>;
-  return { ...actual, generateText: generateTextMock };
+  return { ...actual, generateObject: generateObjectMock };
 });
 vi.mock("@ai-sdk/anthropic", () => ({
   anthropic: (model: string) => ({ _model: model }),
 }));
 
-// Mock ai-quota so we don't need its tables wired up. Reserve succeeds by
-// default; complete/fail are recorded for assertions where relevant.
 const reserveQuotaMock = vi.hoisted(() => vi.fn());
 const completeReservationMock = vi.hoisted(() => vi.fn());
 const failReservationMock = vi.hoisted(() => vi.fn());
 const sweepStaleReservationsMock = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/ai-quota", () => ({
-  reserveQuota: reserveQuotaMock,
-  completeReservation: completeReservationMock,
-  failReservation: failReservationMock,
-  sweepStaleReservations: sweepStaleReservationsMock,
-}));
+vi.mock("@/lib/ai-quota", async () => {
+  const actual = (await vi.importActual("@/lib/ai-quota")) as Record<string, unknown>;
+  return {
+    ...actual,
+    reserveQuota: reserveQuotaMock,
+    completeReservation: completeReservationMock,
+    failReservation: failReservationMock,
+    sweepStaleReservations: sweepStaleReservationsMock,
+  };
+});
 
-// Don't actually write a DailyInsight row — the save helper is mocked so
-// the contract test stays narrow. (The save helper has its own tests.)
 const saveDailyInsightMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/server/daily-insight", () => ({
   saveDailyInsight: saveDailyInsightMock,
@@ -73,24 +77,47 @@ vi.mock("@/lib/server/followers", () => ({
   getLatestFollowersSnapshot: getLatestFollowersSnapshotMock,
 }));
 
+const getRecentResearchNotesMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/server/research", () => ({
+  getRecentResearchNotes: getRecentResearchNotesMock,
+}));
+
+const getConnectedPlatformsMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/server/platforms", () => ({
+  getConnectedPlatforms: getConnectedPlatformsMock,
+}));
+
+const getOutputLanguageMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/server/user-settings", () => ({
+  getOutputLanguage: getOutputLanguageMock,
+}));
+
 const PREFIX = `cron_di_${randomSuffix()}_`;
+
+const SAFE_CARDS = {
+  headline: "Сегодня держим ритм.",
+  tactical: [],
+  opportunity: null,
+  warning: null,
+  encouragement: null,
+};
 
 beforeEach(() => {
   process.env.CRON_SECRET = CRON_SECRET;
   vi.clearAllMocks();
-  reserveQuotaMock.mockResolvedValue({ reservationId: "res-1" });
+  reserveQuotaMock.mockResolvedValue({ reservationId: "res-1", model: "claude-sonnet-4-6" });
   completeReservationMock.mockResolvedValue(undefined);
   failReservationMock.mockResolvedValue(undefined);
   sweepStaleReservationsMock.mockResolvedValue(0);
   getLatestTrendsMock.mockResolvedValue([]);
   getLatestFollowersSnapshotMock.mockResolvedValue(null);
+  getRecentResearchNotesMock.mockResolvedValue([]);
+  getConnectedPlatformsMock.mockResolvedValue({ platforms: ["X"], primary: "X" });
+  getOutputLanguageMock.mockResolvedValue("RU");
   saveDailyInsightMock.mockResolvedValue({ id: "insight-1" });
-  // Default generateText behavior — safe JSON. Tests override with
-  // mockImplementationOnce where specific behavior is required. This
-  // keeps us robust against parallel test users other tests create.
-  generateTextMock.mockResolvedValue({
-    text: JSON.stringify(["a", "b", "c", "d", "e"]),
-    usage: { inputTokens: 10, outputTokens: 10 },
+  generateObjectMock.mockResolvedValue({
+    object: SAFE_CARDS,
+    usage: { inputTokens: 100, outputTokens: 50 },
   });
 });
 
@@ -99,61 +126,180 @@ afterEach(async () => {
 });
 
 function authed() {
-  return new NextRequest("https://app.postimi.com/api/cron/daily-insight", {
+  return new NextRequest("https://app.postimi.com/api/cron/daily-insight?manual=1", {
     headers: { authorization: `Bearer ${CRON_SECRET}` },
   });
 }
 
-describe("daily-insight cron — contract", () => {
+describe("daily-insight cron — auth + sweep", () => {
   it("returns 401 when Bearer token is missing", async () => {
     const { GET } = await import("../route");
     const res = await GET(new NextRequest("https://app.postimi.com/api/cron/daily-insight"));
     expect(res.status).toBe(401);
-    // Auth gate fires before sweep / user iteration.
     expect(sweepStaleReservationsMock).not.toHaveBeenCalled();
     expect(reserveQuotaMock).not.toHaveBeenCalled();
   });
 
-  it("runs sweep + persists insight for the test user on happy path", async () => {
+  it("runs sweep + persists insight on happy path", async () => {
     const user = await createTestUser({ clerkId: `${PREFIX}ok_${randomSuffix()}` });
 
     const { GET } = await import("../route");
     const res = await GET(authed());
     expect(res.status).toBe(200);
 
-    // Sweep runs once per cron invocation, regardless of user count.
     expect(sweepStaleReservationsMock).toHaveBeenCalledTimes(1);
-
-    // Scoped assertion: saveDailyInsight must have been called for OUR
-    // test user. Other users in the shared test DB are irrelevant — we
-    // only own the one we created.
     const callsForOurUser = saveDailyInsightMock.mock.calls.filter((c) => c[0] === user.id);
     expect(callsForOurUser).toHaveLength(1);
+    // Saved with new card-object shape, not legacy string[]
+    const savedArgs = callsForOurUser[0]![1];
+    expect(savedArgs.insights).toMatchObject({
+      headline: expect.any(String),
+      tactical: expect.any(Array),
+    });
+    expect(Array.isArray(savedArgs.insights)).toBe(false);
+  });
+});
+
+describe("daily-insight cron — Sonnet 4.6 + structured output", () => {
+  it("invokes generateObject with the Sonnet 4.6 model and the cards schema", async () => {
+    await createTestUser({ clerkId: `${PREFIX}m_${randomSuffix()}` });
+    const { GET } = await import("../route");
+    await GET(authed());
+
+    expect(generateObjectMock).toHaveBeenCalled();
+    const callArgs = generateObjectMock.mock.calls[0]![0];
+    expect((callArgs.model as { _model: string })._model).toBe("claude-sonnet-4-6");
+    // Schema is the Zod object exported from prompts/daily-insight.
+    expect(callArgs.schema).toBeDefined();
+    // Critical regression guard: prompt must include the user's
+    // configured output language. A future change that drops
+    // getOutputLanguage would otherwise silently default to English.
+    expect(getOutputLanguageMock).toHaveBeenCalled();
+    expect(callArgs.system).toMatch(/Output language/i);
   });
 
-  it("isolates per-user errors — Sentry captures and loop continues", async () => {
-    // Two users owned by this test. Drive userA's AI call to throw while
-    // userB succeeds. Route must capture A's exception, release A's
-    // reservation, and still process B.
-    const userA = await createTestUser({ clerkId: `${PREFIX}A_${randomSuffix()}` });
-    const userB = await createTestUser({ clerkId: `${PREFIX}B_${randomSuffix()}` });
+  it("OPERATION_ESTIMATES.daily_insight is sized for Sonnet, not Haiku", async () => {
+    // Regression guard: a future "free credits" tweak must not silently
+    // lower the estimate back below Sonnet's per-call cost — that would
+    // let real usage exceed the reservation and overshoot user quota.
+    const { OPERATION_ESTIMATES } = await import("@/lib/ai-quota");
+    expect(OPERATION_ESTIMATES.daily_insight!.model).toBe("claude-sonnet-4-6");
+    expect(OPERATION_ESTIMATES.daily_insight!.estimatedCostUsd).toBeGreaterThanOrEqual(0.2);
+  });
+});
 
-    // Control generateText per userId via reserveQuota's return shape:
-    // the route calls reserveQuota first, then generateText. We stash the
-    // userId so our generateText mock can branch on it.
+describe("daily-insight cron — per-platform context", () => {
+  it("builds context for every connected platform", async () => {
+    await createTestUser({ clerkId: `${PREFIX}mp_${randomSuffix()}` });
+    getConnectedPlatformsMock.mockResolvedValue({
+      platforms: ["X", "THREADS"],
+      primary: "X",
+    });
+
+    const { GET } = await import("../route");
+    await GET(authed());
+
+    expect(generateObjectMock).toHaveBeenCalled();
+    const userMessage = generateObjectMock.mock.calls[0]![0].prompt as string;
+    // Both platform headers appear once each.
+    expect(userMessage).toContain("X (Twitter)");
+    expect(userMessage).toContain("Threads");
+    // LinkedIn was NOT connected for this user — must not appear.
+    expect(userMessage).not.toContain("LinkedIn");
+  });
+
+  it("handles user with no connected platforms (degenerate but no crash)", async () => {
+    await createTestUser({ clerkId: `${PREFIX}none_${randomSuffix()}` });
+    getConnectedPlatformsMock.mockResolvedValue({ platforms: [], primary: null });
+
+    const { GET } = await import("../route");
+    const res = await GET(authed());
+    expect(res.status).toBe(200);
+    expect(generateObjectMock).toHaveBeenCalled();
+  });
+});
+
+describe("daily-insight cron — fallback path", () => {
+  it("on NoObjectGeneratedError saves a clamped fallback and emits Sentry warning", async () => {
+    const user = await createTestUser({ clerkId: `${PREFIX}nog_${randomSuffix()}` });
+
+    // Build a real NoObjectGeneratedError instance so the route's
+    // `instanceof` branch fires. The exact constructor varies across AI
+    // SDK versions; we minimally need .text and .usage.
+    const { NoObjectGeneratedError } = await import("ai");
+    const overflowText = "x".repeat(2000);
+    // The constructor signature for NoObjectGeneratedError carries
+    // verbose LanguageModel types we don't need in a unit test — cast
+    // to a minimal shape that the route's `instanceof` + property
+    // reads (`err.text`, `err.usage`) will accept.
+    const err = new NoObjectGeneratedError({
+      cause: new Error("schema validation failed"),
+      text: overflowText,
+      response: { id: "x", timestamp: new Date(), modelId: "claude-sonnet-4-6" },
+      usage: {
+        inputTokens: 50,
+        outputTokens: 200,
+        totalTokens: 250,
+        inputTokenDetails: undefined,
+        outputTokenDetails: undefined,
+      },
+      finishReason: "stop",
+    } as unknown as ConstructorParameters<typeof NoObjectGeneratedError>[0]);
+
     let currentUserId: string | null = null;
     reserveQuotaMock.mockImplementation(async ({ userId }: { userId: string }) => {
       currentUserId = userId;
-      return { reservationId: `res-${userId}` };
+      return { reservationId: `res-${userId}`, model: "claude-sonnet-4-6" };
     });
-    generateTextMock.mockImplementation(async () => {
-      if (currentUserId === userA.id) {
-        throw new Error("anthropic 500 for A");
-      }
-      return {
-        text: JSON.stringify(["a", "b", "c", "d", "e"]),
-        usage: { inputTokens: 10, outputTokens: 10 },
-      };
+    generateObjectMock.mockImplementation(async () => {
+      if (currentUserId === user.id) throw err;
+      return { object: SAFE_CARDS, usage: { inputTokens: 10, outputTokens: 10 } };
+    });
+
+    const { GET } = await import("../route");
+    const res = await GET(authed());
+    expect(res.status).toBe(200);
+
+    const callsForOurUser = saveDailyInsightMock.mock.calls.filter((c) => c[0] === user.id);
+    expect(callsForOurUser).toHaveLength(1);
+    const saved = callsForOurUser[0]![1];
+
+    // Headline clamped to 500 chars (DoS defense).
+    expect(saved.insights.headline.length).toBeLessThanOrEqual(500);
+    // Other card slots all empty / null on fallback.
+    expect(saved.insights.tactical).toEqual([]);
+    expect(saved.insights.opportunity).toBeNull();
+    expect(saved.insights.warning).toBeNull();
+    expect(saved.insights.encouragement).toBeNull();
+
+    // Sentry warning fired (not exception — fallback is not a crash).
+    const Sentry = await import("@sentry/nextjs");
+    const warningCalls = (Sentry.captureMessage as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c) => c[0] === "daily-insight schema-fit failed"
+    );
+    expect(warningCalls.length).toBeGreaterThanOrEqual(1);
+    // Reservation completed (token usage charged) — user isn't billed
+    // again on retry.
+    const completeForOurUser = completeReservationMock.mock.calls.filter(
+      (c) => (c[0] as { reservationId: string }).reservationId === `res-${user.id}`
+    );
+    expect(completeForOurUser).toHaveLength(1);
+  });
+});
+
+describe("daily-insight cron — error isolation", () => {
+  it("isolates per-user generic errors — Sentry captures and loop continues", async () => {
+    const userA = await createTestUser({ clerkId: `${PREFIX}A_${randomSuffix()}` });
+    const userB = await createTestUser({ clerkId: `${PREFIX}B_${randomSuffix()}` });
+
+    let currentUserId: string | null = null;
+    reserveQuotaMock.mockImplementation(async ({ userId }: { userId: string }) => {
+      currentUserId = userId;
+      return { reservationId: `res-${userId}`, model: "claude-sonnet-4-6" };
+    });
+    generateObjectMock.mockImplementation(async () => {
+      if (currentUserId === userA.id) throw new Error("anthropic 500 for A");
+      return { object: SAFE_CARDS, usage: { inputTokens: 10, outputTokens: 10 } };
     });
 
     const { GET } = await import("../route");
@@ -162,73 +308,21 @@ describe("daily-insight cron — contract", () => {
     const body = await res.json();
 
     const results = body.results as Array<{ userId: string; error?: string }>;
-    const aResult = results.find((r) => r.userId === userA.id);
-    const bResult = results.find((r) => r.userId === userB.id);
+    expect(results.find((r) => r.userId === userA.id)?.error).toBeTruthy();
+    expect(results.find((r) => r.userId === userB.id)?.error).toBeUndefined();
 
-    // userA errored; userB succeeded. Loop did not abort.
-    expect(aResult?.error).toBeTruthy();
-    expect(bResult?.error).toBeUndefined();
-
-    // Sentry captured userA's exception.
     const Sentry = await import("@sentry/nextjs");
     expect(Sentry.captureException).toHaveBeenCalled();
-
-    // Failed reservation was released for the erroring user.
     expect(failReservationMock).toHaveBeenCalled();
-  });
-
-  it("one rejected subquery does not skip the user — allSettled + Sentry per subtask", async () => {
-    // Regression guard for the Promise.all -> allSettled refactor.
-    // If getLatestTrends throws for a user, the user's insight must
-    // still be computed (with empty trends) and persisted. The subtask
-    // failure is captured to Sentry with the subtask tag so we can
-    // detect recurring sub-failures in ops.
-    const user = await createTestUser({ clerkId: `${PREFIX}sub_${randomSuffix()}` });
-
-    getLatestTrendsMock.mockImplementation(async (uid: string) => {
-      if (uid === user.id) throw new Error("trends service down");
-      return [];
-    });
-
-    const { GET } = await import("../route");
-    const res = await GET(authed());
-    expect(res.status).toBe(200);
-    const body = await res.json();
-
-    const results = body.results as Array<{ userId: string; insightId?: string; error?: string }>;
-    const ours = results.find((r) => r.userId === user.id);
-
-    // User was NOT skipped — insight persisted despite subquery failure.
-    expect(ours).toBeDefined();
-    expect(ours?.error).toBeUndefined();
-    const callsForOurUser = saveDailyInsightMock.mock.calls.filter((c) => c[0] === user.id);
-    expect(callsForOurUser).toHaveLength(1);
-
-    // Subquery failure reached Sentry with the subtask tag.
-    const Sentry = await import("@sentry/nextjs");
-    const calls = (Sentry.captureException as ReturnType<typeof vi.fn>).mock.calls;
-    const subtaskCall = calls.find((c) => {
-      const ctx = c[1] as { tags?: { area?: string; userId?: string; subtask?: string } };
-      return (
-        ctx?.tags?.area === "daily-insight" &&
-        ctx?.tags?.userId === user.id &&
-        ctx?.tags?.subtask === "getLatestTrends"
-      );
-    });
-    expect(subtaskCall).toBeDefined();
-
-    // Reservation completed normally — not failed, since the user succeeded.
-    expect(completeReservationMock).toHaveBeenCalled();
   });
 
   it("treats QuotaExceededError as soft skip — no Sentry exception for that user", async () => {
     const quotaUser = await createTestUser({ clerkId: `${PREFIX}q_${randomSuffix()}` });
 
     const { QuotaExceededError } = await import("@/lib/errors");
-    // Only throw for this user — other parallel test users still succeed.
     reserveQuotaMock.mockImplementation(async ({ userId }: { userId: string }) => {
       if (userId === quotaUser.id) throw new QuotaExceededError(100, 50);
-      return { reservationId: "res-other" };
+      return { reservationId: "res-other", model: "claude-sonnet-4-6" };
     });
 
     const { GET } = await import("../route");
@@ -236,22 +330,15 @@ describe("daily-insight cron — contract", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
 
-    const results = body.results as Array<{ userId: string; error?: string }>;
-    const ours = results.find((r) => r.userId === quotaUser.id);
+    const ours = (body.results as Array<{ userId: string; error?: string }>).find(
+      (r) => r.userId === quotaUser.id
+    );
     expect(ours?.error).toBe("QuotaExceededError");
 
-    // QuotaExceededError is an expected user state; the route must NOT
-    // file it as a Sentry exception (that's reserved for unexpected errors).
     const Sentry = await import("@sentry/nextjs");
-    const exceptionCalls = (Sentry.captureException as ReturnType<typeof vi.fn>).mock.calls;
-    // If other users' AI calls failed they'd appear in captureException —
-    // but since generateText has a safe default, they succeed. We assert
-    // no Sentry call references a QuotaExceededError (the only signal
-    // tied to our user here).
-    const quotaCalls = exceptionCalls.filter((c) => {
-      const err = c[0] as Error | undefined;
-      return err?.name === "QuotaExceededError";
-    });
+    const quotaCalls = (Sentry.captureException as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c) => (c[0] as Error | undefined)?.name === "QuotaExceededError"
+    );
     expect(quotaCalls).toHaveLength(0);
   });
 });

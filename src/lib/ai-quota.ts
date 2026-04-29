@@ -42,7 +42,12 @@ export const OPERATION_ESTIMATES: Record<string, { model: string; estimatedCostU
   chat: { model: "claude-sonnet-4-6", estimatedCostUsd: 0.15 },
   strategist: { model: "claude-sonnet-4-6", estimatedCostUsd: 0.5 },
   researcher: { model: "claude-sonnet-4-6", estimatedCostUsd: 0.5 },
-  daily_insight: { model: "claude-haiku-4-5-20251001", estimatedCostUsd: 0.05 },
+  // 2026-04 refactor: daily-insight uses Sonnet 4.6 with per-platform
+  // context (3 platforms × 7 days stats × N research notes × strategy
+  // recommendation). Per-call cost lands around $0.10–0.30 depending
+  // on connected platforms; reserve $0.30 as worst-case so quota math
+  // never undershoots and lets a real call exceed.
+  daily_insight: { model: "claude-sonnet-4-6", estimatedCostUsd: 0.3 },
   generate_post: { model: "claude-sonnet-4-6", estimatedCostUsd: 0.1 },
 };
 

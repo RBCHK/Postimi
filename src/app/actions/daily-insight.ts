@@ -1,7 +1,7 @@
 "use server";
 
 import { requireUserId } from "@/lib/auth";
-import type { DailyInsightItem, DailyInsightContext } from "@/lib/types";
+import type { DailyInsightContext, DailyInsightItem, DailyInsightPayload } from "@/lib/types";
 import {
   saveDailyInsight as _saveDailyInsight,
   getLatestDailyInsight as _getLatestDailyInsight,
@@ -10,7 +10,7 @@ import {
 
 export async function saveDailyInsight(data: {
   date: Date;
-  insights: string[];
+  insights: DailyInsightPayload;
   context: DailyInsightContext;
 }): Promise<DailyInsightItem> {
   const userId = await requireUserId();
