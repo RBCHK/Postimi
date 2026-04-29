@@ -19,6 +19,8 @@ import {
   type ContentSchedule,
   type DayKey,
 } from "@/lib/server/schedule";
+import { createPostWithSchedules } from "@/lib/server/posts";
+import { getConnectedPlatforms } from "@/lib/server/platforms";
 
 // Explicit mapping records per CLAUDE.md convention: Prisma enums are
 // UPPER_CASE, app types PascalCase/lowercase, never cast directly. Typing
@@ -632,6 +634,39 @@ export async function addToQueue(
           conversationId: conversationId ?? null,
         },
       });
+
+      // 2026-04 multi-platform bridge: in addition to the legacy
+      // ScheduledSlot row that drives the existing /schedule UI, also
+      // create a Post + N ScheduledPublish[] (one per connected
+      // platform) so the new auto-publish cron can fire across every
+      // platform the user has linked. The ScheduledSlot stays as the
+      // user-facing entity until a follow-up PR migrates the UI; this
+      // bridge keeps both models in sync at write time.
+      //
+      // Failures here are logged but do NOT roll back the ScheduledSlot
+      // — losing publishing on a new schedule is recoverable (admin
+      // can manually create), but losing the user's scheduled-content
+      // state is far worse UX.
+      try {
+        const utcAt = slotToUtcDate(date, timeSlot, timezone);
+        const connected = await getConnectedPlatforms(userId);
+        if (connected.platforms.length > 0) {
+          await createPostWithSchedules(userId, {
+            content,
+            conversationId: conversationId ?? null,
+            schedules: connected.platforms.map((platform) => ({
+              platform,
+              scheduledAt: utcAt,
+            })),
+          });
+        }
+      } catch (bridgeErr) {
+        const Sentry = await import("@sentry/nextjs");
+        Sentry.captureException(bridgeErr, {
+          tags: { area: "schedule", step: "post-bridge", userId },
+          extra: { conversationId, slotType },
+        });
+      }
 
       if (conversationId) {
         await prisma.conversation.updateMany({
