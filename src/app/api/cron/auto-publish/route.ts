@@ -5,15 +5,13 @@ import { withCronLogging } from "@/lib/cron-helpers";
 import { getXApiTokenForUser } from "@/lib/server/x-token";
 import { getLinkedInApiTokenForUser } from "@/lib/server/linkedin-token";
 import { getThreadsApiTokenForUser } from "@/lib/server/threads-token";
-import { uploadMediaToX } from "@/lib/x-api";
 import { getPublisher } from "@/lib/platform/publishers";
 import { PlatformDisconnectedError, PlatformValidationError } from "@/lib/platform/errors";
 import { validatePostForPlatform } from "@/lib/platform/rules";
 import { getMediaForConversation } from "@/lib/server/media";
-import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { backfillOrphanScheduledSlots } from "@/lib/server/auto-publish-backfill";
 import type { CredentialsFor } from "@/lib/platform/types";
-import type { Platform } from "@/lib/types";
+import type { MediaItem, Platform } from "@/lib/types";
 
 // 2026-04 refactor: auto-publish reads ScheduledPublish (per-platform)
 // instead of ScheduledSlot (X-only). Key contract guarantees:
@@ -202,9 +200,26 @@ async function processOnePublish(row: ClaimedRow): Promise<ProcessResult> {
     return { status: "FAILED", error: "userId_mismatch" };
   }
 
+  // Load media once per row so per-platform validation can see the
+  // media count and the publisher receives the unified MediaItem[]
+  // shape. Threads passes URLs through; X / LinkedIn upload binaries
+  // inside the publisher (see fetchMediaBuffers).
+  let media: MediaItem[] = [];
+  if (post.conversationId) {
+    try {
+      media = await getMediaForConversation(post.conversationId, row.userId);
+    } catch (err) {
+      return finishWithError(row, err, "media_fetch_failed");
+    }
+  }
+
   // Platform-rules pre-flight. Cheap, fails fast before hitting an
-  // external API with a doomed payload.
-  const validation = validatePostForPlatform(row.platform, { content: post.content });
+  // external API with a doomed payload — character cap AND media count
+  // (X=4, LinkedIn=9, Threads=20).
+  const validation = validatePostForPlatform(row.platform, {
+    content: post.content,
+    mediaCount: media.length,
+  });
   if (validation) {
     await markFailedTerminal(row.id, validation);
     return { status: "FAILED", error: validation };
@@ -223,28 +238,12 @@ async function processOnePublish(row: ClaimedRow): Promise<ProcessResult> {
     return { status: "FAILED", error: "platform_disconnected" };
   }
 
-  // X-only media handling. LinkedIn/Threads media support is wired in a
-  // follow-up — the publisher contract accepts mediaIds today but only
-  // X populates them.
-  let mediaIds: string[] | undefined;
-  if (row.platform === "X" && post.conversationId) {
-    try {
-      mediaIds = await loadXMediaIds({
-        conversationId: post.conversationId,
-        userId: row.userId,
-        creds: creds as CredentialsFor<"X">,
-      });
-    } catch (err) {
-      return finishWithError(row, err, "media_fetch_failed");
-    }
-  }
-
   try {
     const publisher = getPublisher(row.platform);
     const result = await publisher.publish({
       creds: creds as CredentialsFor<Platform>,
       content: post.content,
-      mediaIds,
+      media: media.length > 0 ? media : undefined,
       callerJob: "auto-publish",
       userId: row.userId,
     });
@@ -281,56 +280,6 @@ async function processOnePublish(row: ClaimedRow): Promise<ProcessResult> {
     }
     return finishWithError(row, err, "publish_failed");
   }
-}
-
-async function loadXMediaIds(args: {
-  conversationId: string;
-  userId: string;
-  creds: CredentialsFor<"X">;
-}): Promise<string[] | undefined> {
-  const media = await getMediaForConversation(args.conversationId, args.userId);
-  if (media.length === 0) return undefined;
-  // X requires every referenced media to succeed; partial uploads
-  // would publish a misleading tweet. Parallelise downloads with an
-  // explicit 15s per-item timeout so one stuck CDN can't eat the
-  // function budget.
-  const MEDIA_FETCH_TIMEOUT_MS = 15_000;
-  const buffers = await Promise.allSettled(
-    media.map(async (item) => {
-      const res = await fetchWithTimeout(item.url, { timeoutMs: MEDIA_FETCH_TIMEOUT_MS });
-      if (!res.ok) {
-        throw new Error(`Media fetch failed (${res.status} ${res.statusText}) for ${item.url}`);
-      }
-      const buf = Buffer.from(await res.arrayBuffer());
-      return { item, buf };
-    })
-  );
-  const failures = buffers
-    .map((r, i) => ({ r, i, item: media[i]! }))
-    .filter((x) => x.r.status === "rejected");
-  if (failures.length > 0) {
-    for (const f of failures) {
-      Sentry.captureException((f.r as PromiseRejectedResult).reason, {
-        tags: { area: "auto-publish-media", mediaId: f.item.id, userId: args.userId },
-        extra: { url: f.item.url },
-      });
-    }
-    throw new Error(`Media fetch failed for ${failures.length}/${media.length} item(s)`);
-  }
-  // Sequential uploads — X's tweet media array is position-sensitive,
-  // so the returned media ids must match input order.
-  const out: string[] = [];
-  for (const res of buffers) {
-    const { item, buf } = (
-      res as PromiseFulfilledResult<{ item: (typeof media)[number]; buf: Buffer }>
-    ).value;
-    const xMediaId = await uploadMediaToX(args.creds, buf, item.mimeType, {
-      callerJob: "auto-publish",
-      userId: args.userId,
-    });
-    out.push(xMediaId);
-  }
-  return out;
 }
 
 /** Mark FAILED with the cap exhausted so retries stop until manual intervention. */

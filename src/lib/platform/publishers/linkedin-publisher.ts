@@ -1,11 +1,19 @@
-import { postToLinkedIn } from "@/lib/linkedin-api";
+import {
+  postToLinkedIn,
+  postToLinkedInWithImage,
+  postToLinkedInWithImages,
+  uploadImageToLinkedIn,
+} from "@/lib/linkedin-api";
 import { PlatformDisconnectedError } from "@/lib/platform/errors";
+import { fetchMediaBuffers } from "./media-fetch";
 import type { PlatformPublisher, PublishArgs, PublishResult } from "./types";
 
 /**
- * LinkedIn publisher — adapter over the existing `postToLinkedIn` API
- * client. Stateless. Today only handles text posts; image carousels
- * via `postToLinkedInWithImages` are wired in a follow-up.
+ * LinkedIn publisher — adapter over the existing `postToLinkedIn`
+ * API client family. Stateless.
+ *
+ * Media: uploads each item via `uploadImageToLinkedIn` to obtain image
+ * URNs, then routes to single-image or multi-image post based on count.
  *
  * Auth failures (LinkedIn returns 401 with INVALID_ACCESS_TOKEN) bubble
  * up as PlatformDisconnectedError so the cron can mark the publish
@@ -28,7 +36,28 @@ export const linkedinPublisher: PlatformPublisher<"LINKEDIN"> = {
 
   async publish(args: PublishArgs<"LINKEDIN">): Promise<PublishResult> {
     try {
-      const { postUrn } = await postToLinkedIn(args.creds, args.content);
+      let postUrn: string;
+      const media = args.media ?? [];
+
+      if (media.length === 0) {
+        ({ postUrn } = await postToLinkedIn(args.creds, args.content));
+      } else {
+        const buffers = await fetchMediaBuffers(media, {
+          userId: args.userId,
+          callerJob: args.callerJob,
+        });
+        const imageUrns: string[] = [];
+        for (const { item, buf } of buffers) {
+          const urn = await uploadImageToLinkedIn(args.creds, buf, item.mimeType);
+          imageUrns.push(urn);
+        }
+        if (imageUrns.length === 1) {
+          ({ postUrn } = await postToLinkedInWithImage(args.creds, args.content, imageUrns[0]!));
+        } else {
+          ({ postUrn } = await postToLinkedInWithImages(args.creds, args.content, imageUrns));
+        }
+      }
+
       return {
         externalPostId: postUrn,
         externalUrl: deriveLinkedInPermalink(postUrn),
