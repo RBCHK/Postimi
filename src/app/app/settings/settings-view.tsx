@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2, X, Sparkles } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,6 +16,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
   getVoiceBankEntries,
@@ -24,6 +32,7 @@ import {
 } from "@/app/actions/voice-bank";
 import { getScheduleConfig, saveScheduleConfig } from "@/app/actions/schedule";
 import { getUserNiche, setUserNiche } from "@/app/actions/user-settings";
+import { suggestNiche, type SuggestNicheResponse } from "@/app/actions/niche-suggest";
 import type { DayKey, SlotRow, ScheduleConfig } from "@/lib/server/schedule";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage, type LanguageSettings } from "@/lib/types";
 import { getStoredLanguageSettings, LANGUAGE_STORAGE_KEY } from "@/lib/language";
@@ -1063,6 +1072,13 @@ function ProfileTab() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Suggest-from-posts modal state. Kept in the parent so an in-flight
+  // suggestion survives modal close/re-open without restarting the LLM
+  // call. `loading` gates the trigger button and the action body.
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestion, setSuggestion] = useState<SuggestNicheResponse | null>(null);
+
   useEffect(() => {
     getUserNiche()
       .then((value) => {
@@ -1096,6 +1112,30 @@ function ProfileTab() {
     scheduleSave(value);
   }
 
+  async function handleSuggest() {
+    setSuggestOpen(true);
+    setSuggestLoading(true);
+    setSuggestion(null);
+    try {
+      const res = await suggestNiche();
+      setSuggestion(res);
+    } catch (err) {
+      setSuggestion({
+        ok: false,
+        reason: "other",
+        error: err instanceof Error ? err.message : "Failed to suggest a niche.",
+      });
+    } finally {
+      setSuggestLoading(false);
+    }
+  }
+
+  function applySuggestion(value: string) {
+    setNiche(value);
+    scheduleSave(value);
+    setSuggestOpen(false);
+  }
+
   const charCount = niche.length;
   const charCountClass =
     charCount > 90
@@ -1123,10 +1163,23 @@ function ProfileTab() {
           disabled={!loaded}
           aria-describedby="niche-helper"
         />
-        <p id="niche-helper" className="text-xs text-muted-foreground">
-          What you write about. Drives weekly research tailored to your topic. Leave empty to use
-          only general platform research.
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p id="niche-helper" className="text-xs text-muted-foreground">
+            What you write about. Drives weekly research tailored to your topic. Leave empty to use
+            only general platform research.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleSuggest}
+            disabled={suggestLoading}
+            className="shrink-0 gap-1.5"
+          >
+            <Sparkles className="size-3.5" />
+            {suggestLoading ? "Analyzing…" : "Suggest from my posts"}
+          </Button>
+        </div>
         <div className="h-4 text-xs text-muted-foreground" aria-live="polite">
           {status === "saving" && "Saving…"}
           {status === "saved" && "Saved"}
@@ -1135,7 +1188,123 @@ function ProfileTab() {
           )}
         </div>
       </div>
+
+      <NicheSuggestModal
+        open={suggestOpen}
+        loading={suggestLoading}
+        suggestion={suggestion}
+        onClose={() => setSuggestOpen(false)}
+        onApply={applySuggestion}
+      />
     </div>
+  );
+}
+
+function NicheSuggestModal({
+  open,
+  loading,
+  suggestion,
+  onClose,
+  onApply,
+}: {
+  open: boolean;
+  loading: boolean;
+  suggestion: SuggestNicheResponse | null;
+  onClose: () => void;
+  onApply: (value: string) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Suggested niche</DialogTitle>
+          <DialogDescription>
+            Based on your most recent posts across connected platforms.
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading && (
+          <div className="py-8 text-center text-sm text-muted-foreground" aria-live="polite">
+            Analyzing your posts with Sonnet 4.6…
+          </div>
+        )}
+
+        {!loading && suggestion?.ok === false && (
+          <div className="py-4 text-sm">
+            {suggestion.reason === "not_enough_posts" ? (
+              <p className="text-muted-foreground">
+                {suggestion.error} Connect a platform and run a social import first, then come back.
+              </p>
+            ) : (
+              <p className="text-destructive">{suggestion.error}</p>
+            )}
+          </div>
+        )}
+
+        {!loading && suggestion?.ok === true && (
+          <div className="flex flex-col gap-4 py-2">
+            <button
+              type="button"
+              onClick={() => onApply(suggestion.result.primary)}
+              className="rounded-md border border-primary/40 bg-primary/5 p-3 text-left transition-colors hover:bg-primary/10"
+            >
+              <div className="text-xs font-medium uppercase tracking-wider text-primary">
+                Primary
+              </div>
+              <div className="mt-1 text-sm font-medium">{suggestion.result.primary}</div>
+            </button>
+
+            {suggestion.result.alternatives.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Alternatives
+                </div>
+                {suggestion.result.alternatives.map((alt) => (
+                  <button
+                    key={alt}
+                    type="button"
+                    onClick={() => onApply(alt)}
+                    className="rounded-md border p-2.5 text-left text-sm transition-colors hover:bg-muted"
+                  >
+                    {alt}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {suggestion.result.drift.detected && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
+                <div className="text-xs font-medium uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                  Content drift
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Your posts span multiple themes. Pick one to focus on, or refine your niche
+                  manually.
+                </p>
+                {suggestion.result.drift.themes.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {suggestion.result.drift.themes.map((t) => (
+                      <span
+                        key={t}
+                        className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -50,6 +50,9 @@ export const OPERATION_ESTIMATES: Record<string, { model: string; estimatedCostU
   // never undershoots and lets a real call exceed.
   daily_insight: { model: "claude-sonnet-4-6", estimatedCostUsd: 0.3 },
   generate_post: { model: "claude-sonnet-4-6", estimatedCostUsd: 0.1 },
+  // Niche suggestion: 50 posts × ~250 chars input, ~500 tokens out.
+  // Sonnet 4.6 ($3/M in, $15/M out) → ~$0.015 typical, $0.05 worst-case.
+  niche_suggest: { model: "claude-sonnet-4-6", estimatedCostUsd: 0.05 },
 };
 
 /**
