@@ -24,6 +24,14 @@ const MIN_TEXT_LEN = 30;
 const MIN_USABLE_POSTS = 5;
 const MAX_POST_PROMPT_CHARS = 300;
 
+// IMPORTANT: Anthropic's tool-use schema does NOT support `minItems` /
+// `maxItems` on array types — Zod's `.min()` / `.max()` on arrays would
+// emit those keywords and the API rejects the request with
+// `output_format.schema: For 'array' type, property 'maxItems' is not
+// supported`. Limits are enforced in the system prompt (model
+// instruction) and clamped post-fetch via `.slice()`. String-level
+// `.min()` / `.max()` are fine — those translate to `minLength` /
+// `maxLength` which Anthropic supports.
 export const NICHE_SUGGEST_SCHEMA = z.object({
   primary: z
     .string()
@@ -34,7 +42,6 @@ export const NICHE_SUGGEST_SCHEMA = z.object({
     ),
   alternatives: z
     .array(z.string().min(3).max(100))
-    .max(3)
     .describe("Up to 3 alternative niches in the same shape."),
   drift: z.object({
     detected: z
@@ -44,7 +51,6 @@ export const NICHE_SUGGEST_SCHEMA = z.object({
       ),
     themes: z
       .array(z.string().min(2).max(60))
-      .max(6)
       .describe(
         "Up to 6 short labels for the themes detected. Empty array if `detected` is false."
       ),
@@ -57,10 +63,10 @@ const SYSTEM_PROMPT = `You analyze social-media posts to identify the author's p
 
 Rules:
 - "primary": one concise English noun phrase, 3-100 chars (e.g. "AI tools for solo creators", "indie SaaS founder", "fitness coaching for busy parents"). Avoid generic labels ("technology", "lifestyle"). Be specific to who the audience would be.
-- "alternatives": up to 3 secondary niches in the same shape — distinct from primary.
+- "alternatives": MUST contain at most 3 items. Secondary niches in the same shape — distinct from primary.
 - "drift": detect if the user posts across many unrelated themes (>3 distinct domains).
   - "detected": true if mixed; false if focused.
-  - "themes": labels of detected themes when detected; empty array otherwise.
+  - "themes": MUST contain at most 6 items. Labels of detected themes when detected; empty array otherwise.
 
 Do NOT include URLs, hashtags, @-mentions, emoji, or quoted text in suggestions.
 Output ONLY the JSON object — no explanations, no markdown.`;
